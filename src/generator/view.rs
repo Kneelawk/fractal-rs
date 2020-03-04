@@ -4,10 +4,10 @@ use num_complex::Complex;
 pub struct View {
     pub image_width: u32,
     pub image_height: u32,
-    pub image_scale_x: f64,
-    pub image_scale_y: f64,
-    pub plane_start_x: f64,
-    pub plane_start_y: f64,
+    pub image_scale_x: f32,
+    pub image_scale_y: f32,
+    pub plane_start_x: f32,
+    pub plane_start_y: f32,
 }
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
@@ -18,37 +18,37 @@ pub enum ConstrainedValue<T> {
 }
 
 impl View {
-    pub fn new_centered_uniform(image_width: u32, image_height: u32, plane_width: f64) -> View {
-        let image_scale = plane_width / image_width as f64;
-        let plane_height = image_height as f64 * image_scale;
+    pub fn new_centered_uniform(image_width: u32, image_height: u32, plane_width: f32) -> View {
+        let image_scale = plane_width / image_width as f32;
+        let plane_height = image_height as f32 * image_scale;
 
         View {
             image_width,
             image_height,
             image_scale_x: image_scale,
             image_scale_y: image_scale,
-            plane_start_x: -plane_width / 2f64,
-            plane_start_y: -plane_height / 2f64,
+            plane_start_x: -plane_width / 2f32,
+            plane_start_y: -plane_height / 2f32,
         }
     }
 
     pub fn new_uniform(
         image_width: u32,
         image_height: u32,
-        plane_width: f64,
-        center_x: f64,
-        center_y: f64,
+        plane_width: f32,
+        center_x: f32,
+        center_y: f32,
     ) -> View {
-        let image_scale = plane_width / image_width as f64;
-        let plane_height = image_height as f64 * image_scale;
+        let image_scale = plane_width / image_width as f32;
+        let plane_height = image_height as f32 * image_scale;
 
         View {
             image_width,
             image_height,
             image_scale_x: image_scale,
             image_scale_y: image_scale,
-            plane_start_x: center_x - plane_width / 2f64,
-            plane_start_y: center_y - plane_height / 2f64,
+            plane_start_x: center_x - plane_width / 2f32,
+            plane_start_y: center_y - plane_height / 2f32,
         }
     }
 
@@ -76,8 +76,8 @@ impl View {
                         image_height: 1,
                         image_scale_x: self.image_scale_x,
                         image_scale_y: self.image_scale_y,
-                        plane_start_x: self.plane_start_x + image_x as f64 * self.image_scale_x,
-                        plane_start_y: self.plane_start_y + image_y as f64 * self.image_scale_y,
+                        plane_start_x: self.plane_start_x + image_x as f32 * self.image_scale_x,
+                        plane_start_y: self.plane_start_y + image_y as f32 * self.image_scale_y,
                     });
 
                     image_x += image_width;
@@ -103,7 +103,7 @@ impl View {
                 image_scale_x: self.image_scale_x,
                 image_scale_y: self.image_scale_y,
                 plane_start_x: self.plane_start_x,
-                plane_start_y: self.plane_start_y + image_y as f64 * self.image_scale_y,
+                plane_start_y: self.plane_start_y + image_y as f32 * self.image_scale_y,
             });
 
             image_y += image_height;
@@ -112,16 +112,16 @@ impl View {
         views
     }
 
-    pub fn get_plane_coordinates(&self, (x, y): (u32, u32)) -> Complex<f64> {
-        Complex::<f64>::new(
-            x as f64 * self.image_scale_x + self.plane_start_x,
-            y as f64 * self.image_scale_y + self.plane_start_y,
+    pub fn get_plane_coordinates(&self, (x, y): (u32, u32)) -> Complex<f32> {
+        Complex::<f32>::new(
+            x as f32 * self.image_scale_x + self.plane_start_x,
+            y as f32 * self.image_scale_y + self.plane_start_y,
         )
     }
 
     pub fn get_pixel_coordinates(
         &self,
-        plane_coordinates: Complex<f64>,
+        plane_coordinates: Complex<f32>,
     ) -> (ConstrainedValue<u32>, ConstrainedValue<u32>) {
         (
             if plane_coordinates.re > self.plane_start_x {

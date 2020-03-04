@@ -6,31 +6,31 @@ lazy_static::lazy_static! {
 static ref SMOOTHING_REGEX: Regex = RegexBuilder::new(r"^logarithmic(distance)? *\( *(?P<radius>\d+(\.\d+)?|\.\d+) *, *(?P<max_power>\d+(\.\d+)?|\.\d+) *\)$").case_insensitive(true).build().unwrap();
 }
 
-const DEFAULT_RADIUS: f64 = 4f64;
-const DEFAULT_RADIUS_SQUARED: f64 = DEFAULT_RADIUS * DEFAULT_RADIUS;
+const DEFAULT_RADIUS: f32 = 4f32;
+const DEFAULT_RADIUS_SQUARED: f32 = DEFAULT_RADIUS * DEFAULT_RADIUS;
 
 #[derive(Debug, Copy, Clone)]
 pub enum Smoothing {
     None,
     LogarithmicDistance {
-        radius_squared: f64,
-        divisor: f64,
-        addend: f64,
+        radius_squared: f32,
+        divisor: f32,
+        addend: f32,
     },
     LinearIntersection,
 }
 
 impl Smoothing {
-    pub fn from_logarithmic_distance(radius: f64, max_power: f64) -> Smoothing {
+    pub fn from_logarithmic_distance(radius: f32, max_power: f32) -> Smoothing {
         let divisor = max_power.ln();
         Smoothing::LogarithmicDistance {
             radius_squared: radius * radius,
             divisor,
-            addend: (2f64.ln() + radius.ln().ln()) / divisor,
+            addend: (2f32.ln() + radius.ln().ln()) / divisor,
         }
     }
 
-    pub fn radius_squared(&self) -> f64 {
+    pub fn radius_squared(&self) -> f32 {
         match self {
             Smoothing::None => DEFAULT_RADIUS_SQUARED,
             Smoothing::LogarithmicDistance { radius_squared, .. } => *radius_squared,
@@ -41,25 +41,25 @@ impl Smoothing {
     pub fn smooth(
         &self,
         iterations: u32,
-        z_current: Complex<f64>,
-        z_previous: Complex<f64>,
-    ) -> f64 {
+        z_current: Complex<f32>,
+        z_previous: Complex<f32>,
+    ) -> f32 {
         match self {
-            Smoothing::None => iterations as f64,
+            Smoothing::None => iterations as f32,
             Smoothing::LogarithmicDistance {
                 divisor, addend, ..
-            } => iterations as f64 - z_current.norm_sqr().ln().ln() / *divisor + *addend,
+            } => iterations as f32 - z_current.norm_sqr().ln().ln() / *divisor + *addend,
             Smoothing::LinearIntersection => {
                 if z_current == z_previous {
-                    return iterations as f64;
+                    return iterations as f32;
                 }
 
                 if z_previous.norm_sqr() > DEFAULT_RADIUS_SQUARED {
-                    return iterations as f64;
+                    return iterations as f32;
                 }
 
                 if z_current.norm_sqr() < DEFAULT_RADIUS_SQUARED {
-                    return iterations as f64;
+                    return iterations as f32;
                 }
 
                 let ax = z_previous.re;
@@ -69,7 +69,7 @@ impl Smoothing {
                 let dx = bx - ax;
                 let dy = by - ay;
 
-                iterations as f64
+                iterations as f32
                     - if dx.abs() > dy.abs() {
                         let m = dy / dx;
                         let m_squared = m * m;
@@ -80,13 +80,13 @@ impl Smoothing {
                                 + (DEFAULT_RADIUS_SQUARED * m_squared + DEFAULT_RADIUS_SQUARED
                                     - p * p)
                                     .sqrt())
-                                / (m_squared + 1f64)
+                                / (m_squared + 1f32)
                         } else {
                             (m * p
                                 - (DEFAULT_RADIUS_SQUARED * m_squared + DEFAULT_RADIUS_SQUARED
                                     - p * p)
                                     .sqrt())
-                                / (m_squared + 1f64)
+                                / (m_squared + 1f32)
                         }) / dx
                     } else {
                         let m = dx / dy;
@@ -98,13 +98,13 @@ impl Smoothing {
                                 + (DEFAULT_RADIUS_SQUARED * m_squared + DEFAULT_RADIUS_SQUARED
                                     - p * p)
                                     .sqrt())
-                                / (m_squared + 1f64)
+                                / (m_squared + 1f32)
                         } else {
                             (m * p
                                 - (DEFAULT_RADIUS_SQUARED * m_squared + DEFAULT_RADIUS_SQUARED
                                     - p * p)
                                     .sqrt())
-                                / (m_squared + 1f64)
+                                / (m_squared + 1f32)
                         }) / dy
                     }
             },
@@ -123,8 +123,8 @@ impl FromStr for Smoothing {
             Ok(Smoothing::LinearIntersection)
         } else if let Some(captures) = SMOOTHING_REGEX.captures(&s_lowercase) {
             Ok(Smoothing::from_logarithmic_distance(
-                captures["radius"].parse::<f64>()?,
-                captures["max_power"].parse::<f64>()?,
+                captures["radius"].parse::<f32>()?,
+                captures["max_power"].parse::<f32>()?,
             ))
         } else {
             Err(ParseSmoothingError::NotSmoothing)
