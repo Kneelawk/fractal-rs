@@ -1,6 +1,8 @@
 use num_complex::Complex;
 
-#[derive(Debug, Copy, Clone, PartialEq)]
+/// A view represents an image's width, height, and mapping onto the complex
+/// plane.
+#[derive(Debug, Copy, Clone, PartialEq, PartialOrd)]
 pub struct View {
     pub image_width: u32,
     pub image_height: u32,
@@ -10,6 +12,7 @@ pub struct View {
     pub plane_start_y: f32,
 }
 
+/// Represents a value that may be out of bounds.
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
 pub enum ConstrainedValue<T> {
     LessThanConstraint,
@@ -18,6 +21,8 @@ pub enum ConstrainedValue<T> {
 }
 
 impl View {
+    /// Creates a view centered at (0 + 0i) on the complex plane with the same
+    /// scaling for both x and y axis.
     pub fn new_centered_uniform(image_width: u32, image_height: u32, plane_width: f32) -> View {
         let image_scale = plane_width / image_width as f32;
         let plane_height = image_height as f32 * image_scale;
@@ -32,6 +37,8 @@ impl View {
         }
     }
 
+    /// Creates a view centered at (`center_x` + `center_y`i) on the complex
+    /// plane with the same scaling for both x and y axis.
     pub fn new_uniform(
         image_width: u32,
         image_height: u32,
@@ -52,6 +59,8 @@ impl View {
         }
     }
 
+    /// Divides this view into a set of consecutive sub-views each of which
+    /// containing no more pixels than `pixel_count`.
     pub fn subdivide_to_pixel_count(&self, pixel_count: u32) -> Vec<View> {
         if pixel_count >= self.image_width * self.image_height {
             vec![*self]
@@ -88,6 +97,7 @@ impl View {
         }
     }
 
+    /// Divides this view into a set of `pieces` consecutive sub-views.
     pub fn subdivide_height(&self, pieces: u32) -> Vec<View> {
         let mut views = vec![];
 
@@ -112,6 +122,7 @@ impl View {
         views
     }
 
+    /// Gets the coordinates on the complex plane for a given pixel coordinate.
     pub fn get_plane_coordinates(&self, (x, y): (u32, u32)) -> Complex<f32> {
         Complex::<f32>::new(
             x as f32 * self.image_scale_x + self.plane_start_x,
@@ -119,6 +130,7 @@ impl View {
         )
     }
 
+    /// Gets the pixel coordinates for a given coordinate on the complex plane.
     pub fn get_pixel_coordinates(
         &self,
         plane_coordinates: Complex<f32>,

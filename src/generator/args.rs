@@ -1,4 +1,3 @@
-use num_complex::Complex;
 use regex::{Regex, RegexBuilder};
 use std::{num::ParseFloatError, str::FromStr};
 
@@ -6,9 +5,7 @@ lazy_static::lazy_static! {
 static ref SMOOTHING_REGEX: Regex = RegexBuilder::new(r"^logarithmic(distance)? *\( *(?P<radius>\d+(\.\d+)?|\.\d+) *, *(?P<max_power>\d+(\.\d+)?|\.\d+) *\)$").case_insensitive(true).build().unwrap();
 }
 
-const DEFAULT_RADIUS: f32 = 4f32;
-const DEFAULT_RADIUS_SQUARED: f32 = DEFAULT_RADIUS * DEFAULT_RADIUS;
-
+/// Represents an operation for smoothing an integer iteration count into a floating point value.
 #[derive(Debug, Copy, Clone)]
 pub enum Smoothing {
     None,
@@ -21,93 +18,13 @@ pub enum Smoothing {
 }
 
 impl Smoothing {
+    /// Creates a logarithmic distance smoothing from the given radius and max power.
     pub fn from_logarithmic_distance(radius: f32, max_power: f32) -> Smoothing {
         let divisor = max_power.ln();
         Smoothing::LogarithmicDistance {
             radius_squared: radius * radius,
             divisor,
             addend: (2f32.ln() + radius.ln().ln()) / divisor,
-        }
-    }
-
-    pub fn radius_squared(&self) -> f32 {
-        match self {
-            Smoothing::None => DEFAULT_RADIUS_SQUARED,
-            Smoothing::LogarithmicDistance { radius_squared, .. } => *radius_squared,
-            Smoothing::LinearIntersection => DEFAULT_RADIUS_SQUARED,
-        }
-    }
-
-    pub fn smooth(
-        &self,
-        iterations: u32,
-        z_current: Complex<f32>,
-        z_previous: Complex<f32>,
-    ) -> f32 {
-        match self {
-            Smoothing::None => iterations as f32,
-            Smoothing::LogarithmicDistance {
-                divisor, addend, ..
-            } => iterations as f32 - z_current.norm_sqr().ln().ln() / *divisor + *addend,
-            Smoothing::LinearIntersection => {
-                if z_current == z_previous {
-                    return iterations as f32;
-                }
-
-                if z_previous.norm_sqr() > DEFAULT_RADIUS_SQUARED {
-                    return iterations as f32;
-                }
-
-                if z_current.norm_sqr() < DEFAULT_RADIUS_SQUARED {
-                    return iterations as f32;
-                }
-
-                let ax = z_previous.re;
-                let ay = z_previous.im;
-                let bx = z_current.re;
-                let by = z_current.im;
-                let dx = bx - ax;
-                let dy = by - ay;
-
-                iterations as f32
-                    - if dx.abs() > dy.abs() {
-                        let m = dy / dx;
-                        let m_squared = m * m;
-                        let p = m * ax - ay;
-
-                        (bx - if bx > ax {
-                            (m * p
-                                + (DEFAULT_RADIUS_SQUARED * m_squared + DEFAULT_RADIUS_SQUARED
-                                    - p * p)
-                                    .sqrt())
-                                / (m_squared + 1f32)
-                        } else {
-                            (m * p
-                                - (DEFAULT_RADIUS_SQUARED * m_squared + DEFAULT_RADIUS_SQUARED
-                                    - p * p)
-                                    .sqrt())
-                                / (m_squared + 1f32)
-                        }) / dx
-                    } else {
-                        let m = dx / dy;
-                        let m_squared = m * m;
-                        let p = m * ay - ax;
-
-                        (by - if by > ay {
-                            (m * p
-                                + (DEFAULT_RADIUS_SQUARED * m_squared + DEFAULT_RADIUS_SQUARED
-                                    - p * p)
-                                    .sqrt())
-                                / (m_squared + 1f32)
-                        } else {
-                            (m * p
-                                - (DEFAULT_RADIUS_SQUARED * m_squared + DEFAULT_RADIUS_SQUARED
-                                    - p * p)
-                                    .sqrt())
-                                / (m_squared + 1f32)
-                        }) / dy
-                    }
-            },
         }
     }
 }
@@ -132,6 +49,7 @@ impl FromStr for Smoothing {
     }
 }
 
+/// Returned if an error occurred while parsing a smoothing operation from a string.
 #[derive(Debug, Clone)]
 pub enum ParseSmoothingError {
     NotSmoothing,
