@@ -8,7 +8,7 @@ use crate::generator::{
 };
 use std::{
     sync::{
-        mpsc::{channel, Sender},
+        mpsc::{channel, Sender, SyncSender},
         Arc,
         Mutex,
         RwLock,
@@ -66,8 +66,11 @@ where
         })
     }
 
-    fn generate<Views>(&self, views: Arc<Mutex<Views>>, result: Sender<FractalGenerationMessage>)
-    where
+    fn generate<Views>(
+        &self,
+        views: Arc<Mutex<Views>>,
+        result: SyncSender<FractalGenerationMessage>,
+    ) where
         Views: Iterator<Item = View>,
     {
         loop {
@@ -128,7 +131,7 @@ where
     fn start_generation<Views>(
         self: &Arc<Self>,
         views: Arc<Mutex<Views>>,
-        result: Sender<FractalGenerationMessage>,
+        result: SyncSender<FractalGenerationMessage>,
     ) -> Result<(), FractalGenerationStartError>
     where
         Views: Iterator<Item = View> + Send + 'static,

@@ -1,6 +1,6 @@
 use crate::generator::{args::Smoothing, view::View};
 use num_complex::Complex;
-use std::sync::{mpsc::Sender, Arc, Mutex};
+use std::sync::{mpsc::SyncSender, Arc, Mutex};
 
 pub mod args;
 pub mod color;
@@ -37,7 +37,7 @@ pub trait FractalGenerator {
     fn start_generation<Views>(
         self: &Arc<Self>,
         views: Arc<Mutex<Views>>,
-        result: Sender<FractalGenerationMessage>,
+        result: SyncSender<FractalGenerationMessage>,
     ) -> Result<(), FractalGenerationStartError>
     where
         Views: Iterator<Item = View> + Send + 'static;

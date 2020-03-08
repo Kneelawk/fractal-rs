@@ -11,7 +11,7 @@ use std::{
     fs::File,
     io::{BufWriter, Write},
     path::Path,
-    sync::{mpsc::channel, Arc, Mutex},
+    sync::{mpsc::sync_channel, Arc, Mutex},
 };
 
 mod generator;
@@ -49,20 +49,22 @@ fn main() {
 
     println!("Starting generation...");
 
-    let (tx, rx) = channel();
+    let (tx, rx) = sync_channel(32);
 
     let view_iter = Arc::new(Mutex::new(chunks.into_iter()));
 
-    generator
-        .start_generation(view_iter.clone(), tx)
-        .unwrap();
+    generator.start_generation(view_iter.clone(), tx).unwrap();
 
     let mut index = 0;
     for message in rx {
         index += 1;
         println!("Received chunk {}/{}. Writing...", index, chunk_count);
         println!("Generator at: {}%", generator.get_progress() * 100f32);
-        println!("Generator on chunk {}/{}.", chunk_count - view_iter.lock().unwrap().len(), chunk_count);
+        println!(
+            "Generator on chunk {}/{}.",
+            chunk_count - view_iter.lock().unwrap().len(),
+            chunk_count
+        );
 
         let image_len = message.image.len();
         let mut offset = 0;
