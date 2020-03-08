@@ -25,6 +25,7 @@ pub struct FractalGenerationMessage {
 }
 
 /// Error returned if there is a problem starting a fractal generator.
+#[derive(Debug, Copy, Clone)]
 pub enum FractalGenerationStartError {
     AlreadyRunning,
 }

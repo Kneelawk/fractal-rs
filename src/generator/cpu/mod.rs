@@ -88,7 +88,7 @@ where
                         let count = view.image_width as usize * view.image_height as usize
                             / num_threads
                             + if index < left_over { 1 } else { 0 };
-                        thread.start_generation(view, count, index, num_threads, tx.clone());
+                        thread.start_generation(view, count, index, num_threads, tx.clone()).unwrap();
                     }
 
                     rx
@@ -233,6 +233,7 @@ where
     }
 }
 
+#[derive(Debug, Copy, Clone)]
 enum FractalThreadStartError {
     AlreadyRunning,
 }
