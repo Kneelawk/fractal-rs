@@ -1,10 +1,10 @@
 use crate::generator::{
+    color::RGBAColor,
     cpu::opts::CpuFractalOpts,
     view::View,
     FractalGenerationMessage,
     FractalGenerationStartError,
     FractalGenerator,
-    RGBAColor,
 };
 use std::{
     sync::{

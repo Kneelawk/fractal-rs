@@ -1,4 +1,4 @@
-use crate::generator::{args::Smoothing, view::View, FractalOpts, RGBAColor};
+use crate::generator::{args::Smoothing, color::RGBAColor, view::View, FractalOpts};
 use num_complex::Complex;
 
 const DEFAULT_RADIUS: f32 = 4f32;
