@@ -5,7 +5,8 @@ lazy_static::lazy_static! {
 static ref SMOOTHING_REGEX: Regex = RegexBuilder::new(r"^logarithmic(distance)? *\( *(?P<radius>\d+(\.\d+)?|\.\d+) *, *(?P<max_power>\d+(\.\d+)?|\.\d+) *\)$").case_insensitive(true).build().unwrap();
 }
 
-/// Represents an operation for smoothing an integer iteration count into a floating point value.
+/// Represents an operation for smoothing an integer iteration count into a
+/// floating point value.
 #[derive(Debug, Copy, Clone)]
 pub enum Smoothing {
     None,
@@ -18,7 +19,8 @@ pub enum Smoothing {
 }
 
 impl Smoothing {
-    /// Creates a logarithmic distance smoothing from the given radius and max power.
+    /// Creates a logarithmic distance smoothing from the given radius and max
+    /// power.
     pub fn from_logarithmic_distance(radius: f32, max_power: f32) -> Smoothing {
         let divisor = max_power.ln();
         Smoothing::LogarithmicDistance {
@@ -49,7 +51,8 @@ impl FromStr for Smoothing {
     }
 }
 
-/// Returned if an error occurred while parsing a smoothing operation from a string.
+/// Returned if an error occurred while parsing a smoothing operation from a
+/// string.
 #[derive(Debug, Clone)]
 pub enum ParseSmoothingError {
     NotSmoothing,
