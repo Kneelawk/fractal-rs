@@ -1,12 +1,23 @@
-use crate::generator::{args::Smoothing, view::View, FractalOpts};
+use crate::generator::{
+    args::Smoothing,
+    cpu::CpuFractalGenerator,
+    view::View,
+    FractalGenerator,
+    FractalOpts,
+};
 use num_complex::Complex32;
-use std::{fs::File, io::BufWriter, path::Path};
-use png::{ColorType, BitDepth};
+use png::{BitDepth, ColorType};
+use std::{
+    fs::File,
+    io::{BufWriter, Write},
+    path::Path,
+    sync::{mpsc::channel, Arc, Mutex},
+};
 
 mod generator;
 
-const IMAGE_WIDTH: u32 = 1100;
-const IMAGE_HEIGHT: u32 = 850;
+const IMAGE_WIDTH: u32 = 11000;
+const IMAGE_HEIGHT: u32 = 8500;
 const PLANE_WIDTH: f32 = 3f32;
 const CENTER_X: f32 = -0.75f32;
 const CENTER_Y: f32 = 0f32;
@@ -15,7 +26,7 @@ const ITERATIONS: u32 = 100;
 const C: Complex32 = Complex32 { re: 0f32, im: 0f32 };
 const THREADS: usize = 10;
 const OUT_FILE: &'static str = "fractal.png";
-const CHUNK_SIZE: usize = 1048576;
+const CHUNK_SIZE: u32 = 1048576;
 
 fn main() {
     println!("Generating fractal...");
@@ -24,12 +35,41 @@ fn main() {
     let smoothing = Smoothing::from_logarithmic_distance(4f32, 2f32);
     let opts = FractalOpts::new(MANDELBROT, ITERATIONS, smoothing, C);
 
-    let mut buf = BufWriter::new(File::create(Path::new(OUT_FILE)).unwrap());
+    let generator = CpuFractalGenerator::new(opts, THREADS);
+
+    let buf = BufWriter::new(File::create(Path::new(OUT_FILE)).unwrap());
     let mut encoder = png::Encoder::new(buf, IMAGE_WIDTH, IMAGE_HEIGHT);
     encoder.set_color(ColorType::RGBA);
     encoder.set_depth(BitDepth::Eight);
     let mut writer = encoder.write_header().unwrap();
-    let mut stream = writer.stream_writer_with_size(CHUNK_SIZE);
+    let mut stream = writer.stream_writer_with_size(CHUNK_SIZE as usize);
 
     let chunks = view.subdivide_to_pixel_count(CHUNK_SIZE);
+    let chunk_count = chunks.len();
+
+    println!("Starting generation...");
+
+    let (tx, rx) = channel();
+
+    generator
+        .start_generation(Arc::new(Mutex::new(chunks.into_iter())), tx)
+        .unwrap();
+
+    let mut index = 0;
+    for message in rx {
+        index += 1;
+        println!("Received chunk {}/{}. Writing...", index, chunk_count);
+
+        let image_len = message.image.len();
+        let mut offset = 0;
+        while offset < image_len {
+            offset += stream.write(&message.image[offset..]).unwrap();
+            stream.flush().unwrap();
+        }
+        println!("Writing complete.");
+    }
+
+    stream.flush().unwrap();
+
+    println!("Done.");
 }

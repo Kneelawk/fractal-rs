@@ -20,8 +20,8 @@ pub struct FractalOpts {
 
 /// Represents a message from a fractal generator.
 pub struct FractalGenerationMessage {
-    view: View,
-    image: Box<[u8]>,
+    pub view: View,
+    pub image: Box<[u8]>,
 }
 
 /// Error returned if there is a problem starting a fractal generator.
