@@ -30,7 +30,7 @@ where
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
 enum CpuFractalGeneratorState {
-    Running { view_count: usize },
+    Running,
     NotRunning,
 }
 
@@ -68,7 +68,7 @@ where
 
     fn generate<Views>(&self, views: Arc<Mutex<Views>>, result: Sender<FractalGenerationMessage>)
     where
-        Views: ExactSizeIterator<Item = View>,
+        Views: Iterator<Item = View>,
     {
         loop {
             let maybe_view: Option<View> = views.lock().unwrap().next();
@@ -131,13 +131,11 @@ where
         result: Sender<FractalGenerationMessage>,
     ) -> Result<(), FractalGenerationStartError>
     where
-        Views: ExactSizeIterator<Item = View> + Send + 'static,
+        Views: Iterator<Item = View> + Send + 'static,
     {
         let mut state = self.state.write().unwrap();
         if *state == CpuFractalGeneratorState::NotRunning {
-            *state = CpuFractalGeneratorState::Running {
-                view_count: views.lock().unwrap().len(),
-            };
+            *state = CpuFractalGeneratorState::Running;
 
             let clone = self.clone();
 
@@ -153,7 +151,7 @@ where
 
     fn get_progress(&self) -> f32 {
         let state = self.state.read().unwrap();
-        if let CpuFractalGeneratorState::Running { view_count } = *state {
+        if *state == CpuFractalGeneratorState::Running {
             let mut progress = 0f32;
             for thread in self.threads.iter() {
                 progress += thread.get_progress();

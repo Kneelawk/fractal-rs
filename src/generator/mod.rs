@@ -40,7 +40,7 @@ pub trait FractalGenerator {
         result: Sender<FractalGenerationMessage>,
     ) -> Result<(), FractalGenerationStartError>
     where
-        Views: ExactSizeIterator<Item = View> + Send + 'static;
+        Views: Iterator<Item = View> + Send + 'static;
 
     /// Gets the current progress of the fractal generator through all the views
     /// assuming each view is the same size.
