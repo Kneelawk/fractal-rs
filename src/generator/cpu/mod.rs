@@ -159,7 +159,7 @@ where
                 progress += thread.get_progress();
             }
 
-            progress / self.threads.len() as f32 / view_count as f32
+            progress / self.threads.len() as f32
         } else {
             0f32
         }
