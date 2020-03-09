@@ -5,9 +5,14 @@ use crate::generator::{
     FractalGenerator,
     FractalOpts,
 };
+use mtpng::{
+    encoder::{Encoder, Options},
+    ColorType,
+    Header,
+};
 use num_complex::Complex32;
-use png::{BitDepth, ColorType};
 use std::{
+    cmp::max,
     fs::File,
     io::{BufWriter, Write},
     path::Path,
@@ -38,13 +43,16 @@ fn main() {
     let generator = CpuFractalGenerator::new(opts, THREADS);
 
     let buf = BufWriter::new(File::create(Path::new(OUT_FILE)).unwrap());
-    let mut encoder = png::Encoder::new(buf, IMAGE_WIDTH as u32, IMAGE_HEIGHT as u32);
-    encoder.set_color(ColorType::RGBA);
-    encoder.set_depth(BitDepth::Eight);
-    let mut writer = encoder.write_header().unwrap();
-    let mut stream = writer.stream_writer_with_size(CHUNK_SIZE);
+    let mut header = Header::new();
+    header
+        .set_size(IMAGE_WIDTH as u32, IMAGE_HEIGHT as u32)
+        .unwrap();
+    header.set_color(ColorType::TruecolorAlpha, 8).unwrap();
+    let options = Options::new();
+    let mut encoder = Encoder::new(buf, &options);
+    encoder.write_header(&header).unwrap();
 
-    let chunks = view.subdivide_to_pixel_count(CHUNK_SIZE);
+    let chunks = view.subdivide_to_pixel_count(max(CHUNK_SIZE, IMAGE_WIDTH));
     let chunk_count = chunks.len();
 
     println!("Starting generation...");
@@ -55,6 +63,7 @@ fn main() {
 
     generator.start_generation(view_iter.clone(), tx).unwrap();
 
+    let mut height = 0;
     let mut index = 0;
     for message in rx {
         index += 1;
@@ -66,16 +75,19 @@ fn main() {
             chunk_count
         );
 
-        let image_len = message.image.len();
-        let mut offset = 0;
-        while offset < image_len {
-            offset += stream.write(&message.image[offset..]).unwrap();
-            stream.flush().unwrap();
-        }
+        height += message.image.len() / IMAGE_WIDTH / 4;
+        println!("Current height: {}/{}", height, IMAGE_HEIGHT);
+
+        encoder.write_image_rows(&message.image).unwrap();
+        encoder.flush().unwrap();
         println!("Writing complete.");
     }
 
-    stream.flush().unwrap();
+    println!("Flushing...");
+    encoder.flush().unwrap();
+
+    println!("Finishing...");
+    encoder.finish().unwrap();
 
     println!("Done.");
 }
