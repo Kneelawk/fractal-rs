@@ -216,8 +216,8 @@ where
         for i in 0usize..count {
             let index = i * skip + offset;
 
-            let x = (index % view.image_width as usize) as u32;
-            let y = (index / view.image_width as usize) as u32;
+            let x = index % view.image_width;
+            let y = index / view.image_width;
 
             let color = self.opts.gen_pixel(view, x, y);
 

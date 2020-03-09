@@ -16,8 +16,8 @@ use std::{
 
 mod generator;
 
-const IMAGE_WIDTH: u32 = 11000;
-const IMAGE_HEIGHT: u32 = 8500;
+const IMAGE_WIDTH: usize = 11000;
+const IMAGE_HEIGHT: usize = 8500;
 const PLANE_WIDTH: f32 = 3f32;
 const CENTER_X: f32 = -0.75f32;
 const CENTER_Y: f32 = 0f32;
@@ -26,7 +26,7 @@ const ITERATIONS: u32 = 100;
 const C: Complex32 = Complex32 { re: 0f32, im: 0f32 };
 const THREADS: usize = 10;
 const OUT_FILE: &'static str = "fractal.png";
-const CHUNK_SIZE: u32 = 1048576;
+const CHUNK_SIZE: usize = 1048576;
 
 fn main() {
     println!("Generating fractal...");
@@ -38,11 +38,11 @@ fn main() {
     let generator = CpuFractalGenerator::new(opts, THREADS);
 
     let buf = BufWriter::new(File::create(Path::new(OUT_FILE)).unwrap());
-    let mut encoder = png::Encoder::new(buf, IMAGE_WIDTH, IMAGE_HEIGHT);
+    let mut encoder = png::Encoder::new(buf, IMAGE_WIDTH as u32, IMAGE_HEIGHT as u32);
     encoder.set_color(ColorType::RGBA);
     encoder.set_depth(BitDepth::Eight);
     let mut writer = encoder.write_header().unwrap();
-    let mut stream = writer.stream_writer_with_size(CHUNK_SIZE as usize);
+    let mut stream = writer.stream_writer_with_size(CHUNK_SIZE);
 
     let chunks = view.subdivide_to_pixel_count(CHUNK_SIZE);
     let chunk_count = chunks.len();
