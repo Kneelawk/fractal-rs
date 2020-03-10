@@ -4,6 +4,7 @@ use std::sync::{mpsc::SyncSender, Arc, Mutex};
 
 pub mod args;
 pub mod color;
+pub mod composite;
 pub mod cpu;
 pub mod view;
 
