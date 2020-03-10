@@ -25,13 +25,7 @@ where
     Opts: CpuFractalOpts + Send + Sync + Clone + 'static,
 {
     threads: Vec<Arc<FractalThread<Opts>>>,
-    state: RwLock<CpuFractalGeneratorState>,
-}
-
-#[derive(Debug, Copy, Clone, Eq, PartialEq)]
-enum CpuFractalGeneratorState {
-    Running,
-    NotRunning,
+    running: RwLock<bool>,
 }
 
 struct FractalThreadMessage {
@@ -62,7 +56,7 @@ where
 
         Arc::new(CpuFractalGenerator {
             threads,
-            state: RwLock::new(CpuFractalGeneratorState::NotRunning),
+            running: RwLock::new(false),
         })
     }
 
@@ -120,7 +114,7 @@ where
             }
         }
 
-        *self.state.write().unwrap() = CpuFractalGeneratorState::NotRunning;
+        *self.running.write().unwrap() = false;
     }
 }
 
@@ -128,6 +122,10 @@ impl<Opts> FractalGenerator for CpuFractalGenerator<Opts>
 where
     Opts: CpuFractalOpts + Send + Sync + Clone + 'static,
 {
+    fn min_views_hint(&self) -> usize {
+        self.threads.len()
+    }
+
     fn start_generation<Views>(
         self: &Arc<Self>,
         views: Arc<Mutex<Views>>,
@@ -136,9 +134,9 @@ where
     where
         Views: Iterator<Item = View> + Send + 'static,
     {
-        let mut state = self.state.write().unwrap();
-        if *state == CpuFractalGeneratorState::NotRunning {
-            *state = CpuFractalGeneratorState::Running;
+        let mut running = self.running.write().unwrap();
+        if !*running {
+            *running = true;
 
             let clone = self.clone();
 
@@ -153,17 +151,16 @@ where
     }
 
     fn get_progress(&self) -> f32 {
-        let state = self.state.read().unwrap();
-        if *state == CpuFractalGeneratorState::Running {
-            let mut progress = 0f32;
-            for thread in self.threads.iter() {
-                progress += thread.get_progress();
-            }
-
-            progress / self.threads.len() as f32
-        } else {
-            0f32
+        let mut progress = 0f32;
+        for thread in self.threads.iter() {
+            progress += thread.get_progress();
         }
+
+        progress / self.threads.len() as f32
+    }
+
+    fn running(&self) -> bool {
+        *self.running.read().unwrap()
     }
 }
 

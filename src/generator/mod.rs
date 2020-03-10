@@ -32,6 +32,11 @@ pub enum FractalGenerationStartError {
 
 /// Structs implementing this trait can be used to generate fractals.
 pub trait FractalGenerator {
+    /// Gets the recommended minimum number of views that should be submitted to
+    /// this generator together as a single batch in order to operate
+    /// efficiently.
+    fn min_views_hint(&self) -> usize;
+
     /// Starts the generation of a fractal. Results are sent in the same order
     /// that views are presented in the `views` iterator.
     fn start_generation<Views>(
@@ -45,6 +50,9 @@ pub trait FractalGenerator {
     /// Gets the current progress of the fractal generator through all the views
     /// assuming each view is the same size.
     fn get_progress(&self) -> f32;
+
+    /// Checks to see if this generator is currently running.
+    fn running(&self) -> bool;
 }
 
 impl FractalOpts {
