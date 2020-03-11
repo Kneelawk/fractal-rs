@@ -4,13 +4,21 @@ use crate::generator::{
     FractalGenerationStartError,
     FractalGenerator,
 };
-use std::sync::mpsc::SyncSender;
+use std::{
+    collections::{BTreeMap, VecDeque},
+    sync::{mpsc::SyncSender, Arc},
+};
 
 /// Fractal generator implementation that simply delegates generation from views
 /// to multiple sub fractal generators.
 pub struct CompositeFractalGenerator {
     generators: Vec<Box<dyn FractalGenerator>>,
+    running_views: VecDeque<View>,
+    out_of_order: BTreeMap<View, FractalGenerationMessage>,
+    monitor_thread: Arc<MonitorThread>,
 }
+
+struct MonitorThread {}
 
 impl FractalGenerator for CompositeFractalGenerator {
     fn min_views_hint(&self) -> usize {
