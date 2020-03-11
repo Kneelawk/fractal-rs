@@ -25,7 +25,14 @@ where
     Opts: CpuFractalOpts + Send + Sync + Clone + 'static,
 {
     threads: Vec<Arc<FractalThread<Opts>>>,
-    running: RwLock<bool>,
+    current_chunk: Arc<RwLock<usize>>,
+    state: Arc<RwLock<CpuFractalGeneratorState>>,
+}
+
+#[derive(Debug, Copy, Clone)]
+enum CpuFractalGeneratorState {
+    Running { chunk_count: usize },
+    NotRunning,
 }
 
 struct FractalThreadMessage {
@@ -48,73 +55,66 @@ where
 {
     /// Constructs a new fractal generator running on the CPU, utilising
     /// `num_threads` threads.
-    pub fn new(opts: Opts, num_threads: usize) -> Arc<CpuFractalGenerator<Opts>> {
+    pub fn new(opts: Opts, num_threads: usize) -> CpuFractalGenerator<Opts> {
         let mut threads = vec![];
         for _i in 0..num_threads {
             threads.push(FractalThread::new(opts.clone()));
         }
 
-        Arc::new(CpuFractalGenerator {
+        CpuFractalGenerator {
             threads,
-            running: RwLock::new(false),
-        })
+            current_chunk: Arc::new(RwLock::new(0)),
+            state: Arc::new(RwLock::new(CpuFractalGeneratorState::NotRunning)),
+        }
     }
 
-    fn generate<Views>(
-        &self,
-        views: Arc<Mutex<Views>>,
+    fn generate(
+        threads: Vec<Arc<FractalThread<Opts>>>,
+        current_chunk: Arc<RwLock<usize>>,
+        state: Arc<RwLock<CpuFractalGeneratorState>>,
+        views: Vec<View>,
         result: SyncSender<FractalGenerationMessage>,
-    ) where
-        Views: Iterator<Item = View>,
-    {
-        loop {
-            let maybe_view: Option<View> = views.lock().unwrap().next();
+    ) {
+        for (index, view) in views.into_iter().enumerate() {
+            *current_chunk.write().unwrap() = index;
 
-            if let Some(view) = maybe_view {
-                // start all the fractal threads
-                let rx = {
-                    let num_threads = self.threads.len();
-                    let (tx, rx) = channel();
+            // start all the fractal threads
+            let rx = {
+                let num_threads = threads.len();
+                let (tx, rx) = channel();
 
-                    // how many of the threads should have an extra pixel
-                    let left_over =
-                        view.image_width as usize * view.image_height as usize % num_threads;
+                // how many of the threads should have an extra pixel
+                let left_over =
+                    view.image_width as usize * view.image_height as usize % num_threads;
 
-                    for (index, thread) in self.threads.iter().enumerate() {
-                        // the number of pixels to generate
-                        let count = view.image_width as usize * view.image_height as usize
-                            / num_threads
-                            + if index < left_over { 1 } else { 0 };
-                        thread
-                            .start_generation(view, count, index, num_threads, tx.clone())
-                            .unwrap();
-                    }
-
-                    rx
-                };
-
-                let mut image =
-                    vec![0u8; view.image_width as usize * view.image_height as usize * 4]
-                        .into_boxed_slice();
-
-                // receive all the pixels from each of the threads
-                for message in rx {
-                    image[(message.index * 4)..(message.index * 4 + 4)].copy_from_slice(&Into::<
-                        [u8; 4],
-                    >::into(
-                        message.color,
-                    ));
+                for (index, thread) in threads.iter().enumerate() {
+                    // the number of pixels to generate
+                    let count = view.image_width as usize * view.image_height as usize
+                        / num_threads
+                        + if index < left_over { 1 } else { 0 };
+                    thread
+                        .start_generation(view, count, index, num_threads, tx.clone())
+                        .unwrap();
                 }
 
-                result
-                    .send(FractalGenerationMessage { view, image })
-                    .unwrap()
-            } else {
-                break;
+                rx
+            };
+
+            let mut image = vec![0u8; view.image_width as usize * view.image_height as usize * 4]
+                .into_boxed_slice();
+
+            // receive all the pixels from each of the threads
+            for message in rx {
+                image[(message.index * 4)..(message.index * 4 + 4)]
+                    .copy_from_slice(&Into::<[u8; 4]>::into(message.color));
             }
+
+            result
+                .send(FractalGenerationMessage { view, image })
+                .unwrap()
         }
 
-        *self.running.write().unwrap() = false;
+        *state.write().unwrap() = CpuFractalGeneratorState::NotRunning;
     }
 }
 
@@ -126,22 +126,23 @@ where
         self.threads.len()
     }
 
-    fn start_generation<Views>(
-        self: &Arc<Self>,
-        views: Arc<Mutex<Views>>,
+    fn start_generation(
+        &self,
+        views: Vec<View>,
         result: SyncSender<FractalGenerationMessage>,
-    ) -> Result<(), FractalGenerationStartError>
-    where
-        Views: Iterator<Item = View> + Send + 'static,
-    {
-        let mut running = self.running.write().unwrap();
-        if !*running {
-            *running = true;
+    ) -> Result<(), FractalGenerationStartError> {
+        let mut state = self.state.write().unwrap();
+        if !state.running() {
+            *state = CpuFractalGeneratorState::Running {
+                chunk_count: views.len(),
+            };
 
-            let clone = self.clone();
+            let threads = self.threads.clone();
+            let current_chunk = self.current_chunk.clone();
+            let state_lock = self.state.clone();
 
             thread::spawn(move || {
-                clone.generate(views, result);
+                CpuFractalGenerator::generate(threads, current_chunk, state_lock, views, result);
             });
 
             Ok(())
@@ -151,16 +152,31 @@ where
     }
 
     fn get_progress(&self) -> f32 {
-        let mut progress = 0f32;
-        for thread in self.threads.iter() {
-            progress += thread.get_progress();
-        }
+        let state = self.state.read().unwrap();
+        if let CpuFractalGeneratorState::Running { chunk_count } = *state {
+            let mut progress = 0f32;
+            for thread in self.threads.iter() {
+                progress += thread.get_progress();
+            }
 
-        progress / self.threads.len() as f32
+            (progress / self.threads.len() as f32 + *self.current_chunk.read().unwrap() as f32)
+                / chunk_count as f32
+        } else {
+            0f32
+        }
     }
 
     fn running(&self) -> bool {
-        *self.running.read().unwrap()
+        self.state.read().unwrap().running()
+    }
+}
+
+impl CpuFractalGeneratorState {
+    fn running(&self) -> bool {
+        match self {
+            CpuFractalGeneratorState::Running { .. } => true,
+            CpuFractalGeneratorState::NotRunning => false,
+        }
     }
 }
 

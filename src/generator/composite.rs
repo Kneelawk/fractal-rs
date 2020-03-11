@@ -4,7 +4,7 @@ use crate::generator::{
     FractalGenerationStartError,
     FractalGenerator,
 };
-use std::sync::{mpsc::SyncSender, Arc, Mutex};
+use std::sync::mpsc::SyncSender;
 
 /// Fractal generator implementation that simply delegates generation from views
 /// to multiple sub fractal generators.
@@ -17,14 +17,11 @@ impl FractalGenerator for CompositeFractalGenerator {
         self.generators.iter().map(|g| g.min_views_hint()).sum()
     }
 
-    fn start_generation<Views>(
-        self: &Arc<Self>,
-        views: Arc<Mutex<Views>>,
+    fn start_generation(
+        &self,
+        views: Vec<View>,
         result: SyncSender<FractalGenerationMessage>,
-    ) -> Result<(), FractalGenerationStartError>
-    where
-        Views: Iterator<Item = View> + Send + 'static,
-    {
+    ) -> Result<(), FractalGenerationStartError> {
         unimplemented!()
     }
 

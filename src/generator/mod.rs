@@ -1,6 +1,6 @@
 use crate::generator::{args::Smoothing, view::View};
 use num_complex::Complex;
-use std::sync::{mpsc::SyncSender, Arc, Mutex};
+use std::sync::mpsc::SyncSender;
 
 pub mod args;
 pub mod color;
@@ -40,13 +40,11 @@ pub trait FractalGenerator {
 
     /// Starts the generation of a fractal. Results are sent in the same order
     /// that views are presented in the `views` iterator.
-    fn start_generation<Views>(
-        self: &Arc<Self>,
-        views: Arc<Mutex<Views>>,
+    fn start_generation(
+        &self,
+        views: Vec<View>,
         result: SyncSender<FractalGenerationMessage>,
-    ) -> Result<(), FractalGenerationStartError>
-    where
-        Views: Iterator<Item = View> + Send + 'static;
+    ) -> Result<(), FractalGenerationStartError>;
 
     /// Gets the current progress of the fractal generator through all the views
     /// assuming each view is the same size.
