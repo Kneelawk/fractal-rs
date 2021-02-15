@@ -77,6 +77,7 @@ where
     ) {
         for (index, view) in views.into_iter().enumerate() {
             *current_chunk.write().unwrap() = index;
+            println!("Starting view: {:?}", view);
 
             // start all the fractal threads
             let rx = {

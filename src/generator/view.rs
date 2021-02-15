@@ -61,65 +61,13 @@ impl View {
 
     /// Divides this view into a set of consecutive sub-views each of which
     /// containing no more pixels than `pixel_count`.
-    pub fn subdivide_to_pixel_count(&self, pixel_count: usize) -> Vec<View> {
-        if pixel_count >= self.image_width * self.image_height {
-            vec![*self]
-        } else if pixel_count >= self.image_width {
-            let chunk_height = pixel_count / self.image_width;
-
-            self.subdivide_height((self.image_height + chunk_height - 1) / chunk_height)
-        } else {
-            let mut views = vec![];
-            let width_pieces = (self.image_width + pixel_count - 1) / pixel_count;
-            let remainder = self.image_height % width_pieces;
-
-            for image_y in 0..self.image_height {
-                let mut image_x = 0;
-
-                for i in 0..width_pieces {
-                    let image_width =
-                        self.image_width / width_pieces + if i < remainder { 1 } else { 0 };
-
-                    views.push(View {
-                        image_width,
-                        image_height: 1,
-                        image_scale_x: self.image_scale_x,
-                        image_scale_y: self.image_scale_y,
-                        plane_start_x: self.plane_start_x + image_x as f32 * self.image_scale_x,
-                        plane_start_y: self.plane_start_y + image_y as f32 * self.image_scale_y,
-                    });
-
-                    image_x += image_width;
-                }
-            }
-
-            views
-        }
+    pub fn subdivide_to_pixel_count(&self, pixel_count: usize) -> SubViewIter {
+        SubViewIter::new_per_pixel(*self, pixel_count)
     }
 
     /// Divides this view into a set of `pieces` consecutive sub-views.
-    pub fn subdivide_height(&self, pieces: usize) -> Vec<View> {
-        let mut views = vec![];
-
-        let remainder = self.image_height % pieces;
-        let mut image_y = 0;
-
-        for i in 0..pieces {
-            let image_height = self.image_height / pieces + if i < remainder { 1 } else { 0 };
-
-            views.push(View {
-                image_width: self.image_width,
-                image_height,
-                image_scale_x: self.image_scale_x,
-                image_scale_y: self.image_scale_y,
-                plane_start_x: self.plane_start_x,
-                plane_start_y: self.plane_start_y + image_y as f32 * self.image_scale_y,
-            });
-
-            image_y += image_height;
-        }
-
-        views
+    pub fn subdivide_height(&self, pieces: usize) -> SubViewIter {
+        SubViewIter::new_split_height(*self, pieces)
     }
 
     /// Gets the coordinates on the complex plane for a given pixel coordinate.
@@ -161,3 +109,149 @@ impl View {
         )
     }
 }
+
+#[derive(Debug, Copy, Clone)]
+pub enum SubViewIter {
+    SplitHeight {
+        view: View,
+        pieces: usize,
+        remainder: usize,
+
+        // index stuff
+        index: usize,
+        image_y: usize,
+    },
+    SplitRow {
+        view: View,
+        width_pieces: usize,
+        remainder: usize,
+
+        // index stuff
+        image_y: usize,
+        image_x: usize,
+        index: usize,
+    },
+    Single(Option<View>),
+}
+
+impl SubViewIter {
+    fn new_split_height(view: View, pieces: usize) -> SubViewIter {
+        SubViewIter::SplitHeight {
+            view,
+            pieces,
+            remainder: view.image_height % pieces,
+            index: 0,
+            image_y: 0,
+        }
+    }
+
+    fn new_per_pixel(view: View, pixel_count: usize) -> SubViewIter {
+        if view.image_width * view.image_height < pixel_count {
+            SubViewIter::Single(Some(view))
+        } else if view.image_width <= pixel_count {
+            let chunk_height = pixel_count / view.image_width;
+            SubViewIter::new_split_height(
+                view,
+                (view.image_height + chunk_height - 1) / chunk_height,
+            )
+        } else {
+            let width_pieces = (view.image_width + pixel_count - 1) / pixel_count;
+            SubViewIter::SplitRow {
+                view,
+                width_pieces,
+                remainder: view.image_height % width_pieces,
+                image_y: 0,
+                image_x: 0,
+                index: 0,
+            }
+        }
+    }
+}
+
+impl Iterator for SubViewIter {
+    type Item = View;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        match self {
+            SubViewIter::SplitHeight {
+                view,
+                pieces,
+                remainder,
+                index,
+                image_y,
+            } => {
+                if index >= pieces {
+                    None
+                } else {
+                    let image_height =
+                        view.image_height / *pieces + if index < remainder { 1 } else { 0 };
+
+                    let res = Some(View {
+                        image_width: view.image_width,
+                        image_height,
+                        image_scale_x: view.image_scale_x,
+                        image_scale_y: view.image_scale_y,
+                        plane_start_x: view.plane_start_x,
+                        plane_start_y: view.plane_start_y + *image_y as f32 * view.image_scale_y,
+                    });
+
+                    *image_y += image_height;
+                    *index += 1;
+
+                    res
+                }
+            },
+            SubViewIter::SplitRow {
+                view,
+                width_pieces,
+                remainder,
+                image_y,
+                image_x,
+                index,
+            } => {
+                if index >= width_pieces {
+                    *index = 0;
+                    *image_x = 0;
+                    *image_y += 1;
+                }
+
+                if *image_y >= view.image_height {
+                    None
+                } else {
+                    let image_width =
+                        view.image_width / *width_pieces + if index < remainder { 1 } else { 0 };
+
+                    let res = Some(View {
+                        image_width,
+                        image_height: 1,
+                        image_scale_x: view.image_scale_x,
+                        image_scale_y: view.image_scale_y,
+                        plane_start_x: view.plane_start_x + *image_x as f32 * view.image_scale_x,
+                        plane_start_y: view.plane_start_y + *image_y as f32 * view.image_scale_y,
+                    });
+
+                    *image_x += image_width;
+                    *index += 1;
+
+                    res
+                }
+            },
+            SubViewIter::Single(single) => single.take(),
+        }
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        match self {
+            SubViewIter::SplitHeight { pieces, .. } => (*pieces, Some(*pieces)),
+            SubViewIter::SplitRow {
+                view, width_pieces, ..
+            } => {
+                let pieces = *width_pieces * view.image_height;
+                (pieces, Some(pieces))
+            },
+            SubViewIter::Single(_) => (1, Some(1)),
+        }
+    }
+}
+
+impl ExactSizeIterator for SubViewIter {}

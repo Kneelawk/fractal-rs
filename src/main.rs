@@ -16,17 +16,20 @@ use std::{
 
 mod generator;
 
-const IMAGE_WIDTH: usize = 11000;
-const IMAGE_HEIGHT: usize = 8500;
+const IMAGE_WIDTH: usize = 22000;
+const IMAGE_HEIGHT: usize = 17000;
 const PLANE_WIDTH: f32 = 3f32;
-const CENTER_X: f32 = -0.75f32;
+const CENTER_X: f32 = 0f32;
 const CENTER_Y: f32 = 0f32;
-const MANDELBROT: bool = true;
+const MANDELBROT: bool = false;
 const ITERATIONS: u32 = 100;
-const C: Complex32 = Complex32 { re: 0f32, im: 0f32 };
+const C: Complex32 = Complex32 {
+    re: -0.059182f32,
+    im: 0.669273f32,
+};
 const THREADS: usize = 10;
-const OUT_FILE: &'static str = "fractal.png";
-const CHUNK_SIZE: usize = 1048576;
+const OUT_FILE: &'static str = "fractal2-2200x1700.png";
+const CHUNK_SIZE: usize = 8192;
 
 fn main() {
     println!("Generating fractal...");
@@ -48,10 +51,11 @@ fn main() {
     let chunk_count = chunks.len();
 
     println!("Starting generation...");
+    println!("Chunks: {:?}", chunks);
 
     let (tx, rx) = sync_channel(32);
 
-    generator.start_generation(chunks, tx).unwrap();
+    generator.start_generation(chunks.collect(), tx).unwrap();
 
     let mut index = 0;
     for message in rx {
@@ -60,8 +64,10 @@ fn main() {
         println!("Generator at: {:.1}%", generator.get_progress() * 100f32);
 
         let image_len = message.image.len();
+        println!("Message len: {}", image_len);
         let mut offset = 0;
         while offset < image_len {
+            println!("Written: {}", offset);
             offset += stream.write(&message.image[offset..]).unwrap();
             stream.flush().unwrap();
         }
