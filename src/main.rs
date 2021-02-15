@@ -28,8 +28,8 @@ const C: Complex32 = Complex32 {
     im: 0.669273f32,
 };
 const THREADS: usize = 10;
-const OUT_FILE: &'static str = "fractal2-2200x1700.png";
-const CHUNK_SIZE: usize = 8192;
+const OUT_FILE: &'static str = "fractal2-22000x17000.png";
+const CHUNK_SIZE: usize = 1048576;
 
 fn main() {
     println!("Generating fractal...");
@@ -51,7 +51,6 @@ fn main() {
     let chunk_count = chunks.len();
 
     println!("Starting generation...");
-    println!("Chunks: {:?}", chunks);
 
     let (tx, rx) = sync_channel(32);
 
@@ -64,10 +63,8 @@ fn main() {
         println!("Generator at: {:.1}%", generator.get_progress() * 100f32);
 
         let image_len = message.image.len();
-        println!("Message len: {}", image_len);
         let mut offset = 0;
         while offset < image_len {
-            println!("Written: {}", offset);
             offset += stream.write(&message.image[offset..]).unwrap();
             stream.flush().unwrap();
         }
