@@ -99,6 +99,8 @@ impl Default for ConfigMisc {
 
 pub struct Config {
     pub view: View,
+    pub center_x: f32,
+    pub center_y: f32,
     pub smoothing: Smoothing,
     pub mandelbrot: bool,
     pub iterations: u32,
@@ -141,6 +143,8 @@ impl Config {
 
         Ok(Config {
             view,
+            center_x: cfg_raw.fractal.center_x,
+            center_y: cfg_raw.fractal.center_y,
             smoothing,
             mandelbrot: cfg_raw.fractal.mandelbrot,
             iterations: cfg_raw.fractal.iterations,
