@@ -1,5 +1,5 @@
 use regex::{Regex, RegexBuilder};
-use std::{num::ParseFloatError, str::FromStr};
+use std::{str::FromStr};
 
 lazy_static::lazy_static! {
 static ref SMOOTHING_REGEX: Regex = RegexBuilder::new(r"^logarithmic(distance)? *\( *(?P<radius>\d+(\.\d+)?|\.\d+) *, *(?P<max_power>\d+(\.\d+)?|\.\d+) *\)$").case_insensitive(true).build().unwrap();
