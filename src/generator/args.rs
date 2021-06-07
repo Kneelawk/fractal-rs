@@ -34,33 +34,42 @@ impl Smoothing {
 impl FromStr for Smoothing {
     type Err = ParseSmoothingError;
 
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
+    fn from_str(s: &str) -> ParseSmoothingResult<Self> {
         let s_lowercase = s.to_ascii_lowercase();
         if s_lowercase == "none" {
             Ok(Smoothing::None)
         } else if s_lowercase == "linear" || s_lowercase == "linearintersection" {
             Ok(Smoothing::LinearIntersection)
         } else if let Some(captures) = SMOOTHING_REGEX.captures(&s_lowercase) {
+            let radius_str = &captures["radius"];
+            let max_power_str = &captures["max_power"];
             Ok(Smoothing::from_logarithmic_distance(
-                captures["radius"].parse::<f32>()?,
-                captures["max_power"].parse::<f32>()?,
+                radius_str.parse::<f32>().chain_err(|| {
+                    ParseSmoothingErrorKind::ParseFloatError(radius_str.to_string())
+                })?,
+                max_power_str.parse::<f32>().chain_err(|| {
+                    ParseSmoothingErrorKind::ParseFloatError(max_power_str.to_string())
+                })?,
             ))
         } else {
-            Err(ParseSmoothingError::NotSmoothing)
+            bail!(ParseSmoothingErrorKind::NotSmoothing(s.to_string()))
         }
     }
 }
 
-/// Returned if an error occurred while parsing a smoothing operation from a
-/// string.
-#[derive(Debug, Clone)]
-pub enum ParseSmoothingError {
-    NotSmoothing,
-    ParseFloatError(ParseFloatError),
-}
+error_chain! {
+    types {
+        ParseSmoothingError, ParseSmoothingErrorKind, ParseSmoothingResultExt, ParseSmoothingResult;
+    }
 
-impl From<ParseFloatError> for ParseSmoothingError {
-    fn from(e: ParseFloatError) -> Self {
-        ParseSmoothingError::ParseFloatError(e)
+    errors {
+        NotSmoothing(s: String) {
+            description("Input string does not represent a smoothing value")
+            display("Input string '{}' does not represent a smoothing value", s)
+        }
+        ParseFloatError(s: String) {
+            description("Input string contains an invalid floating point value")
+            display("Input string '{}' contains an invalid floating point value", s)
+        }
     }
 }
