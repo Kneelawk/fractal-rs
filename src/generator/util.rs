@@ -8,3 +8,25 @@ where
 {
     (value + base - T::one()) / base * base
 }
+
+// Unit Tests.
+
+#[cfg(test)]
+mod tests {
+    use crate::generator::util::smallest_multiple_containing;
+
+    #[test]
+    fn smallest_multiple_containing_below() {
+        assert_eq!(smallest_multiple_containing(63, 64), 64);
+    }
+
+    #[test]
+    fn smallest_multiple_containing_equal() {
+        assert_eq!(smallest_multiple_containing(64, 64), 64);
+    }
+
+    #[test]
+    fn smallest_multiple_containing_above() {
+        assert_eq!(smallest_multiple_containing(65, 64), 128);
+    }
+}

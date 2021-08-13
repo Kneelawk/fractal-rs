@@ -339,15 +339,18 @@ impl Iterator for SubViewIter {
                 index_x,
                 index_y,
             } => {
-                let image_height =
-                    view.image_height / *height_pieces + if index_y < remainder_y { 1 } else { 0 };
-
                 if index_x >= width_pieces {
+                    let prev_image_height = view.image_height / *height_pieces
+                        + if index_y < remainder_y { 1 } else { 0 };
+
                     *index_x = 0;
                     *index_y += 1;
                     *image_x = 0;
-                    *image_y += image_height;
+                    *image_y += prev_image_height;
                 }
+
+                let image_height =
+                    view.image_height / *height_pieces + if index_y < remainder_y { 1 } else { 0 };
 
                 if *image_y >= view.image_height {
                     None
@@ -399,3 +402,312 @@ impl Iterator for SubViewIter {
 }
 
 impl ExactSizeIterator for SubViewIter {}
+
+// Unit Tests.
+
+#[cfg(test)]
+mod tests {
+    use crate::generator::view::View;
+
+    #[test]
+    fn is_directly_after_divided_height() {
+        let parent = View {
+            image_width: 10,
+            image_height: 10,
+            image_x: 0,
+            image_y: 0,
+            image_scale_x: 1.0,
+            image_scale_y: 1.0,
+            plane_start_x: 0.0,
+            plane_start_y: 0.0,
+        };
+        let child1 = View {
+            image_width: 10,
+            image_height: 5,
+            image_x: 0,
+            image_y: 0,
+            image_scale_x: 1.0,
+            image_scale_y: 1.0,
+            plane_start_x: 0.0,
+            plane_start_y: 0.0,
+        };
+        let child2 = View {
+            image_width: 10,
+            image_height: 5,
+            image_x: 0,
+            image_y: 5,
+            image_scale_x: 1.0,
+            image_scale_y: 1.0,
+            plane_start_x: 0.0,
+            plane_start_y: 0.0,
+        };
+
+        assert!(child2.is_directly_after(&child1, &parent));
+    }
+
+    #[test]
+    fn is_directly_after_divided_width() {
+        let parent = View {
+            image_width: 10,
+            image_height: 10,
+            image_x: 0,
+            image_y: 0,
+            image_scale_x: 1.0,
+            image_scale_y: 1.0,
+            plane_start_x: 0.0,
+            plane_start_y: 0.0,
+        };
+        let child1 = View {
+            image_width: 5,
+            image_height: 5,
+            image_x: 0,
+            image_y: 0,
+            image_scale_x: 1.0,
+            image_scale_y: 1.0,
+            plane_start_x: 0.0,
+            plane_start_y: 0.0,
+        };
+        let child2 = View {
+            image_width: 5,
+            image_height: 5,
+            image_x: 5,
+            image_y: 0,
+            image_scale_x: 1.0,
+            image_scale_y: 1.0,
+            plane_start_x: 0.0,
+            plane_start_y: 0.0,
+        };
+
+        assert!(child2.is_directly_after(&child1, &parent));
+    }
+
+    #[test]
+    fn is_directly_after_wrapped_width() {
+        let parent = View {
+            image_width: 10,
+            image_height: 10,
+            image_x: 0,
+            image_y: 0,
+            image_scale_x: 1.0,
+            image_scale_y: 1.0,
+            plane_start_x: 0.0,
+            plane_start_y: 0.0,
+        };
+        let child1 = View {
+            image_width: 5,
+            image_height: 5,
+            image_x: 5,
+            image_y: 0,
+            image_scale_x: 1.0,
+            image_scale_y: 1.0,
+            plane_start_x: 0.0,
+            plane_start_y: 0.0,
+        };
+        let child2 = View {
+            image_width: 5,
+            image_height: 5,
+            image_x: 0,
+            image_y: 5,
+            image_scale_x: 1.0,
+            image_scale_y: 1.0,
+            plane_start_x: 0.0,
+            plane_start_y: 0.0,
+        };
+
+        assert!(child2.is_directly_after(&child1, &parent));
+    }
+
+    #[test]
+    fn subdivide_height() {
+        let view = View {
+            image_width: 10,
+            image_height: 10,
+            image_x: 0,
+            image_y: 0,
+            image_scale_x: 1.0,
+            image_scale_y: 1.0,
+            plane_start_x: 0.0,
+            plane_start_y: 0.0,
+        };
+
+        let mut iter = view.subdivide_height(3);
+
+        assert_eq!(
+            iter.next(),
+            Some(View {
+                image_width: 10,
+                image_height: 4,
+                image_x: 0,
+                image_y: 0,
+                image_scale_x: 1.0,
+                image_scale_y: 1.0,
+                plane_start_x: 0.0,
+                plane_start_y: 0.0,
+            })
+        );
+        assert_eq!(
+            iter.next(),
+            Some(View {
+                image_width: 10,
+                image_height: 3,
+                image_x: 0,
+                image_y: 4,
+                image_scale_x: 1.0,
+                image_scale_y: 1.0,
+                plane_start_x: 0.0,
+                plane_start_y: 4.0,
+            })
+        );
+        assert_eq!(
+            iter.next(),
+            Some(View {
+                image_width: 10,
+                image_height: 3,
+                image_x: 0,
+                image_y: 7,
+                image_scale_x: 1.0,
+                image_scale_y: 1.0,
+                plane_start_x: 0.0,
+                plane_start_y: 7.0,
+            })
+        );
+    }
+
+    #[test]
+    fn subdivide_to_pixel_count() {
+        let view = View {
+            image_width: 10,
+            image_height: 10,
+            image_x: 0,
+            image_y: 0,
+            image_scale_x: 1.0,
+            image_scale_y: 1.0,
+            plane_start_x: 0.0,
+            plane_start_y: 0.0,
+        };
+
+        let mut iter = view.subdivide_to_pixel_count(4);
+
+        assert_eq!(
+            iter.next(),
+            Some(View {
+                image_width: 4,
+                image_height: 1,
+                image_x: 0,
+                image_y: 0,
+                image_scale_x: 1.0,
+                image_scale_y: 1.0,
+                plane_start_x: 0.0,
+                plane_start_y: 0.0,
+            })
+        );
+        assert_eq!(
+            iter.next(),
+            Some(View {
+                image_width: 3,
+                image_height: 1,
+                image_x: 4,
+                image_y: 0,
+                image_scale_x: 1.0,
+                image_scale_y: 1.0,
+                plane_start_x: 4.0,
+                plane_start_y: 0.0,
+            })
+        );
+        assert_eq!(
+            iter.next(),
+            Some(View {
+                image_width: 3,
+                image_height: 1,
+                image_x: 7,
+                image_y: 0,
+                image_scale_x: 1.0,
+                image_scale_y: 1.0,
+                plane_start_x: 7.0,
+                plane_start_y: 0.0,
+            })
+        );
+        assert_eq!(
+            iter.next(),
+            Some(View {
+                image_width: 4,
+                image_height: 1,
+                image_x: 0,
+                image_y: 1,
+                image_scale_x: 1.0,
+                image_scale_y: 1.0,
+                plane_start_x: 0.0,
+                plane_start_y: 1.0,
+            })
+        );
+    }
+
+    #[test]
+    fn subdivide_rectangles() {
+        let view = View {
+            image_width: 10,
+            image_height: 10,
+            image_x: 0,
+            image_y: 0,
+            image_scale_x: 1.0,
+            image_scale_y: 1.0,
+            plane_start_x: 0.0,
+            plane_start_y: 0.0,
+        };
+
+        let mut iter = view.subdivide_rectangles(4, 4);
+
+        assert_eq!(
+            iter.next(),
+            Some(View {
+                image_width: 4,
+                image_height: 4,
+                image_x: 0,
+                image_y: 0,
+                image_scale_x: 1.0,
+                image_scale_y: 1.0,
+                plane_start_x: 0.0,
+                plane_start_y: 0.0,
+            })
+        );
+        assert_eq!(
+            iter.next(),
+            Some(View {
+                image_width: 3,
+                image_height: 4,
+                image_x: 4,
+                image_y: 0,
+                image_scale_x: 1.0,
+                image_scale_y: 1.0,
+                plane_start_x: 4.0,
+                plane_start_y: 0.0,
+            })
+        );
+        assert_eq!(
+            iter.next(),
+            Some(View {
+                image_width: 3,
+                image_height: 4,
+                image_x: 7,
+                image_y: 0,
+                image_scale_x: 1.0,
+                image_scale_y: 1.0,
+                plane_start_x: 7.0,
+                plane_start_y: 0.0,
+            })
+        );
+        assert_eq!(
+            iter.next(),
+            Some(View {
+                image_width: 4,
+                image_height: 3,
+                image_x: 0,
+                image_y: 4,
+                image_scale_x: 1.0,
+                image_scale_y: 1.0,
+                plane_start_x: 0.0,
+                plane_start_y: 4.0,
+            })
+        );
+    }
+}
