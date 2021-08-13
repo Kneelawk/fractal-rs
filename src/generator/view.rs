@@ -1,11 +1,17 @@
+use std::cmp::Ordering;
+
 use num_complex::Complex;
 
 /// A view represents an image's width, height, and mapping onto the complex
 /// plane.
-#[derive(Debug, Copy, Clone, PartialEq, PartialOrd)]
+// TODO: Fix PartialOrd stuff. (This should be ordered solely based on this view's position within
+//  an image)
+#[derive(Debug, Copy, Clone, PartialEq)]
 pub struct View {
     pub image_width: usize,
     pub image_height: usize,
+    pub image_x: usize,
+    pub image_y: usize,
     pub image_scale_x: f32,
     pub image_scale_y: f32,
     pub plane_start_x: f32,
@@ -30,6 +36,8 @@ impl View {
         View {
             image_width,
             image_height,
+            image_x: 0,
+            image_y: 0,
             image_scale_x: image_scale,
             image_scale_y: image_scale,
             plane_start_x: -plane_width / 2f32,
@@ -52,6 +60,8 @@ impl View {
         View {
             image_width,
             image_height,
+            image_x: 0,
+            image_y: 0,
             image_scale_x: image_scale,
             image_scale_y: image_scale,
             plane_start_x: center_x - plane_width / 2f32,
@@ -70,21 +80,28 @@ impl View {
         SubViewIter::new_split_height(*self, pieces)
     }
 
-    /// Gets the coordinates on the complex plane for a given pixel coordinate.
-    pub fn get_plane_coordinates(&self, (x, y): (usize, usize)) -> Complex<f32> {
+    /// Divides this view into a set of consecutive rectangle sub-views.
+    pub fn subdivide_rectangles(&self, max_width: usize, max_height: usize) -> SubViewIter {
+        SubViewIter::new_rectangles(*self, max_width, max_height)
+    }
+
+    /// Gets the coordinates on the complex plane for a given local pixel
+    /// coordinate.
+    pub fn get_local_plane_coordinates(&self, (x, y): (usize, usize)) -> Complex<f32> {
         Complex::<f32>::new(
             x as f32 * self.image_scale_x + self.plane_start_x,
             y as f32 * self.image_scale_y + self.plane_start_y,
         )
     }
 
-    /// Gets the pixel coordinates for a given coordinate on the complex plane.
-    pub fn get_pixel_coordinates(
+    /// Gets the local pixel coordinates for a given coordinate on the complex
+    /// plane.
+    pub fn get_local_pixel_coordinates(
         &self,
         plane_coordinates: Complex<f32>,
     ) -> (ConstrainedValue<usize>, ConstrainedValue<usize>) {
         (
-            if plane_coordinates.re > self.plane_start_x {
+            if plane_coordinates.re >= self.plane_start_x {
                 let x = ((plane_coordinates.re - self.plane_start_x) / self.image_scale_x) as usize;
 
                 if x < self.image_width {
@@ -95,7 +112,7 @@ impl View {
             } else {
                 ConstrainedValue::LessThanConstraint
             },
-            if plane_coordinates.im > self.plane_start_y {
+            if plane_coordinates.im >= self.plane_start_y {
                 let y = ((plane_coordinates.im - self.plane_start_y) / self.image_scale_y) as usize;
 
                 if y < self.image_height {
@@ -107,6 +124,37 @@ impl View {
                 ConstrainedValue::LessThanConstraint
             },
         )
+    }
+
+    /// Checks if this view is directly after the other view as a child of the
+    /// parent view.
+    ///
+    /// Note: This method only reliably works if both views share the same
+    /// direct parent. It would not make sense to check if a view from one
+    /// parent is directly after a view from a different parent, even if they
+    /// share a common ancestor, because their shapes and parents' orderings
+    /// could be different. This means that once views are completed, they
+    /// should be stitched back together unless their parent is the root view.
+    pub fn is_directly_after(&self, other: &View, parent: &View) -> bool {
+        if self.image_x == parent.image_x {
+            // This view is at the beginning x of the parent, so the previous view must
+            // extend to the end x of the parent.
+            other.image_y + other.image_height == self.image_y
+                && other.image_x + other.image_width == parent.image_x + parent.image_width
+        } else {
+            // Otherwise, this view must have the same y-value as the previous one and must
+            // have an x value right at the end of the previous one.
+            other.image_y == self.image_y && other.image_x + other.image_width == self.image_x
+        }
+    }
+}
+
+/// Special ordering for Views that ignores view size and only considers initial
+/// view position.
+impl PartialOrd for View {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        (self.plane_start_y, self.plane_start_x)
+            .partial_cmp(&(other.plane_start_y, other.plane_start_x))
     }
 }
 
@@ -130,6 +178,19 @@ pub enum SubViewIter {
         image_y: usize,
         image_x: usize,
         index: usize,
+    },
+    Rectangles {
+        view: View,
+        width_pieces: usize,
+        height_pieces: usize,
+        remainder_x: usize,
+        remainder_y: usize,
+
+        // index stuff
+        image_x: usize,
+        image_y: usize,
+        index_x: usize,
+        index_y: usize,
     },
     Single(Option<View>),
 }
@@ -166,6 +227,33 @@ impl SubViewIter {
             }
         }
     }
+
+    fn new_rectangles(view: View, max_width: usize, max_height: usize) -> SubViewIter {
+        if view.image_width <= max_width {
+            if view.image_height <= max_height {
+                SubViewIter::Single(Some(view))
+            } else {
+                SubViewIter::new_split_height(
+                    view,
+                    (view.image_height + max_height - 1) / max_height,
+                )
+            }
+        } else {
+            let width_pieces = (view.image_width + max_width - 1) / max_width;
+            let height_pieces = (view.image_height + max_height - 1) / max_height;
+            SubViewIter::Rectangles {
+                view,
+                width_pieces,
+                height_pieces,
+                remainder_x: view.image_width % width_pieces,
+                remainder_y: view.image_height % height_pieces,
+                image_x: 0,
+                image_y: 0,
+                index_x: 0,
+                index_y: 0,
+            }
+        }
+    }
 }
 
 impl Iterator for SubViewIter {
@@ -189,6 +277,8 @@ impl Iterator for SubViewIter {
                     let res = Some(View {
                         image_width: view.image_width,
                         image_height,
+                        image_x: view.image_x,
+                        image_y: view.image_y + *image_y,
                         image_scale_x: view.image_scale_x,
                         image_scale_y: view.image_scale_y,
                         plane_start_x: view.plane_start_x,
@@ -200,7 +290,7 @@ impl Iterator for SubViewIter {
 
                     res
                 }
-            }
+            },
             SubViewIter::SplitRow {
                 view,
                 width_pieces,
@@ -224,6 +314,8 @@ impl Iterator for SubViewIter {
                     let res = Some(View {
                         image_width,
                         image_height: 1,
+                        image_x: view.image_x + *image_x,
+                        image_y: view.image_y + *image_y,
                         image_scale_x: view.image_scale_x,
                         image_scale_y: view.image_scale_y,
                         plane_start_x: view.plane_start_x + *image_x as f32 * view.image_scale_x,
@@ -235,7 +327,51 @@ impl Iterator for SubViewIter {
 
                     res
                 }
-            }
+            },
+            SubViewIter::Rectangles {
+                view,
+                width_pieces,
+                height_pieces,
+                remainder_x,
+                remainder_y,
+                image_x,
+                image_y,
+                index_x,
+                index_y,
+            } => {
+                let image_height =
+                    view.image_height / *height_pieces + if index_y < remainder_y { 1 } else { 0 };
+
+                if index_x >= width_pieces {
+                    *index_x = 0;
+                    *index_y += 1;
+                    *image_x = 0;
+                    *image_y += image_height;
+                }
+
+                if *image_y >= view.image_height {
+                    None
+                } else {
+                    let image_width = view.image_width / *width_pieces
+                        + if index_x < remainder_x { 1 } else { 0 };
+
+                    let res = Some(View {
+                        image_width,
+                        image_height,
+                        image_x: view.image_x + *image_x,
+                        image_y: view.image_y + *image_y,
+                        image_scale_x: view.image_scale_x,
+                        image_scale_y: view.image_scale_y,
+                        plane_start_x: view.plane_start_x + *image_x as f32 * view.image_scale_x,
+                        plane_start_y: view.plane_start_y + *image_y as f32 * view.image_scale_y,
+                    });
+
+                    *image_x += image_width;
+                    *index_x += 1;
+
+                    res
+                }
+            },
             SubViewIter::Single(single) => single.take(),
         }
     }
@@ -248,7 +384,15 @@ impl Iterator for SubViewIter {
             } => {
                 let pieces = *width_pieces * view.image_height;
                 (pieces, Some(pieces))
-            }
+            },
+            SubViewIter::Rectangles {
+                width_pieces,
+                height_pieces,
+                ..
+            } => {
+                let pieces = *width_pieces * *height_pieces;
+                (pieces, Some(pieces))
+            },
             SubViewIter::Single(_) => (1, Some(1)),
         }
     }

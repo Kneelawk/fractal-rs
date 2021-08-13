@@ -16,7 +16,7 @@ pub trait CpuFractalOpts {
 
     /// Generates an iteration count value for a given pixel location and view.
     fn gen_pixel_value(&self, view: View, x: usize, y: usize) -> f32 {
-        self.gen_value(view.get_plane_coordinates((x, y)))
+        self.gen_value(view.get_local_plane_coordinates((x, y)))
     }
 
     /// Generates a pixel color for a given pixel location and view.

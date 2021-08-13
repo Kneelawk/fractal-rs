@@ -1,7 +1,9 @@
 pub mod args;
+pub mod composite;
 pub mod color;
 pub mod cpu;
 pub mod view;
+pub mod util;
 
 use crate::generator::{args::Smoothing, view::View};
 use futures::future::BoxFuture;
@@ -30,6 +32,8 @@ pub enum FractalGenerationStartError {
 }
 
 /// Structs implementing this trait can be used to generate fractals.
+///
+/// Note: all these methods return futures because they may require communication over a network.
 pub trait FractalGenerator {
     /// Gets the recommended minimum number of views that should be submitted to
     /// this generator together as a single batch in order to operate
