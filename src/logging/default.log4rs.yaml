@@ -1,0 +1,24 @@
+appenders:
+  console:
+    kind: console
+    filters:
+      - kind: threshold
+        level: info
+    encoder:
+      kind: pattern
+      pattern: "[{d(%H:%M:%S)} {h({l})} {M}] {m}{n}"
+  log_file:
+    kind: fancy_file
+    filters:
+      - kind: threshold
+        level: debug
+    append: false
+    path: "logs/log-{d}.log"
+    encoder:
+      pattern: "[{d(%m-%d-%Y %H:%M:%S)} {l} {M}] {m}{n}"
+
+root:
+  level: trace
+  appenders:
+    - console
+    - log_file

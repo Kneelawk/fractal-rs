@@ -5,8 +5,10 @@ authors = ["Kneelawk <kneelawk@gmail.com>"]
 edition = "2018"
 
 [dependencies]
+error-chain = "^0.12.4"
 futures = "^0.3.12"
 lazy_static = "^1.4.0"
+log4rs = "^1.0.0"
 num-complex = "^0.3.1"
 num_cpus = "^1.13.0"
 num-traits = "^0.2.14"
