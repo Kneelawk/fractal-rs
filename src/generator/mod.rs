@@ -8,6 +8,7 @@ pub mod util;
 pub mod view;
 
 use crate::generator::{args::Smoothing, error::GenError, view::View};
+use cgmath::Vector2;
 use futures::{future::BoxFuture, stream::BoxStream};
 use num_complex::Complex;
 use std::mem::size_of;
