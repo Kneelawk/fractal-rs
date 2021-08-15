@@ -209,6 +209,8 @@ checksum = "3f9eec918d3f24069decb9af1554cad7c880e2da24a9afd88aca000531ab82c1"
 name = "fractal-rs-2"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
+ "chrono",
  "error-chain",
  "futures",
  "lazy_static",
@@ -219,6 +221,7 @@ dependencies = [
  "png",
  "rayon",
  "regex",
+ "serde",
  "tokio",
 ]
 
