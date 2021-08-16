@@ -82,8 +82,8 @@ impl RGBAColor {
     }
 }
 
-impl Into<[u8; 4]> for RGBAColor {
-    fn into(self) -> [u8; 4] {
-        unsafe { transmute(self) }
+impl From<RGBAColor> for [u8; 4] {
+    fn from(c: RGBAColor) -> Self {
+        unsafe { transmute(c) }
     }
 }
