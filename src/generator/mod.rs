@@ -10,10 +10,10 @@ use crate::generator::{args::Smoothing, view::View};
 use cgmath::Vector2;
 use futures::{future::BoxFuture, stream::BoxStream, Stream};
 use num_complex::Complex;
-use std::mem::size_of;
-use std::pin::Pin;
+use std::{mem::size_of, pin::Pin, sync::Arc};
+use tokio::sync::Mutex;
 
-const BYTES_PER_PIXEL: usize = size_of::<u32>();
+pub const BYTES_PER_PIXEL: usize = size_of::<u32>();
 
 /// Represents a set of options passed to a fractal generator at initialization.
 #[derive(Debug, Copy, Clone)]
@@ -53,7 +53,9 @@ pub trait FractalGenerator {
 pub trait FractalGeneratorInstance {
     /// Gets this generator instance's message stream. This stream should output
     /// one FractalGenerationMessage for each view passed during its creation.
-    fn stream(&self) -> Pin<&(dyn Stream<Item = Result<PixelBlock, anyhow::Error>> + Send)>;
+    fn stream(
+        &self,
+    ) -> Arc<Mutex<dyn Stream<Item = Result<PixelBlock, anyhow::Error>> + Send + Unpin>>;
 
     /// Checks whether this fractal generator instance is still running.
     fn running(&self) -> BoxFuture<bool>;
