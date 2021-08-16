@@ -1,9 +1,10 @@
-use crate::generator::{util::copy_region, view::View, PixelBlock, BYTES_PER_PIXEL};
 use std::{
     collections::HashMap,
     hash::{Hash, Hasher},
     task::Poll,
 };
+
+use crate::generator::{util::copy_region, view::View, PixelBlock, BYTES_PER_PIXEL};
 
 /// Stitches blocks of pixels together into complete rows.
 pub struct RowStitcher {
@@ -141,6 +142,8 @@ impl RowStitcher {
                     block.view.image_width,
                     block.view.image_height,
                 );
+
+                self.remaining_views.remove(&ViewWrapper(block.view));
             }
 
             Poll::Ready(Some(PixelBlock {
