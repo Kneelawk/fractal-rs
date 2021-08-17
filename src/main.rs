@@ -11,7 +11,6 @@ use crate::generator::{
 };
 use futures::{task::Poll, StreamExt};
 use num_complex::Complex32;
-use png::{BitDepth, ColorType};
 use std::{
     fs::File,
     io::{BufWriter, Write},
@@ -56,13 +55,14 @@ async fn main() {
     let mut stream_writer = Some(
         tokio::task::spawn_blocking(|| {
             let output_file = File::create("output.png").unwrap();
-            let mut file_writer = BufWriter::new(output_file);
-            let mut encoder = png::Encoder::new(file_writer, IMAGE_WIDTH, IMAGE_HEIGHT);
-            encoder.set_color(ColorType::RGBA);
-            encoder.set_depth(BitDepth::Eight);
-            let writer = encoder.write_header().unwrap();
-            writer
-                .into_stream_writer_with_size(IMAGE_WIDTH as usize * CHUNK_HEIGHT * BYTES_PER_PIXEL)
+            let file_writer = BufWriter::new(output_file);
+            let options = mtpng::encoder::Options::new();
+            let mut encoder = mtpng::encoder::Encoder::new(file_writer, &options);
+            let mut header = mtpng::Header::new();
+            header.set_size(IMAGE_WIDTH, IMAGE_HEIGHT).unwrap();
+            header.set_color(mtpng::ColorType::TruecolorAlpha, 8).unwrap();
+            encoder.write_header(&header).unwrap();
+            encoder
         })
         .await
         .unwrap(),
@@ -92,7 +92,7 @@ async fn main() {
 
             stream_writer = Some(
                 tokio::task::spawn_blocking(move || {
-                    moved_writer.write_all(&row.image);
+                    moved_writer.write_image_rows(&row.image).unwrap();
                     moved_writer
                 })
                 .await
@@ -104,7 +104,7 @@ async fn main() {
     info!("Finishing output file...");
 
     tokio::task::spawn_blocking(move || {
-        stream_writer.unwrap().finish();
+        stream_writer.unwrap().finish().unwrap();
     })
     .await
     .unwrap();
