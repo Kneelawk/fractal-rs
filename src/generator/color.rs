@@ -34,7 +34,7 @@ impl RGBAColor {
                 a: alpha,
             }
         } else {
-            let sector = (hue - hue.floor()) * 6f32;
+            let sector = (hue % 1f32) * 6f32;
             let offset_in_sector = sector - sector.floor();
             let off = brightness * (1f32 - saturation);
             let fade_out = brightness * (1f32 - saturation * offset_in_sector);
@@ -76,7 +76,7 @@ impl RGBAColor {
                     b: (fade_out * 255f32 + 0.5f32) as u8,
                     a: alpha,
                 },
-                _ => unreachable!("Invalid color wheel sector"),
+                _ => unreachable!("Invalid color wheel sector {}", sector),
             }
         }
     }

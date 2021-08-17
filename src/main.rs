@@ -24,6 +24,8 @@ const IMAGE_HEIGHT: u32 = 4096;
 const CHUNK_WIDTH: usize = 256;
 const CHUNK_HEIGHT: usize = 256;
 
+const CHUNK_BACKLOG: usize = 32;
+
 #[tokio::main]
 async fn main() {
     logging::init();
@@ -32,7 +34,7 @@ async fn main() {
     let view = View::new_centered_uniform(IMAGE_WIDTH as usize, IMAGE_HEIGHT as usize, 3.0);
     let opts = FractalOpts {
         mandelbrot: false,
-        iterations: 100,
+        iterations: 200,
         smoothing: Smoothing::None,
         c: Complex32 {
             re: 0.16611,
@@ -67,7 +69,7 @@ async fn main() {
     );
 
     info!("Creating channel...");
-    let (tx, mut rx) = mpsc::channel(32);
+    let (tx, mut rx) = mpsc::channel(CHUNK_BACKLOG);
 
     info!("Starting generation...");
     let _instance = gen.start_generation(&views, tx).await.unwrap();
