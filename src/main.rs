@@ -7,14 +7,12 @@ extern crate serde;
 
 use crate::generator::{
     args::Smoothing, cpu::CpuFractalGenerator, row_stitcher::RowStitcher, view::View,
-    FractalGenerator, FractalOpts, BYTES_PER_PIXEL,
+    FractalGenerator, FractalOpts,
 };
-use futures::{task::Poll, StreamExt};
+use futures::task::Poll;
+use mtpng::{encoder, ColorType, Header};
 use num_complex::Complex32;
-use std::{
-    fs::File,
-    io::{BufWriter, Write},
-};
+use std::{fs::File, io::BufWriter};
 use tokio::sync::mpsc;
 
 mod generator;
@@ -56,11 +54,11 @@ async fn main() {
         tokio::task::spawn_blocking(|| {
             let output_file = File::create("output.png").unwrap();
             let file_writer = BufWriter::new(output_file);
-            let options = mtpng::encoder::Options::new();
-            let mut encoder = mtpng::encoder::Encoder::new(file_writer, &options);
-            let mut header = mtpng::Header::new();
+            let options = encoder::Options::new();
+            let mut encoder = encoder::Encoder::new(file_writer, &options);
+            let mut header = Header::new();
             header.set_size(IMAGE_WIDTH, IMAGE_HEIGHT).unwrap();
-            header.set_color(mtpng::ColorType::TruecolorAlpha, 8).unwrap();
+            header.set_color(ColorType::TruecolorAlpha, 8).unwrap();
             encoder.write_header(&header).unwrap();
             encoder
         })

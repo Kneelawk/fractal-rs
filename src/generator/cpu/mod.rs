@@ -5,13 +5,11 @@ use crate::generator::{
 use futures::{
     executor::block_on,
     future::{ready, BoxFuture},
-    prelude::stream::BoxStream,
-    FutureExt, Stream,
+    FutureExt,
 };
 use rayon::{ThreadPool, ThreadPoolBuilder};
-use std::{pin::Pin, sync::Arc};
-use tokio::sync::{mpsc, mpsc::Sender, Mutex, RwLock};
-use tokio_stream::wrappers::ReceiverStream;
+use std::sync::Arc;
+use tokio::sync::{mpsc::Sender, RwLock};
 
 pub mod opts;
 

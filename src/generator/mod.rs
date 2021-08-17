@@ -7,11 +7,10 @@ pub mod util;
 pub mod view;
 
 use crate::generator::{args::Smoothing, view::View};
-use cgmath::Vector2;
-use futures::{future::BoxFuture, stream::BoxStream, Stream};
+use futures::future::BoxFuture;
 use num_complex::Complex;
-use std::{mem::size_of, pin::Pin, sync::Arc};
-use tokio::sync::{mpsc::Sender, Mutex};
+use std::mem::size_of;
+use tokio::sync::mpsc::Sender;
 
 pub const BYTES_PER_PIXEL: usize = size_of::<u32>();
 
