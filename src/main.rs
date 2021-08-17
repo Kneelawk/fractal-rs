@@ -16,16 +16,19 @@ use std::{
 
 mod generator;
 
-const IMAGE_WIDTH: usize = 11000;
-const IMAGE_HEIGHT: usize = 8500;
+const IMAGE_WIDTH: usize = 22000;
+const IMAGE_HEIGHT: usize = 17000;
 const PLANE_WIDTH: f32 = 3f32;
-const CENTER_X: f32 = -0.75f32;
+const CENTER_X: f32 = 0f32;
 const CENTER_Y: f32 = 0f32;
-const MANDELBROT: bool = true;
+const MANDELBROT: bool = false;
 const ITERATIONS: u32 = 100;
-const C: Complex32 = Complex32 { re: 0f32, im: 0f32 };
+const C: Complex32 = Complex32 {
+    re: -0.059182f32,
+    im: 0.669273f32,
+};
 const THREADS: usize = 10;
-const OUT_FILE: &'static str = "fractal.png";
+const OUT_FILE: &'static str = "fractal2-22000x17000.png";
 const CHUNK_SIZE: usize = 1048576;
 
 fn main() {
@@ -51,7 +54,7 @@ fn main() {
 
     let (tx, rx) = sync_channel(32);
 
-    generator.start_generation(chunks, tx).unwrap();
+    generator.start_generation(chunks.collect(), tx).unwrap();
 
     let mut index = 0;
     for message in rx {
