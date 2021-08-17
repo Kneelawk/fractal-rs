@@ -1,11 +1,18 @@
+//! view.rs - This file contains the general purpose `View` struct as well as
+//! its dependencies. This file is designed to be copied from fractal generator
+//! to fractal generator.
+
+// This is a general purpose file copied from fractal generator to fractal
+// generator. Many of the functions and constructs here are only used by some of
+// the fractal generators.
+#![allow(dead_code)]
+
 use std::cmp::Ordering;
 
 use num_complex::Complex;
 
 /// A view represents an image's width, height, and mapping onto the complex
 /// plane.
-// TODO: Fix PartialOrd stuff. (This should be ordered solely based on this view's position within
-//  an image)
 #[derive(Debug, Copy, Clone, PartialEq)]
 pub struct View {
     pub image_width: usize,
