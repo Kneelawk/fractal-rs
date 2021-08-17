@@ -1,0 +1,14 @@
+name: fractal-viewer-rs
+author: Jed Pommert (Kneelawk) <kneelawk@gmail.com>
+about: Generates a mandelbrot or julia set fractal image.
+args:
+  - generate_config:
+      short: g
+      long: generate-config
+      help: Generates a fractal config at the specified location instead of generating a fractal.
+      takes_value: false
+      required: false
+  - CONFIG:
+      help: The config file containing the settings for the fractal to generate.
+      required: true
+      index: 1

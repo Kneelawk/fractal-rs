@@ -59,6 +59,28 @@ impl View {
         }
     }
 
+    /// Creates a view centered at (`center_x` + `center_y`i) on the complex
+    /// plane with unique scaling for the x and y axis.
+    pub fn new(
+        image_width: usize,
+        image_height: usize,
+        plane_width: f32,
+        plane_height: f32,
+        center_x: f32,
+        center_y: f32,
+    ) -> View {
+        let image_scale = plane_width / image_width as f32;
+
+        View {
+            image_width,
+            image_height,
+            image_scale_x: image_scale,
+            image_scale_y: image_scale,
+            plane_start_x: center_x - plane_width / 2f32,
+            plane_start_y: center_y - plane_height / 2f32,
+        }
+    }
+
     /// Divides this view into a set of consecutive sub-views each of which
     /// containing no more pixels than `pixel_count`.
     pub fn subdivide_to_pixel_count(&self, pixel_count: usize) -> SubViewIter {
@@ -84,7 +106,7 @@ impl View {
         plane_coordinates: Complex<f32>,
     ) -> (ConstrainedValue<usize>, ConstrainedValue<usize>) {
         (
-            if plane_coordinates.re > self.plane_start_x {
+            if plane_coordinates.re >= self.plane_start_x {
                 let x = ((plane_coordinates.re - self.plane_start_x) / self.image_scale_x) as usize;
 
                 if x < self.image_width {
@@ -95,7 +117,7 @@ impl View {
             } else {
                 ConstrainedValue::LessThanConstraint
             },
-            if plane_coordinates.im > self.plane_start_y {
+            if plane_coordinates.im >= self.plane_start_y {
                 let y = ((plane_coordinates.im - self.plane_start_y) / self.image_scale_y) as usize;
 
                 if y < self.image_height {
