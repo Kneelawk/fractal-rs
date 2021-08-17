@@ -81,7 +81,7 @@ impl CpuFractalGeneratorInstance {
 
                     for y in 0..view.image_height {
                         for x in 0..view.image_width {
-                            let index = x + y * view.image_width;
+                            let index = (x + y * view.image_width) * BYTES_PER_PIXEL;
                             let color: [u8; 4] = opts.gen_pixel(view, x, y).into();
                             image[index..index + BYTES_PER_PIXEL].copy_from_slice(&color);
                         }
