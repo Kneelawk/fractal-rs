@@ -16,6 +16,7 @@ use std::{
     fs::File,
     io::{BufWriter, Write},
 };
+use tokio::sync::mpsc;
 
 mod generator;
 mod logging;
@@ -67,17 +68,17 @@ async fn main() {
         .unwrap(),
     );
 
-    info!("Starting generation...");
-    let instance = gen.start_generation(&views).await.unwrap();
+    info!("Creating channel...");
+    let (tx, mut rx) = mpsc::channel(32);
 
-    info!("Getting stream...");
-    let mut stream = instance.stream();
+    info!("Starting generation...");
+    let _instance = gen.start_generation(&views, tx).await.unwrap();
 
     info!("Creating row stitcher...");
     let mut stitcher = RowStitcher::new(view, &views);
 
     info!("Starting receiver loop...");
-    while let Some(block) = stream.lock().await.next().await {
+    while let Some(block) = rx.recv().await {
         let block = block.unwrap();
         info!(
             "Received block at ({}, {})",

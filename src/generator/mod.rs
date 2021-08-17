@@ -11,7 +11,7 @@ use cgmath::Vector2;
 use futures::{future::BoxFuture, stream::BoxStream, Stream};
 use num_complex::Complex;
 use std::{mem::size_of, pin::Pin, sync::Arc};
-use tokio::sync::Mutex;
+use tokio::sync::{mpsc::Sender, Mutex};
 
 pub const BYTES_PER_PIXEL: usize = size_of::<u32>();
 
@@ -39,24 +39,22 @@ pub trait FractalGenerator {
     /// Gets the recommended minimum number of views that should be submitted to
     /// this generator together as a single batch in order to operate
     /// efficiently.
-    fn min_views_hint(&self) -> BoxFuture<usize>;
+    fn min_views_hint(&self) -> BoxFuture<anyhow::Result<usize>>;
 
     /// Starts the generation of a fractal. Results are sent in the same order
     /// that views are presented in the `views` iterator.
     fn start_generation(
         &self,
         views: &[View],
-    ) -> BoxFuture<Result<Box<dyn FractalGeneratorInstance>, anyhow::Error>>;
+        sender: Sender<anyhow::Result<PixelBlock>>,
+    ) -> BoxFuture<anyhow::Result<Box<dyn FractalGeneratorInstance>>>;
 }
 
 /// Represents a running fractal generator.
 pub trait FractalGeneratorInstance {
-    /// Gets this generator instance's message stream. This stream should output
-    /// one FractalGenerationMessage for each view passed during its creation.
-    fn stream(
-        &self,
-    ) -> Arc<Mutex<dyn Stream<Item = Result<PixelBlock, anyhow::Error>> + Send + Unpin>>;
+    /// Gets this generator instance's current progress.
+    fn progress(&self) -> BoxFuture<anyhow::Result<f32>>;
 
     /// Checks whether this fractal generator instance is still running.
-    fn running(&self) -> BoxFuture<bool>;
+    fn running(&self) -> BoxFuture<anyhow::Result<bool>>;
 }

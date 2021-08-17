@@ -10,12 +10,10 @@ use futures::{
 };
 use rayon::{ThreadPool, ThreadPoolBuilder};
 use std::{pin::Pin, sync::Arc};
-use tokio::sync::{mpsc, Mutex, RwLock};
+use tokio::sync::{mpsc, mpsc::Sender, Mutex, RwLock};
 use tokio_stream::wrappers::ReceiverStream;
 
 pub mod opts;
-
-const MAX_BACKLOG: usize = 32;
 
 pub struct CpuFractalGenerator {
     opts: FractalOpts,
@@ -34,18 +32,25 @@ impl CpuFractalGenerator {
 }
 
 impl FractalGenerator for CpuFractalGenerator {
-    fn min_views_hint(&self) -> BoxFuture<'_, usize> {
-        ready(self.thread_count).boxed()
+    fn min_views_hint(&self) -> BoxFuture<anyhow::Result<usize>> {
+        ready(Ok(self.thread_count)).boxed()
     }
 
     fn start_generation(
         &self,
         views: &[View],
+        sender: Sender<anyhow::Result<PixelBlock>>,
     ) -> BoxFuture<Result<Box<dyn FractalGeneratorInstance>, anyhow::Error>> {
         let views = views.to_vec();
         async move {
             let boxed: Box<dyn FractalGeneratorInstance> = Box::new(
-                CpuFractalGeneratorInstance::start(self.thread_pool.clone(), views, self.opts).await,
+                CpuFractalGeneratorInstance::start(
+                    self.thread_pool.clone(),
+                    views,
+                    sender,
+                    self.opts,
+                )
+                .await,
             );
             Ok(boxed)
         }
@@ -56,17 +61,16 @@ impl FractalGenerator for CpuFractalGenerator {
 struct CpuFractalGeneratorInstance {
     view_count: usize,
     completed: Arc<RwLock<usize>>,
-    stream: Arc<Mutex<ReceiverStream<Result<PixelBlock, anyhow::Error>>>>,
 }
 
 impl CpuFractalGeneratorInstance {
     async fn start(
         thread_pool: Arc<ThreadPool>,
         views: Vec<View>,
+        sender: Sender<anyhow::Result<PixelBlock>>,
         opts: FractalOpts,
     ) -> CpuFractalGeneratorInstance {
         info!("Starting new CPU fractal generator...");
-        let (tx, rx) = mpsc::channel(MAX_BACKLOG);
         let view_count = views.len();
         let completed = Arc::new(RwLock::new(0));
         let async_completed = completed.clone();
@@ -74,7 +78,7 @@ impl CpuFractalGeneratorInstance {
         tokio::spawn(async move {
             for view in views {
                 let spawn_completed = async_completed.clone();
-                let spawn_tx = tx.clone().reserve_owned().await.unwrap();
+                let spawn_tx = sender.clone().reserve_owned().await.unwrap();
                 thread_pool.spawn(move || {
                     let mut image =
                         vec![0u8; view.image_width * view.image_height * BYTES_PER_PIXEL];
@@ -101,27 +105,22 @@ impl CpuFractalGeneratorInstance {
             }
         });
 
-        info!("Threads started. Creating stream...");
-
-        let stream = Arc::new(Mutex::new(ReceiverStream::new(rx)));
+        info!("Threads started.");
 
         CpuFractalGeneratorInstance {
             view_count,
             completed,
-            stream,
         }
     }
 }
 
 impl FractalGeneratorInstance for CpuFractalGeneratorInstance {
-    fn stream(
-        &self,
-    ) -> Arc<Mutex<dyn Stream<Item = Result<PixelBlock, anyhow::Error>> + Send + Unpin>> {
-        self.stream.clone()
+    fn progress(&self) -> BoxFuture<anyhow::Result<f32>> {
+        async move { Ok(*self.completed.read().await as f32 / self.view_count as f32) }.boxed()
     }
 
-    fn running(&self) -> BoxFuture<bool> {
-        async move { *self.completed.read().await < self.view_count }.boxed()
+    fn running(&self) -> BoxFuture<anyhow::Result<bool>> {
+        async move { Ok(*self.completed.read().await < self.view_count) }.boxed()
     }
 }
 
