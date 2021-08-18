@@ -2,6 +2,7 @@ pub mod args;
 pub mod color;
 pub mod composite;
 pub mod cpu;
+pub mod gpu;
 pub mod row_stitcher;
 pub mod util;
 pub mod view;

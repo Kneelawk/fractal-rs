@@ -1,6 +1,9 @@
 use regex::{Regex, RegexBuilder};
 use std::{num::ParseFloatError, str::FromStr};
 
+pub const DEFAULT_RADIUS: f32 = 4f32;
+pub const DEFAULT_RADIUS_SQUARED: f32 = DEFAULT_RADIUS * DEFAULT_RADIUS;
+
 lazy_static::lazy_static! {
 static ref SMOOTHING_REGEX: Regex = RegexBuilder::new(r"^logarithmic(distance)? *\( *(?P<radius>\d+(\.\d+)?|\.\d+) *, *(?P<max_power>\d+(\.\d+)?|\.\d+) *\)$").case_insensitive(true).build().unwrap();
 }

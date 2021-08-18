@@ -1,8 +1,6 @@
 use crate::generator::{args::Smoothing, color::RGBAColor, view::View, FractalOpts};
 use num_complex::Complex;
-
-const DEFAULT_RADIUS: f32 = 4f32;
-const DEFAULT_RADIUS_SQUARED: f32 = DEFAULT_RADIUS * DEFAULT_RADIUS;
+use crate::generator::args::DEFAULT_RADIUS_SQUARED;
 
 /// Structs implementing this trait can be used to generate pixel colors on a
 /// CPU.
@@ -121,39 +119,27 @@ impl CpuSmoothing for Smoothing {
                 iterations as f32
                     - if dx.abs() > dy.abs() {
                         let m = dy / dx;
-                        let m_squared = m * m;
+                        let m_squared_1 = m * m + 1.0;
                         let p = m * ax - ay;
 
                         (bx - if bx > ax {
-                            (m * p
-                                + (DEFAULT_RADIUS_SQUARED * m_squared + DEFAULT_RADIUS_SQUARED
-                                    - p * p)
-                                    .sqrt())
-                                / (m_squared + 1f32)
+                            (m * p + (DEFAULT_RADIUS_SQUARED * m_squared_1 - p * p).sqrt())
+                                / m_squared_1
                         } else {
-                            (m * p
-                                - (DEFAULT_RADIUS_SQUARED * m_squared + DEFAULT_RADIUS_SQUARED
-                                    - p * p)
-                                    .sqrt())
-                                / (m_squared + 1f32)
+                            (m * p - (DEFAULT_RADIUS_SQUARED * m_squared_1 - p * p).sqrt())
+                                / m_squared_1
                         }) / dx
                     } else {
                         let m = dx / dy;
-                        let m_squared = m * m;
+                        let m_squared_1 = m * m + 1.0;
                         let p = m * ay - ax;
 
                         (by - if by > ay {
-                            (m * p
-                                + (DEFAULT_RADIUS_SQUARED * m_squared + DEFAULT_RADIUS_SQUARED
-                                    - p * p)
-                                    .sqrt())
-                                / (m_squared + 1f32)
+                            (m * p + (DEFAULT_RADIUS_SQUARED * m_squared_1 - p * p).sqrt())
+                                / m_squared_1
                         } else {
-                            (m * p
-                                - (DEFAULT_RADIUS_SQUARED * m_squared + DEFAULT_RADIUS_SQUARED
-                                    - p * p)
-                                    .sqrt())
-                                / (m_squared + 1f32)
+                            (m * p - (DEFAULT_RADIUS_SQUARED * m_squared_1 - p * p).sqrt())
+                                / m_squared_1
                         }) / dy
                     }
             },

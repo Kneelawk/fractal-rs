@@ -1,19 +1,27 @@
 #[macro_use]
-extern crate error_chain;
-#[macro_use]
 extern crate log;
 #[macro_use]
 extern crate serde;
+#[macro_use]
+extern crate thiserror;
 
 use crate::generator::{
-    args::Smoothing, cpu::CpuFractalGenerator, row_stitcher::RowStitcher, view::View,
-    FractalGenerator, FractalOpts,
+    args::Smoothing, cpu::CpuFractalGenerator, gpu::GpuFractalGenerator, row_stitcher::RowStitcher,
+    view::View, FractalGenerator, FractalOpts,
 };
 use futures::task::Poll;
 use mtpng::{encoder, ColorType, Header};
 use num_complex::Complex32;
-use std::{fs::File, io::BufWriter};
-use tokio::sync::mpsc;
+use std::{
+    fs::File,
+    io::BufWriter,
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc,
+    },
+};
+use tokio::{sync::mpsc, task};
+use wgpu::{BackendBit, Instance, Maintain, RequestAdapterOptions};
 
 mod generator;
 mod logging;
@@ -35,7 +43,7 @@ async fn main() {
     let opts = FractalOpts {
         mandelbrot: false,
         iterations: 200,
-        smoothing: Smoothing::None,
+        smoothing: Smoothing::from_logarithmic_distance(4.0, 2.0),
         c: Complex32 {
             re: 0.16611,
             im: 0.59419,
@@ -46,9 +54,38 @@ async fn main() {
         .subdivide_rectangles(CHUNK_WIDTH, CHUNK_HEIGHT)
         .collect();
 
-    info!("Creating generator...");
+    info!("Creating Instance...");
+    let instance = Instance::new(BackendBit::PRIMARY);
+    let adapter = instance
+        .request_adapter(&RequestAdapterOptions {
+            power_preference: Default::default(),
+            compatible_surface: None,
+        })
+        .await
+        .unwrap();
 
-    let gen = CpuFractalGenerator::new(opts, 10).unwrap();
+    info!("Requesting device...");
+    let (device, queue) = adapter
+        .request_device(&Default::default(), None)
+        .await
+        .unwrap();
+    let queue = Arc::new(queue);
+
+    info!("Creating device poll task...");
+    let device = Arc::new(device);
+    let poll_device = device.clone();
+    let status = Arc::new(AtomicBool::new(true));
+    let poll_status = status.clone();
+    let poll_task = tokio::spawn(async move {
+        while poll_status.load(Ordering::Relaxed) {
+            poll_device.poll(Maintain::Poll);
+            task::yield_now().await;
+        }
+    });
+
+    info!("Creating generator...");
+    let gen = GpuFractalGenerator::new(opts, device, queue).await.unwrap();
+    // let gen = CpuFractalGenerator::new(opts, 10).unwrap();
 
     info!("Opening output file...");
 
@@ -108,6 +145,11 @@ async fn main() {
     })
     .await
     .unwrap();
+
+    info!("Shutting down...");
+
+    status.store(false, Ordering::Relaxed);
+    poll_task.await.unwrap();
 
     info!("Done.");
 }

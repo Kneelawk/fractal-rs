@@ -20,7 +20,7 @@ pub struct CpuFractalGenerator {
 }
 
 impl CpuFractalGenerator {
-    pub fn new(opts: FractalOpts, thread_count: usize) -> CpuGenResult<CpuFractalGenerator> {
+    pub fn new(opts: FractalOpts, thread_count: usize) -> Result<CpuFractalGenerator, CpuGenError> {
         Ok(CpuFractalGenerator {
             opts,
             thread_pool: Arc::new(ThreadPoolBuilder::new().num_threads(thread_count).build()?),
@@ -122,12 +122,8 @@ impl FractalGeneratorInstance for CpuFractalGeneratorInstance {
     }
 }
 
-error_chain! {
-    types {
-        CpuGenError, CpuGenErrorKind, CpuGenResultExt, CpuGenResult;
-    }
-
-    foreign_links {
-        ThreadPoolBuild(rayon::ThreadPoolBuildError);
-    }
+#[derive(Error, Debug)]
+pub enum CpuGenError {
+    #[error("Error building thread pool")]
+    ThreadPoolBuildError(#[from] rayon::ThreadPoolBuildError),
 }
