@@ -8,9 +8,16 @@ struct View {
     plane_start: vec2<f32>;
 };
 
+struct FractalOpts {
+    c: vec2<f32>;
+    iterations: u32;
+    mandelbrot: bool;
+};
+
 [[block]]
 struct Uniforms {
     view: View;
+    opts: FractalOpts;
 };
 
 var indexable: array<vec2<f32>,6u> = array<vec2<f32>,6u>(
@@ -22,8 +29,6 @@ var indexable: array<vec2<f32>,6u> = array<vec2<f32>,6u>(
 var<uniform> uniforms: Uniforms;
 
 let offset: vec2<f32> = vec2<f32>(-0.5, -0.5);
-let iterations: i32 = 200;
-let c: vec2<f32> = vec2<f32>(0.16611, 0.59419);
 
 [[stage(vertex)]]
 fn vert_main([[builtin(vertex_index)]] vert_index: u32) -> FragmentData {
@@ -95,10 +100,21 @@ fn frag_main(data: FragmentData) -> [[location(0)]] vec4<f32> {
         return vec4<f32>(0.0, 0.0, 0.0, 1.0);
     }
 
-    var z = uniforms.view.plane_start + (data.position.xy + offset) * uniforms.view.image_scale;
+    let loc = uniforms.view.plane_start + (data.position.xy + offset) * uniforms.view.image_scale;
 
-    var n: i32 = 0;
-    for (; n < iterations; n = n + 1) {
+    var z: vec2<f32>;
+    var c: vec2<f32>;
+
+    if (uniforms.opts.mandelbrot) {
+        z = vec2<f32>(0.0, 0.0);
+        c = loc;
+    } else {
+        z = loc;
+        c = uniforms.opts.c;
+    }
+
+    var n: u32 = 0u32;
+    for (; n < uniforms.opts.iterations; n = n + 1u32) {
         if (length_sqr(z) > 16.0) {
             break;
         }
@@ -106,7 +122,7 @@ fn frag_main(data: FragmentData) -> [[location(0)]] vec4<f32> {
         z = f(z, c);
     }
 
-    if (n >= iterations) {
+    if (n >= uniforms.opts.iterations) {
         return vec4<f32>(0.0, 0.0, 0.0, 1.0);
     } else {
         let v = f32(n);

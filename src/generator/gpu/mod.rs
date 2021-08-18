@@ -1,9 +1,8 @@
 use crate::generator::{
     gpu::{
         buffer::{BufferWrapper, Encodable},
-        gpu_view::GPUView,
         shader::load_shaders,
-        uniforms::Uniforms,
+        uniforms::{GpuFractalOpts, GpuView, Uniforms},
         util::{create_texture, create_texture_buffer},
     },
     util::{copy_region, smallest_multiple_containing},
@@ -35,7 +34,6 @@ use wgpu::{
 };
 
 mod buffer;
-mod gpu_view;
 mod shader;
 mod uniforms;
 mod util;
@@ -164,7 +162,7 @@ struct GpuFractalGeneratorInstance {
 
 impl GpuFractalGeneratorInstance {
     fn start(
-        _opts: FractalOpts,
+        opts: FractalOpts,
         device: Arc<Device>,
         queue: Arc<Queue>,
         uniform_bind_group_layout: &BindGroupLayout,
@@ -230,7 +228,8 @@ impl GpuFractalGeneratorInstance {
                     .replace_all(
                         &device,
                         &[Uniforms {
-                            view: GPUView::from_view(view),
+                            view: GpuView::from_view(view),
+                            opts: GpuFractalOpts::from_fractal_opts(opts),
                         }],
                     )
                     .await
