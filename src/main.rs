@@ -1,9 +1,9 @@
 #[macro_use]
-extern crate error_chain;
-#[macro_use]
 extern crate log;
 #[macro_use]
 extern crate serde;
+#[macro_use]
+extern crate thiserror;
 
 use crate::generator::{
     args::Smoothing, cpu::CpuFractalGenerator, gpu::GpuFractalGenerator, row_stitcher::RowStitcher,
@@ -20,9 +20,8 @@ use std::{
         Arc,
     },
 };
-use tokio::sync::mpsc;
+use tokio::{sync::mpsc, task};
 use wgpu::{BackendBit, Instance, Maintain, RequestAdapterOptions};
-use tokio::task;
 
 mod generator;
 mod logging;
@@ -44,7 +43,7 @@ async fn main() {
     let opts = FractalOpts {
         mandelbrot: false,
         iterations: 200,
-        smoothing: Smoothing::None,
+        smoothing: Smoothing::from_logarithmic_distance(4.0, 2.0),
         c: Complex32 {
             re: 0.16611,
             im: 0.59419,
@@ -85,7 +84,7 @@ async fn main() {
     });
 
     info!("Creating generator...");
-    let gen = GpuFractalGenerator::new(opts, device, queue).await;
+    let gen = GpuFractalGenerator::new(opts, device, queue).await.unwrap();
     // let gen = CpuFractalGenerator::new(opts, 10).unwrap();
 
     info!("Opening output file...");

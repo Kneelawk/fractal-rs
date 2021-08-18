@@ -51,9 +51,9 @@ impl GpuFractalGenerator {
         opts: FractalOpts,
         device: Arc<Device>,
         queue: Arc<Queue>,
-    ) -> GpuFractalGenerator {
+    ) -> anyhow::Result<GpuFractalGenerator> {
         info!("Creating shader module...");
-        let shader = load_shaders(opts).await;
+        let shader = load_shaders(opts).await?;
         let module = device.create_shader_module(&ShaderModuleDescriptor {
             label: Some("Vertex Shader"),
             source: shader,
@@ -117,13 +117,13 @@ impl GpuFractalGenerator {
             },
         }));
 
-        GpuFractalGenerator {
+        Ok(GpuFractalGenerator {
             opts,
             device,
             queue,
             uniform_bind_group_layout,
             render_pipeline,
-        }
+        })
     }
 }
 
