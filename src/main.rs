@@ -6,14 +6,23 @@ extern crate log;
 extern crate serde;
 
 use crate::generator::{
-    args::Smoothing, cpu::CpuFractalGenerator, row_stitcher::RowStitcher, view::View,
-    FractalGenerator, FractalOpts,
+    args::Smoothing, cpu::CpuFractalGenerator, gpu::GpuFractalGenerator, row_stitcher::RowStitcher,
+    view::View, FractalGenerator, FractalOpts,
 };
 use futures::task::Poll;
 use mtpng::{encoder, ColorType, Header};
 use num_complex::Complex32;
-use std::{fs::File, io::BufWriter};
+use std::{
+    fs::File,
+    io::BufWriter,
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc,
+    },
+};
 use tokio::sync::mpsc;
+use wgpu::{BackendBit, Instance, Maintain, RequestAdapterOptions};
+use tokio::task;
 
 mod generator;
 mod logging;
@@ -46,9 +55,38 @@ async fn main() {
         .subdivide_rectangles(CHUNK_WIDTH, CHUNK_HEIGHT)
         .collect();
 
-    info!("Creating generator...");
+    info!("Creating Instance...");
+    let instance = Instance::new(BackendBit::PRIMARY);
+    let adapter = instance
+        .request_adapter(&RequestAdapterOptions {
+            power_preference: Default::default(),
+            compatible_surface: None,
+        })
+        .await
+        .unwrap();
 
-    let gen = CpuFractalGenerator::new(opts, 10).unwrap();
+    info!("Requesting device...");
+    let (device, queue) = adapter
+        .request_device(&Default::default(), None)
+        .await
+        .unwrap();
+    let queue = Arc::new(queue);
+
+    info!("Creating device poll task...");
+    let device = Arc::new(device);
+    let poll_device = device.clone();
+    let status = Arc::new(AtomicBool::new(true));
+    let poll_status = status.clone();
+    let poll_task = tokio::spawn(async move {
+        while poll_status.load(Ordering::Relaxed) {
+            poll_device.poll(Maintain::Poll);
+            task::yield_now().await;
+        }
+    });
+
+    info!("Creating generator...");
+    let gen = GpuFractalGenerator::new(opts, device, queue).await;
+    // let gen = CpuFractalGenerator::new(opts, 10).unwrap();
 
     info!("Opening output file...");
 
@@ -108,6 +146,11 @@ async fn main() {
     })
     .await
     .unwrap();
+
+    info!("Shutting down...");
+
+    status.store(false, Ordering::Relaxed);
+    poll_task.await.unwrap();
 
     info!("Done.");
 }
