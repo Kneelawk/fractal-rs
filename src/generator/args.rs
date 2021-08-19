@@ -69,6 +69,8 @@ impl From<ParseFloatError> for ParseSmoothingError {
 }
 
 /// Represents an image multisampling function.
+#[allow(dead_code)]
+#[derive(Copy, Clone, Debug)]
 pub enum Multisampling {
     None,
     Points { offset: f32 },

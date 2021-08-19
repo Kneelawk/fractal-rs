@@ -7,15 +7,12 @@ struct FragmentData {
     [[builtin(position)]] position: vec4<f32>;
 };
 
-struct View {
+[[block]]
+struct Uniforms {
     image_size: vec2<f32>;
     image_scale: vec2<f32>;
     plane_start: vec2<f32>;
-};
-
-[[block]]
-struct Uniforms {
-    view: View;
+    sample_offset: vec2<f32>;
 };
 
 let offset: vec2<f32> = vec2<f32>(-0.5, -0.5);
@@ -169,11 +166,11 @@ fn t_smooth(iterations: u32, z_curr: vec2<f32>, z_prev: vec2<f32>) -> f32 {
 [[stage(fragment)]]
 fn frag_main(data: FragmentData) -> [[location(0)]] vec4<f32> {
     // Only generate fractals for the requested area.
-    if (data.position.x >= uniforms.view.image_size.x || data.position.y >= uniforms.view.image_size.y) {
+    if (data.position.x >= uniforms.image_size.x || data.position.y >= uniforms.image_size.y) {
         return vec4<f32>(0.0, 0.0, 0.0, 1.0);
     }
 
-    let loc = uniforms.view.plane_start + (data.position.xy + offset) * uniforms.view.image_scale;
+    let loc = uniforms.plane_start + (data.position.xy + offset + uniforms.sample_offset) * uniforms.image_scale;
 
     var z: vec2<f32>;
     var c: vec2<f32>;

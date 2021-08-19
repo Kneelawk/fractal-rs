@@ -9,9 +9,14 @@ use std::borrow::Cow;
 use tokio::{fs::File, io::AsyncWriteExt};
 use wgpu::ShaderSource;
 
+const MULTISAMPLE_SOURCE: &str = include_str!("multisample.wgsl");
 const TEMPLATE_SOURCE: &str = include_str!("template.wgsl");
 
-pub async fn load_shaders(opts: FractalOpts) -> anyhow::Result<ShaderSource<'static>> {
+pub fn load_multisample() -> ShaderSource<'static> {
+    ShaderSource::Wgsl(Cow::Borrowed(MULTISAMPLE_SOURCE))
+}
+
+pub async fn load_template(opts: FractalOpts) -> anyhow::Result<ShaderSource<'static>> {
     info!("Loading utility functions...");
     let mut module = front::wgsl::parse_str(TEMPLATE_SOURCE).unwrap();
 
