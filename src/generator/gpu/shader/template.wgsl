@@ -1,7 +1,7 @@
-let offset: vec2<f32> = vec2<f32>(-0.5, -0.5);
-
-// This constant is designed to have its value replaced.
-let radius_squared: f32 = 16.0;
+// template.wgsl - This file describes the general process for generating
+// fractals using WGPU. This file is a template. Key constants and functions are
+// replaced when this file is loaded, allowing efficient manipulation of the
+// fractal generator.
 
 struct FragmentData {
     [[builtin(position)]] position: vec4<f32>;
@@ -13,22 +13,32 @@ struct View {
     plane_start: vec2<f32>;
 };
 
-struct FractalOpts {
-    c: vec2<f32>;
-    iterations: u32;
-    mandelbrot: bool;
-};
-
 [[block]]
 struct Uniforms {
     view: View;
-    opts: FractalOpts;
 };
+
+let offset: vec2<f32> = vec2<f32>(-0.5, -0.5);
 
 var indexable: array<vec2<f32>,6u> = array<vec2<f32>,6u>(
     vec2<f32>(1.0, 1.0), vec2<f32>(-1.0, -1.0), vec2<f32>(1.0, -1.0),
     vec2<f32>(1.0, 1.0), vec2<f32>(-1.0, 1.0), vec2<f32>(-1.0, -1.0)
 );
+
+// This constant is designed to have its value replaced.
+let t_c_real: f32 = 0.0;
+
+// This constant is designed to have its value replaced.
+let t_c_imag: f32 = 0.0;
+
+// This constant is designed to have its value replaced.
+let t_iterations: u32 = 0u32;
+
+// This constant is designed to have its value replaced.
+let t_mandelbrot: bool = false;
+
+// This constant is designed to have its value replaced.
+let t_radius_squared: f32 = 0.0;
 
 [[group(0), binding(0)]]
 var<uniform> uniforms: Uniforms;
@@ -64,11 +74,11 @@ fn linear_intersection(iterations: u32, z_curr: vec2<f32>, z_prev: vec2<f32>) ->
         return iter;
     }
 
-    if (length_sqr(z_prev) > radius_squared) {
+    if (length_sqr(z_prev) > t_radius_squared) {
         return iter;
     }
 
-    if (length_sqr(z_curr) < radius_squared) {
+    if (length_sqr(z_curr) < t_radius_squared) {
         return iter;
     }
 
@@ -87,9 +97,9 @@ fn linear_intersection(iterations: u32, z_curr: vec2<f32>, z_prev: vec2<f32>) ->
 
         var f: f32;
         if (bx > ax) {
-            f = (m * p + sqrt(radius_squared * m_sqr_1 - p * p)) / m_sqr_1;
+            f = (m * p + sqrt(t_radius_squared * m_sqr_1 - p * p)) / m_sqr_1;
         } else {
-            f = (m * p - sqrt(radius_squared * m_sqr_1 - p * p)) / m_sqr_1;
+            f = (m * p - sqrt(t_radius_squared * m_sqr_1 - p * p)) / m_sqr_1;
         }
 
         frac = (bx - f) / dx;
@@ -100,9 +110,9 @@ fn linear_intersection(iterations: u32, z_curr: vec2<f32>, z_prev: vec2<f32>) ->
 
         var f: f32;
         if (by > ay) {
-            f = (m * p + sqrt(radius_squared * m_sqr_1 - p * p)) / m_sqr_1;
+            f = (m * p + sqrt(t_radius_squared * m_sqr_1 - p * p)) / m_sqr_1;
         } else {
-            f = (m * p - sqrt(radius_squared * m_sqr_1 - p * p)) / m_sqr_1;
+            f = (m * p - sqrt(t_radius_squared * m_sqr_1 - p * p)) / m_sqr_1;
         }
 
         frac = (by - f) / dy;
@@ -147,12 +157,12 @@ fn fromHSB(hue: f32, saturation: f32, brightness: f32, alpha: f32) -> vec4<f32> 
 }
 
 // This function is designed to have its contents replaced.
-fn f(z: vec2<f32>, c: vec2<f32>) -> vec2<f32> {
+fn t_f(z: vec2<f32>, c: vec2<f32>) -> vec2<f32> {
     return complex_add(complex_sqr(z), c);
 }
 
 // This function is designed to have its contents replaced.
-fn smooth(iterations: u32, z_curr: vec2<f32>, z_prev: vec2<f32>) -> f32 {
+fn t_smooth(iterations: u32, z_curr: vec2<f32>, z_prev: vec2<f32>) -> f32 {
     return f32(iterations);
 }
 
@@ -168,29 +178,29 @@ fn frag_main(data: FragmentData) -> [[location(0)]] vec4<f32> {
     var z: vec2<f32>;
     var c: vec2<f32>;
 
-    if (uniforms.opts.mandelbrot) {
+    if (t_mandelbrot) {
         z = vec2<f32>(0.0, 0.0);
         c = loc;
     } else {
         z = loc;
-        c = uniforms.opts.c;
+        c = vec2<f32>(t_c_real, t_c_imag);
     }
 
     var z_prev: vec2<f32> = z;
     var n: u32 = 0u32;
-    for (; n < uniforms.opts.iterations; n = n + 1u32) {
-        if (length_sqr(z) > radius_squared) {
+    for (; n < t_iterations; n = n + 1u32) {
+        if (length_sqr(z) > t_radius_squared) {
             break;
         }
 
         z_prev = z;
-        z = f(z, c);
+        z = t_f(z, c);
     }
 
-    if (n >= uniforms.opts.iterations) {
+    if (n >= t_iterations) {
         return vec4<f32>(0.0, 0.0, 0.0, 1.0);
     } else {
-        let v = smooth(n, z, z_prev);
+        let v = t_smooth(n, z, z_prev);
         return fromHSB((v * 3.3 / 256.0) % 1.0, 1.0, (v / 16.0) % 1.0, 1.0);
     }
 }

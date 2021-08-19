@@ -8,8 +8,12 @@ use naga::{
     MathFunction, Module, ScalarKind, ScalarValue, Span, Statement,
 };
 
-const RADIUS_SQUARED_NAME: &str = "radius_squared";
-const SMOOTH_NAME: &str = "smooth";
+const C_REAL_NAME: &str = "t_c_real";
+const C_IMAG_NAME: &str = "t_c_imag";
+const ITERATIONS_NAME: &str = "t_iterations";
+const MANDELBROT_NAME: &str = "t_mandelbrot";
+const RADIUS_SQUARED_NAME: &str = "t_radius_squared";
+const SMOOTH_NAME: &str = "t_smooth";
 const LINEAR_INTERSECTION_NAME: &str = "linear_intersection";
 
 /// Structs implementing this trait can be used when generating fractals on the
@@ -20,8 +24,57 @@ pub trait GpuFractalOpts {
 
 impl GpuFractalOpts for FractalOpts {
     fn install(&self, module: &mut Module) -> Result<(), ShaderError> {
+        self.install_c(module)?;
+        self.install_iterations(module)?;
+        self.install_mandelbrot(module)?;
         self.smoothing.install(module)?;
         Ok(())
+    }
+}
+
+impl FractalOpts {
+    fn install_c(&self, module: &mut Module) -> Result<(), ShaderError> {
+        replace_constant(
+            &mut module.constants,
+            C_REAL_NAME,
+            ConstantInner::Scalar {
+                width: 4,
+                value: ScalarValue::Float(self.c.re as f64),
+            },
+        )?;
+
+        replace_constant(
+            &mut module.constants,
+            C_IMAG_NAME,
+            ConstantInner::Scalar {
+                width: 4,
+                value: ScalarValue::Float(self.c.im as f64),
+            },
+        )?;
+
+        Ok(())
+    }
+
+    fn install_iterations(&self, module: &mut Module) -> Result<(), ShaderError> {
+        replace_constant(
+            &mut module.constants,
+            ITERATIONS_NAME,
+            ConstantInner::Scalar {
+                width: 4,
+                value: ScalarValue::Uint(self.iterations as u64),
+            },
+        )
+    }
+
+    fn install_mandelbrot(&self, module: &mut Module) -> Result<(), ShaderError> {
+        replace_constant(
+            &mut module.constants,
+            MANDELBROT_NAME,
+            ConstantInner::Scalar {
+                width: 1,
+                value: ScalarValue::Bool(self.mandelbrot),
+            },
+        )
     }
 }
 
@@ -41,20 +94,14 @@ impl GpuSmoothing for Smoothing {
 
 impl Smoothing {
     fn install_radius_squared(&self, module: &mut Module) -> Result<(), ShaderError> {
-        let handle = module
-            .constants
-            .fetch_if(|c| match c.name {
-                None => false,
-                Some(ref name) => name == RADIUS_SQUARED_NAME,
-            })
-            .ok_or_else(|| ShaderError::MissingTemplateConstant(RADIUS_SQUARED_NAME.to_string()))?;
-
-        let constant = module.constants.get_mut(handle);
-
-        constant.inner = ConstantInner::Scalar {
-            width: 4,
-            value: ScalarValue::Float(self.radius_squared() as f64),
-        };
+        replace_constant(
+            &mut module.constants,
+            RADIUS_SQUARED_NAME,
+            ConstantInner::Scalar {
+                width: 4,
+                value: ScalarValue::Float(self.radius_squared() as f64),
+            },
+        )?;
 
         Ok(())
     }
@@ -224,13 +271,13 @@ impl Smoothing {
 }
 
 fn find_function_handle(module: &Module, name: &str) -> Result<Handle<Function>, ShaderError> {
-    Ok(module
+    module
         .functions
         .fetch_if(|f| match f.name {
             None => false,
             Some(ref fname) => fname == name,
         })
-        .ok_or_else(|| ShaderError::MissingTemplateFunction(name.to_string()))?)
+        .ok_or_else(|| ShaderError::MissingTemplateFunction(name.to_string()))
 }
 
 fn get_float_constant(constants: &mut Arena<Constant>, value: f32) -> Handle<Constant> {
@@ -245,4 +292,23 @@ fn get_float_constant(constants: &mut Arena<Constant>, value: f32) -> Handle<Con
         },
         Span::Unknown,
     )
+}
+
+fn replace_constant(
+    constants: &mut Arena<Constant>,
+    name: &str,
+    inner: ConstantInner,
+) -> Result<(), ShaderError> {
+    let handle = constants
+        .fetch_if(|c| match c.name {
+            None => false,
+            Some(ref const_name) => const_name == name,
+        })
+        .ok_or_else(|| ShaderError::MissingTemplateConstant(name.to_string()))?;
+
+    let constant = constants.get_mut(handle);
+
+    constant.inner = inner;
+
+    Ok(())
 }

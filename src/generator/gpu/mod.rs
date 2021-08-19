@@ -2,7 +2,7 @@ use crate::generator::{
     gpu::{
         buffer::{BufferWrapper, Encodable},
         shader::load_shaders,
-        uniforms::{GpuFractalOpts, GpuView, Uniforms},
+        uniforms::{GpuView, Uniforms},
         util::{create_texture, create_texture_buffer},
     },
     util::{copy_region, smallest_multiple_containing},
@@ -162,7 +162,7 @@ struct GpuFractalGeneratorInstance {
 
 impl GpuFractalGeneratorInstance {
     fn start(
-        opts: FractalOpts,
+        _opts: FractalOpts,
         device: Arc<Device>,
         queue: Arc<Queue>,
         uniform_bind_group_layout: &BindGroupLayout,
@@ -229,7 +229,6 @@ impl GpuFractalGeneratorInstance {
                         &device,
                         &[Uniforms {
                             view: GpuView::from_view(view),
-                            opts: GpuFractalOpts::from_fractal_opts(opts),
                         }],
                     )
                     .await
