@@ -6,8 +6,12 @@ extern crate serde;
 extern crate thiserror;
 
 use crate::generator::{
-    args::Smoothing, cpu::CpuFractalGenerator, gpu::GpuFractalGenerator, row_stitcher::RowStitcher,
-    view::View, FractalGenerator, FractalOpts,
+    args::{Multisampling, Smoothing},
+    cpu::CpuFractalGenerator,
+    gpu::GpuFractalGenerator,
+    row_stitcher::RowStitcher,
+    view::View,
+    FractalGenerator, FractalOpts,
 };
 use futures::task::Poll;
 use mtpng::{encoder, ColorType, Header};
@@ -44,6 +48,7 @@ async fn main() {
         mandelbrot: false,
         iterations: 200,
         smoothing: Smoothing::from_logarithmic_distance(4.0, 2.0),
+        multisampling: Multisampling::Points { offset: 0.25 },
         c: Complex32 {
             re: 0.16611,
             im: 0.59419,

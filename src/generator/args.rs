@@ -67,3 +67,9 @@ impl From<ParseFloatError> for ParseSmoothingError {
         ParseSmoothingError::ParseFloatError(e)
     }
 }
+
+/// Represents an image multisampling function.
+pub enum Multisampling {
+    None,
+    Points { offset: f32 },
+}
