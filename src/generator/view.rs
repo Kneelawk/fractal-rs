@@ -101,6 +101,15 @@ impl View {
         )
     }
 
+    /// Gets the coordinates on the complex plane for a given local subpixel
+    /// pixel coordinate.
+    pub fn get_local_subpixel_plane_coordinates(&self, (x, y): (f32, f32)) -> Complex<f32> {
+        Complex::<f32>::new(
+            x * self.image_scale_x + self.plane_start_x,
+            y * self.image_scale_y + self.plane_start_y,
+        )
+    }
+
     /// Gets the local pixel coordinates for a given coordinate on the complex
     /// plane.
     pub fn get_local_pixel_coordinates(

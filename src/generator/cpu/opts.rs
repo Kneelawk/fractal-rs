@@ -1,6 +1,11 @@
-use crate::generator::{args::Smoothing, color::RGBAColor, view::View, FractalOpts};
+use crate::generator::{
+    args::{Smoothing, DEFAULT_RADIUS_SQUARED},
+    color::FromHSBA,
+    view::View,
+    FractalOpts,
+};
+use cgmath::Vector4;
 use num_complex::Complex;
-use crate::generator::args::DEFAULT_RADIUS_SQUARED;
 
 /// Structs implementing this trait can be used to generate pixel colors on a
 /// CPU.
@@ -10,15 +15,15 @@ pub trait CpuFractalOpts {
     fn gen_value(&self, loc: Complex<f32>) -> f32;
 
     /// Generates a color from a iteration count value.
-    fn gen_color(&self, value: f32) -> RGBAColor;
+    fn gen_color(&self, value: f32) -> Vector4<f32>;
 
     /// Generates an iteration count value for a given pixel location and view.
-    fn gen_pixel_value(&self, view: View, x: usize, y: usize) -> f32 {
-        self.gen_value(view.get_local_plane_coordinates((x, y)))
+    fn gen_pixel_value(&self, view: View, x: f32, y: f32) -> f32 {
+        self.gen_value(view.get_local_subpixel_plane_coordinates((x, y)))
     }
 
     /// Generates a pixel color for a given pixel location and view.
-    fn gen_pixel(&self, view: View, x: usize, y: usize) -> RGBAColor {
+    fn gen_pixel(&self, view: View, x: f32, y: f32) -> Vector4<f32> {
         self.gen_color(self.gen_pixel_value(view, x, y))
     }
 }
@@ -55,16 +60,21 @@ impl CpuFractalOpts for FractalOpts {
         }
     }
 
-    fn gen_color(&self, value: f32) -> RGBAColor {
+    fn gen_color(&self, value: f32) -> Vector4<f32> {
         if value < self.iterations as f32 {
-            RGBAColor::from_hsb(
+            Vector4::<f32>::from_hsba(
                 value * 3.3f32 / 256f32 % 1f32,
                 1f32,
                 value * 16f32 / 256f32 % 1f32,
                 1f32,
             )
         } else {
-            RGBAColor::new(0, 0, 0, 255)
+            Vector4::<f32> {
+                x: 0.0,
+                y: 0.0,
+                z: 0.0,
+                w: 1.0,
+            }
         }
     }
 }
