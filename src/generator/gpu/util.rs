@@ -1,7 +1,7 @@
 use std::mem::size_of;
 use wgpu::{
-    Buffer, BufferAddress, BufferDescriptor, BufferUsage, Device, Extent3d, Texture,
-    TextureDescriptor, TextureDimension, TextureFormat, TextureUsage, TextureView,
+    Buffer, BufferAddress, BufferDescriptor, BufferUsages, Device, Extent3d, Texture,
+    TextureDescriptor, TextureDimension, TextureFormat, TextureUsages, TextureView,
 };
 
 pub fn create_copy_src_texture(device: &Device, width: u32, height: u32) -> (Texture, TextureView) {
@@ -9,7 +9,7 @@ pub fn create_copy_src_texture(device: &Device, width: u32, height: u32) -> (Tex
         device,
         width,
         height,
-        TextureUsage::COPY_SRC | TextureUsage::RENDER_ATTACHMENT,
+        TextureUsages::COPY_SRC | TextureUsages::RENDER_ATTACHMENT,
     )
 }
 
@@ -17,7 +17,7 @@ pub fn create_texture(
     device: &Device,
     width: u32,
     height: u32,
-    usage: TextureUsage,
+    usage: TextureUsages,
 ) -> (Texture, TextureView) {
     let texture = device.create_texture(&TextureDescriptor {
         label: Some("Framebuffer"),
@@ -42,7 +42,7 @@ pub fn create_texture_buffer(device: &Device, width: u32, height: u32) -> Buffer
     let texture_buffer = device.create_buffer(&BufferDescriptor {
         label: Some("Framebuffer Buffer"),
         size: size as BufferAddress,
-        usage: BufferUsage::COPY_DST | BufferUsage::MAP_READ,
+        usage: BufferUsages::COPY_DST | BufferUsages::MAP_READ,
         mapped_at_creation: false,
     });
 

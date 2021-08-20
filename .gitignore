@@ -1,7 +1,10 @@
 /.idea/
 /logs/
 /target/
+/trace/
 
 /*.log4rs.yaml
 /*.png
 /debug.*
+/multisample.debug.*
+/trace*

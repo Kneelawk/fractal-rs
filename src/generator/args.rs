@@ -73,5 +73,5 @@ impl From<ParseFloatError> for ParseSmoothingError {
 #[derive(Copy, Clone, Debug)]
 pub enum Multisampling {
     None,
-    Points { offset: f32 },
+    FourPoints { offset: f32 },
 }

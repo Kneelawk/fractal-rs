@@ -11,20 +11,14 @@ var indexable: array<vec2<f32>,6u> = array<vec2<f32>,6u>(
     vec2<f32>(1.0, 1.0), vec2<f32>(-1.0, 1.0), vec2<f32>(-1.0, -1.0)
 );
 
+// This will be replaced at shader load time.
+let t_sample_count: u32 = 0u32;
+
 [[group(0), binding(0)]]
-var s: sampler;
+var u_sampler: sampler;
 
 [[group(0), binding(1)]]
-var t1: texture_2d<f32>;
-
-[[group(0), binding(2)]]
-var t2: texture_2d<f32>;
-
-[[group(0), binding(3)]]
-var t3: texture_2d<f32>;
-
-[[group(0), binding(4)]]
-var t4: texture_2d<f32>;
+var u_textures: texture_2d_array<f32>;
 
 [[stage(vertex)]]
 fn vert_main([[builtin(vertex_index)]] vert_index: u32) -> FragmentData {
@@ -38,11 +32,11 @@ fn vert_main([[builtin(vertex_index)]] vert_index: u32) -> FragmentData {
 
 [[stage(fragment)]]
 fn frag_main(data: FragmentData) -> [[location(0)]] vec4<f32> {
-    let color1 = textureSample(t1, s, data.texture_position);
-    let color2 = textureSample(t2, s, data.texture_position);
-    let color3 = textureSample(t3, s, data.texture_position);
-    let color4 = textureSample(t4, s, data.texture_position);
+    var color = vec4<f32>(0.0, 0.0, 0.0, 0.0);
 
-    let color = (color1 + color2 + color3 + color4) / 4.0;
+    for (var i = 0u32; i < t_sample_count; i = i + 1u32) {
+        color = color + textureSample(u_textures, u_sampler, data.texture_position, i32(i)) / f32(t_sample_count);
+    }
+
     return color;
 }

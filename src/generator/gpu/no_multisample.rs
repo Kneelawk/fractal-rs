@@ -22,7 +22,7 @@ use std::{
 use tokio::sync::mpsc::Sender;
 use wgpu::{
     BindGroupDescriptor, BindGroupEntry, BindGroupLayout, BindingResource, BufferAddress,
-    BufferBinding, BufferUsage, Color, CommandEncoderDescriptor, Device, Extent3d, ImageCopyBuffer,
+    BufferBinding, BufferUsages, Color, CommandEncoderDescriptor, Device, Extent3d, ImageCopyBuffer,
     ImageCopyTexture, ImageDataLayout, LoadOp, MapMode, Operations, Origin3d, Queue,
     RenderPassColorAttachment, RenderPassDescriptor, RenderPipeline,
 };
@@ -40,7 +40,7 @@ pub fn generate(
     let mut uniforms_buffer = BufferWrapper::<Uniforms>::new(
         &device,
         Uniforms::size() as BufferAddress,
-        BufferUsage::UNIFORM,
+        BufferUsages::UNIFORM,
     );
 
     let uniform_bind_group = device.create_bind_group(&BindGroupDescriptor {
@@ -128,6 +128,7 @@ pub fn generate(
                         texture,
                         mip_level: 0,
                         origin: Origin3d::ZERO,
+                        aspect: Default::default()
                     },
                     ImageCopyBuffer {
                         buffer,

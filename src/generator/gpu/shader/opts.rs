@@ -8,6 +8,7 @@ use naga::{
     MathFunction, Module, ScalarKind, ScalarValue, Span, Statement,
 };
 
+const SAMPLE_COUNT_NAME: &str = "t_sample_count";
 const C_REAL_NAME: &str = "t_c_real";
 const C_IMAG_NAME: &str = "t_c_imag";
 const ITERATIONS_NAME: &str = "t_iterations";
@@ -15,6 +16,17 @@ const MANDELBROT_NAME: &str = "t_mandelbrot";
 const RADIUS_SQUARED_NAME: &str = "t_radius_squared";
 const SMOOTH_NAME: &str = "t_smooth";
 const LINEAR_INTERSECTION_NAME: &str = "linear_intersection";
+
+pub fn install_sample_count(module: &mut Module, sample_count: u32) -> Result<(), ShaderError> {
+    replace_constant(
+        &mut module.constants,
+        SAMPLE_COUNT_NAME,
+        ConstantInner::Scalar {
+            width: 4,
+            value: ScalarValue::Uint(sample_count as u64),
+        },
+    )
+}
 
 /// Structs implementing this trait can be used when generating fractals on the
 /// GPU.

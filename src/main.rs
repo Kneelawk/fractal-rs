@@ -25,7 +25,8 @@ use std::{
     },
 };
 use tokio::{sync::mpsc, task};
-use wgpu::{BackendBit, Instance, Maintain, RequestAdapterOptions};
+use wgpu::{DeviceDescriptor, Features, Instance, Maintain, RequestAdapterOptions, Backends};
+use std::path::Path;
 
 mod generator;
 mod logging;
@@ -48,7 +49,7 @@ async fn main() {
         mandelbrot: false,
         iterations: 200,
         smoothing: Smoothing::from_logarithmic_distance(4.0, 2.0),
-        multisampling: Multisampling::Points { offset: 0.25 },
+        multisampling: Multisampling::None,
         c: Complex32 {
             re: 0.16611,
             im: 0.59419,
@@ -60,7 +61,7 @@ async fn main() {
         .collect();
 
     info!("Creating Instance...");
-    let instance = Instance::new(BackendBit::PRIMARY);
+    let instance = Instance::new(Backends::PRIMARY);
     let adapter = instance
         .request_adapter(&RequestAdapterOptions {
             power_preference: Default::default(),
@@ -71,7 +72,14 @@ async fn main() {
 
     info!("Requesting device...");
     let (device, queue) = adapter
-        .request_device(&Default::default(), None)
+        .request_device(
+            &DeviceDescriptor {
+                label: Some("Fractal Generator Device"),
+                features: Features::TEXTURE_BINDING_ARRAY,
+                limits: Default::default(),
+            },
+            Some(Path::new("trace")),
+        )
         .await
         .unwrap();
     let queue = Arc::new(queue);

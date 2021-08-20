@@ -1,6 +1,7 @@
 use crate::generator::{
     gpu::{
         buffer::{BufferWrapper, Encodable},
+        shader::load_multisample,
         uniforms::Uniforms,
         util::{create_copy_src_texture, create_texture, create_texture_buffer},
     },
@@ -19,12 +20,103 @@ use std::{
 };
 use tokio::sync::mpsc::Sender;
 use wgpu::{
-    AddressMode, BindGroup, BindGroupDescriptor, BindGroupEntry, BindGroupLayout, BindingResource,
-    Buffer, BufferAddress, BufferBinding, BufferUsage, Color, CommandEncoderDescriptor, Device,
-    Extent3d, FilterMode, ImageCopyBuffer, ImageCopyTexture, ImageDataLayout, LoadOp, MapMode,
-    Operations, Origin3d, Queue, RenderPassColorAttachment, RenderPassDescriptor, RenderPipeline,
-    Sampler, SamplerDescriptor, Texture, TextureUsage, TextureView,
+    AddressMode, BindGroup, BindGroupDescriptor, BindGroupEntry, BindGroupLayout,
+    BindGroupLayoutDescriptor, BindGroupLayoutEntry, BindingResource, BindingType, BlendState,
+    Buffer, BufferAddress, BufferBinding, BufferUsages, Color, ColorTargetState, ColorWrites,
+    CommandEncoderDescriptor, Device, Extent3d, Face, FilterMode, FragmentState, FrontFace,
+    ImageCopyBuffer, ImageCopyTexture, ImageDataLayout, LoadOp, MapMode, MultisampleState,
+    Operations, Origin3d, PipelineLayoutDescriptor, PolygonMode, PrimitiveState, PrimitiveTopology,
+    Queue, RenderPassColorAttachment, RenderPassDescriptor, RenderPipeline,
+    RenderPipelineDescriptor, Sampler, SamplerDescriptor, ShaderModuleDescriptor, ShaderStages,
+    Texture, TextureDescriptor, TextureDimension, TextureFormat, TextureSampleType, TextureUsages,
+    TextureView, TextureViewDescriptor, TextureViewDimension, VertexState,
 };
+
+pub async fn create_layout_and_pipeline(
+    device: &Device,
+    sample_count: u32,
+) -> anyhow::Result<(Option<Arc<BindGroupLayout>>, Option<Arc<RenderPipeline>>)> {
+    info!("Loading multisample shader...");
+    let shader = load_multisample(sample_count).await?;
+    let module = device.create_shader_module(&ShaderModuleDescriptor {
+        label: Some("Multisample Shader Module"),
+        source: shader,
+    });
+
+    info!("Creating multisample bind group layout...");
+    let multisample_bind_group_layout =
+        device.create_bind_group_layout(&BindGroupLayoutDescriptor {
+            label: Some("Multisample Bind Group Layout"),
+            entries: &[
+                BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: ShaderStages::VERTEX_FRAGMENT,
+                    ty: BindingType::Sampler {
+                        filtering: false,
+                        comparison: false,
+                    },
+                    count: None,
+                },
+                BindGroupLayoutEntry {
+                    binding: 1,
+                    visibility: ShaderStages::VERTEX_FRAGMENT,
+                    ty: BindingType::Texture {
+                        sample_type: TextureSampleType::Float { filterable: true },
+                        view_dimension: TextureViewDimension::D2Array,
+                        multisampled: false,
+                    },
+                    count: None,
+                },
+            ],
+        });
+
+    info!("Creating multisample render pipeline...");
+    let multisample_render_pipeline_layout =
+        device.create_pipeline_layout(&PipelineLayoutDescriptor {
+            label: Some("Multisample Render Pipeline Layout"),
+            bind_group_layouts: &[&multisample_bind_group_layout],
+            push_constant_ranges: &[],
+        });
+
+    let multisample_render_pipeline = device.create_render_pipeline(&RenderPipelineDescriptor {
+        label: Some("Multisample Render Pipeline"),
+        layout: Some(&multisample_render_pipeline_layout),
+        vertex: VertexState {
+            module: &module,
+            entry_point: "vert_main",
+            buffers: &[],
+        },
+        fragment: Some(FragmentState {
+            module: &module,
+            entry_point: "frag_main",
+            targets: &[ColorTargetState {
+                format: TextureFormat::Rgba8Unorm,
+                blend: Some(BlendState::REPLACE),
+                write_mask: ColorWrites::ALL,
+            }],
+        }),
+        primitive: PrimitiveState {
+            topology: PrimitiveTopology::TriangleList,
+            strip_index_format: None,
+            front_face: FrontFace::Ccw,
+            cull_mode: Some(Face::Back),
+            clamp_depth: false,
+            polygon_mode: PolygonMode::Fill,
+            conservative: false,
+        },
+        depth_stencil: None,
+        multisample: MultisampleState {
+            count: 1,
+            mask: !0,
+            alpha_to_coverage_enabled: false,
+        },
+    });
+
+    Ok((
+        Some(Arc::new(multisample_bind_group_layout)),
+        Some(Arc::new(multisample_render_pipeline)),
+    ))
+}
 
 pub fn generate(
     device: Arc<Device>,
@@ -36,27 +128,8 @@ pub fn generate(
     sender: Sender<Result<PixelBlock, anyhow::Error>>,
     views: Vec<View>,
     spawn_completed: Arc<AtomicUsize>,
-    offset: f32,
+    offsets: Vec<Vector2<f32>>,
 ) {
-    let offsets = vec![
-        Vector2 {
-            x: -offset,
-            y: -offset,
-        },
-        Vector2 {
-            x: offset,
-            y: -offset,
-        },
-        Vector2 {
-            x: -offset,
-            y: offset,
-        },
-        Vector2 {
-            x: offset,
-            y: offset,
-        },
-    ];
-
     info!("Creating uniform buffers...");
     let uniform_size = Uniforms::size() as BufferAddress;
     let mut uniform_buffers = vec![];
@@ -64,7 +137,7 @@ pub fn generate(
         uniform_buffers.push(BufferWrapper::new(
             &device,
             uniform_size * 4,
-            BufferUsage::UNIFORM,
+            BufferUsages::UNIFORM,
         ));
     }
 
@@ -146,7 +219,7 @@ pub fn generate(
                     let mut render_pass = encoder.begin_render_pass(&RenderPassDescriptor {
                         label: Some(&render_pass_name),
                         color_attachments: &[RenderPassColorAttachment {
-                            view: &texture_buffers.sample_textures[i].1,
+                            view: &texture_buffers.sample_textures[i],
                             resolve_target: None,
                             ops: Operations {
                                 load: LoadOp::Clear(Color {
@@ -200,6 +273,7 @@ pub fn generate(
                         texture: &texture_buffers.final_texture,
                         mip_level: 0,
                         origin: Origin3d::ZERO,
+                        aspect: Default::default(),
                     },
                     ImageCopyBuffer {
                         buffer: &texture_buffers.final_buffer,
@@ -276,7 +350,8 @@ pub fn generate(
 }
 
 struct MultisampleFramebuffer {
-    sample_textures: Vec<(Texture, TextureView)>,
+    _array_texture: Texture,
+    sample_textures: Vec<TextureView>,
     samples_bind_group: BindGroup,
     final_texture: Texture,
     final_texture_view: TextureView,
@@ -299,39 +374,65 @@ impl MultisampleFramebuffer {
             "Creating new {}-sample framebuffer with dimensions ({}x{})...",
             samples, width, height
         );
-        let mut sample_textures = vec![];
-        let mut bind_group_entries = vec![BindGroupEntry {
-            binding: 0,
-            resource: BindingResource::Sampler(sampler),
-        }];
-
-        for _ in 0..samples {
-            let (texture, texture_view) = create_texture(
-                &device,
+        let array_texture = device.create_texture(&TextureDescriptor {
+            label: Some("Multisample Array Texture"),
+            size: Extent3d {
                 width,
                 height,
-                TextureUsage::RENDER_ATTACHMENT | TextureUsage::SAMPLED,
-            );
-            sample_textures.push((texture, texture_view));
-        }
+                depth_or_array_layers: samples,
+            },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: TextureDimension::D2,
+            format: TextureFormat::Rgba8Unorm,
+            usage: TextureUsages::RENDER_ATTACHMENT | TextureUsages::TEXTURE_BINDING,
+        });
+        let array_texture_view = array_texture.create_view(&TextureViewDescriptor {
+            label: Some("Multisample Array Texture View"),
+            format: Some(TextureFormat::Rgba8Unorm),
+            dimension: Some(TextureViewDimension::D2Array),
+            aspect: Default::default(),
+            base_mip_level: 0,
+            mip_level_count: None,
+            base_array_layer: 0,
+            array_layer_count: Some(NonZeroU32::new(samples).unwrap()),
+        });
+
+        let mut sample_textures = vec![];
 
         for i in 0..samples {
-            bind_group_entries.push(BindGroupEntry {
-                binding: i + 1,
-                resource: BindingResource::TextureView(&sample_textures[i as usize].1),
-            });
+            sample_textures.push(array_texture.create_view(&TextureViewDescriptor {
+                label: Some("Sample Texture View"),
+                format: None,
+                dimension: Some(TextureViewDimension::D2),
+                aspect: Default::default(),
+                base_mip_level: 0,
+                mip_level_count: None,
+                base_array_layer: i,
+                array_layer_count: Some(NonZeroU32::new(1).unwrap()),
+            }));
         }
 
         let samples_bind_group = device.create_bind_group(&BindGroupDescriptor {
             label: Some("Multisample Samples Bind Group"),
             layout,
-            entries: &bind_group_entries,
+            entries: &[
+                BindGroupEntry {
+                    binding: 0,
+                    resource: BindingResource::Sampler(sampler),
+                },
+                BindGroupEntry {
+                    binding: 1,
+                    resource: BindingResource::TextureView(&array_texture_view),
+                },
+            ],
         });
 
         let (final_texture, final_texture_view) = create_copy_src_texture(&device, width, height);
         let final_buffer = create_texture_buffer(&device, width, height);
 
         MultisampleFramebuffer {
+            _array_texture: array_texture,
             sample_textures,
             samples_bind_group,
             final_texture,

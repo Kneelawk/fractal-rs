@@ -1,13 +1,10 @@
 use crate::generator::{
     args::Multisampling,
-    gpu::{
-        buffer::Encodable,
-        shader::{load_multisample, load_template},
-        uniforms::Uniforms,
-    },
+    gpu::{buffer::Encodable, shader::load_template, uniforms::Uniforms},
     view::View,
     FractalGenerator, FractalGeneratorInstance, FractalOpts, PixelBlock,
 };
+use cgmath::Vector2;
 use futures::{
     future::{ready, BoxFuture},
     FutureExt,
@@ -22,10 +19,10 @@ use std::{
 use tokio::sync::mpsc::Sender;
 use wgpu::{
     BindGroupLayout, BindGroupLayoutDescriptor, BindGroupLayoutEntry, BindingType, BlendState,
-    BufferBindingType, ColorTargetState, ColorWrite, Device, Face, FragmentState, FrontFace,
+    BufferBindingType, ColorTargetState, ColorWrites, Device, Face, FragmentState, FrontFace,
     MultisampleState, PipelineLayoutDescriptor, PolygonMode, PrimitiveState, PrimitiveTopology,
-    Queue, RenderPipeline, RenderPipelineDescriptor, ShaderFlags, ShaderModuleDescriptor,
-    ShaderStage, TextureFormat, TextureSampleType, TextureViewDimension, VertexState,
+    Queue, RenderPipeline, RenderPipelineDescriptor, ShaderModuleDescriptor, ShaderStages,
+    TextureFormat, VertexState,
 };
 
 mod buffer;
@@ -56,7 +53,6 @@ impl GpuFractalGenerator {
         let module = device.create_shader_module(&ShaderModuleDescriptor {
             label: Some("Vertex Shader"),
             source: shader,
-            flags: ShaderFlags::VALIDATION | ShaderFlags::EXPERIMENTAL_TRANSLATION,
         });
 
         info!("Creating uniform bind group layout...");
@@ -65,7 +61,7 @@ impl GpuFractalGenerator {
                 label: Some("Uniform Bind Group Layout"),
                 entries: &[BindGroupLayoutEntry {
                     binding: 0,
-                    visibility: ShaderStage::VERTEX_FRAGMENT,
+                    visibility: ShaderStages::VERTEX_FRAGMENT,
                     ty: BindingType::Buffer {
                         ty: BufferBindingType::Uniform,
                         has_dynamic_offset: false,
@@ -96,7 +92,7 @@ impl GpuFractalGenerator {
                 targets: &[ColorTargetState {
                     format: TextureFormat::Rgba8Unorm,
                     blend: Some(BlendState::REPLACE),
-                    write_mask: ColorWrite::ALL,
+                    write_mask: ColorWrites::ALL,
                 }],
             }),
             primitive: PrimitiveState {
@@ -119,119 +115,8 @@ impl GpuFractalGenerator {
         let (multisample_bind_group_layout, multisample_render_pipeline) = match opts.multisampling
         {
             Multisampling::None => (None, None),
-            Multisampling::Points { .. } => {
-                info!("Loading multisample shader...");
-                let shader = load_multisample();
-                let module = device.create_shader_module(&ShaderModuleDescriptor {
-                    label: Some("Multisample Shader Module"),
-                    source: shader,
-                    flags: ShaderFlags::VALIDATION | ShaderFlags::EXPERIMENTAL_TRANSLATION,
-                });
-
-                info!("Creating multisample bind group layout...");
-                let multisample_bind_group_layout =
-                    device.create_bind_group_layout(&BindGroupLayoutDescriptor {
-                        label: Some("Multisample Bind Group Layout"),
-                        entries: &[
-                            BindGroupLayoutEntry {
-                                binding: 0,
-                                visibility: ShaderStage::VERTEX_FRAGMENT,
-                                ty: BindingType::Sampler {
-                                    filtering: false,
-                                    comparison: false,
-                                },
-                                count: None,
-                            },
-                            BindGroupLayoutEntry {
-                                binding: 1,
-                                visibility: ShaderStage::VERTEX_FRAGMENT,
-                                ty: BindingType::Texture {
-                                    sample_type: TextureSampleType::Float { filterable: true },
-                                    view_dimension: TextureViewDimension::D2,
-                                    multisampled: false,
-                                },
-                                count: None,
-                            },
-                            BindGroupLayoutEntry {
-                                binding: 2,
-                                visibility: ShaderStage::VERTEX_FRAGMENT,
-                                ty: BindingType::Texture {
-                                    sample_type: TextureSampleType::Float { filterable: true },
-                                    view_dimension: TextureViewDimension::D2,
-                                    multisampled: false,
-                                },
-                                count: None,
-                            },
-                            BindGroupLayoutEntry {
-                                binding: 3,
-                                visibility: ShaderStage::VERTEX_FRAGMENT,
-                                ty: BindingType::Texture {
-                                    sample_type: TextureSampleType::Float { filterable: true },
-                                    view_dimension: TextureViewDimension::D2,
-                                    multisampled: false,
-                                },
-                                count: None,
-                            },
-                            BindGroupLayoutEntry {
-                                binding: 4,
-                                visibility: ShaderStage::VERTEX_FRAGMENT,
-                                ty: BindingType::Texture {
-                                    sample_type: TextureSampleType::Float { filterable: true },
-                                    view_dimension: TextureViewDimension::D2,
-                                    multisampled: false,
-                                },
-                                count: None,
-                            },
-                        ],
-                    });
-
-                info!("Creating multisample render pipeline...");
-                let multisample_render_pipeline_layout =
-                    device.create_pipeline_layout(&PipelineLayoutDescriptor {
-                        label: Some("Multisample Render Pipeline Layout"),
-                        bind_group_layouts: &[&multisample_bind_group_layout],
-                        push_constant_ranges: &[],
-                    });
-
-                let multisample_render_pipeline =
-                    device.create_render_pipeline(&RenderPipelineDescriptor {
-                        label: Some("Multisample Render Pipeline"),
-                        layout: Some(&multisample_render_pipeline_layout),
-                        vertex: VertexState {
-                            module: &module,
-                            entry_point: "vert_main",
-                            buffers: &[],
-                        },
-                        fragment: Some(FragmentState {
-                            module: &module,
-                            entry_point: "frag_main",
-                            targets: &[ColorTargetState {
-                                format: TextureFormat::Rgba8Unorm,
-                                blend: Some(BlendState::REPLACE),
-                                write_mask: ColorWrite::ALL,
-                            }],
-                        }),
-                        primitive: PrimitiveState {
-                            topology: PrimitiveTopology::TriangleList,
-                            strip_index_format: None,
-                            front_face: FrontFace::Ccw,
-                            cull_mode: Some(Face::Back),
-                            clamp_depth: false,
-                            polygon_mode: PolygonMode::Fill,
-                            conservative: false,
-                        },
-                        depth_stencil: None,
-                        multisample: MultisampleState {
-                            count: 1,
-                            mask: !0,
-                            alpha_to_coverage_enabled: false,
-                        },
-                    });
-
-                (
-                    Some(Arc::new(multisample_bind_group_layout)),
-                    Some(Arc::new(multisample_render_pipeline)),
-                )
+            Multisampling::FourPoints { .. } => {
+                multisample::create_layout_and_pipeline(&device, 4).await?
             },
         };
 
@@ -310,7 +195,25 @@ impl GpuFractalGeneratorInstance {
                     spawn_completed,
                 );
             },
-            Multisampling::Points { offset } => {
+            Multisampling::FourPoints { offset } => {
+                let offsets = vec![
+                    Vector2 {
+                        x: -offset,
+                        y: -offset,
+                    },
+                    Vector2 {
+                        x: offset,
+                        y: -offset,
+                    },
+                    Vector2 {
+                        x: -offset,
+                        y: offset,
+                    },
+                    Vector2 {
+                        x: offset,
+                        y: offset,
+                    },
+                ];
                 multisample::generate(
                     device,
                     queue,
@@ -321,7 +224,7 @@ impl GpuFractalGeneratorInstance {
                     sender,
                     views,
                     spawn_completed,
-                    offset,
+                    offsets,
                 );
             },
         }
