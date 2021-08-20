@@ -3,7 +3,7 @@ use crate::generator::{
         buffer::{BufferWrapper, Encodable},
         shader::load_multisample,
         uniforms::Uniforms,
-        util::{create_copy_src_texture, create_texture, create_texture_buffer},
+        util::{create_copy_src_texture, create_texture_buffer},
     },
     util::{copy_region, smallest_multiple_containing},
     view::View,

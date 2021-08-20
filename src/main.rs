@@ -25,8 +25,7 @@ use std::{
     },
 };
 use tokio::{sync::mpsc, task};
-use wgpu::{DeviceDescriptor, Features, Instance, Maintain, RequestAdapterOptions, Backends};
-use std::path::Path;
+use wgpu::{Backends, DeviceDescriptor, Features, Instance, Maintain, RequestAdapterOptions};
 
 mod generator;
 mod logging;
@@ -49,7 +48,7 @@ async fn main() {
         mandelbrot: false,
         iterations: 200,
         smoothing: Smoothing::from_logarithmic_distance(4.0, 2.0),
-        multisampling: Multisampling::None,
+        multisampling: Multisampling::FourPoints { offset: 0.25 },
         c: Complex32 {
             re: 0.16611,
             im: 0.59419,
@@ -78,7 +77,7 @@ async fn main() {
                 features: Features::TEXTURE_BINDING_ARRAY,
                 limits: Default::default(),
             },
-            Some(Path::new("trace")),
+            None,
         )
         .await
         .unwrap();

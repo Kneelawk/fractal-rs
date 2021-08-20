@@ -26,4 +26,4 @@ serde = "^1.0.127"
 thiserror = "^1.0.26"
 tokio = { version = "^1.2.0", features = ["fs", "io-util", "macros", "rt", "rt-multi-thread", "sync"] }
 tokio-stream = { version = "^0.1.7", features = ["sync"] }
-wgpu = { version = "^0.10.1", features = ["trace"] }
+wgpu = { version = "^0.10.1", features = [] }
