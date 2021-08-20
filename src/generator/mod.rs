@@ -7,7 +7,10 @@ pub mod row_stitcher;
 pub mod util;
 pub mod view;
 
-use crate::generator::{args::Smoothing, view::View};
+use crate::generator::{
+    args::{Multisampling, Smoothing},
+    view::View,
+};
 use futures::future::BoxFuture;
 use num_complex::Complex;
 use std::mem::size_of;
@@ -21,6 +24,7 @@ pub struct FractalOpts {
     pub mandelbrot: bool,
     pub iterations: u32,
     pub smoothing: Smoothing,
+    pub multisampling: Multisampling,
     pub c: Complex<f32>,
 }
 

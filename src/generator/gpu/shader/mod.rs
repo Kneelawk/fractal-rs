@@ -46,4 +46,6 @@ pub enum ShaderError {
     MissingTemplateFunction(String),
     #[error("Missing template constant '{}'", .0)]
     MissingTemplateConstant(String),
+    #[error("Missing template type '{}'", .0)]
+    MissingTemplateType(String),
 }
