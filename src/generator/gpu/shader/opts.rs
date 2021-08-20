@@ -1,18 +1,22 @@
 use crate::generator::{
-    args::{Smoothing, DEFAULT_RADIUS_SQUARED},
+    args::{Multisampling, Smoothing, DEFAULT_RADIUS_SQUARED},
     gpu::shader::ShaderError,
+    util::FloatKey,
     FractalOpts,
 };
 use naga::{
-    Arena, BinaryOperator, Block, Constant, ConstantInner, Expression, Function, Handle,
-    MathFunction, Module, ScalarKind, ScalarValue, Span, Statement,
+    Arena, ArraySize, BinaryOperator, Block, Constant, ConstantInner, Expression, Function, Handle,
+    MathFunction, Module, ScalarKind, ScalarValue, Span, Statement, TypeInner, VectorSize,
 };
+use std::collections::HashMap;
 
 const C_REAL_NAME: &str = "t_c_real";
 const C_IMAG_NAME: &str = "t_c_imag";
 const ITERATIONS_NAME: &str = "t_iterations";
 const MANDELBROT_NAME: &str = "t_mandelbrot";
 const RADIUS_SQUARED_NAME: &str = "t_radius_squared";
+const SAMPLE_COUNT_NAME: &str = "t_sample_count";
+const SAMPLE_OFFSETS_NAME: &str = "t_sample_offsets";
 const SMOOTH_NAME: &str = "t_smooth";
 const LINEAR_INTERSECTION_NAME: &str = "linear_intersection";
 
@@ -28,6 +32,7 @@ impl GpuFractalOpts for FractalOpts {
         self.install_iterations(module)?;
         self.install_mandelbrot(module)?;
         self.smoothing.install(module)?;
+        self.multisampling.install(module)?;
         Ok(())
     }
 }
@@ -115,8 +120,9 @@ impl Smoothing {
     }
 
     fn install_smoothing(&self, module: &mut Module) -> Result<(), ShaderError> {
-        let handle = find_function_handle(module, SMOOTH_NAME)?;
-        let linear_intersection_handle = find_function_handle(module, LINEAR_INTERSECTION_NAME)?;
+        let handle = find_function_handle(&module.functions, SMOOTH_NAME)?;
+        let linear_intersection_handle =
+            find_function_handle(&module.functions, LINEAR_INTERSECTION_NAME)?;
 
         let function = module.functions.get_mut(handle);
         function.body = Block::new();
@@ -270,9 +276,137 @@ impl Smoothing {
     }
 }
 
-fn find_function_handle(module: &Module, name: &str) -> Result<Handle<Function>, ShaderError> {
-    module
-        .functions
+/// Structs implementing this trait can be used as multisampling options for
+/// generating on the GPU.
+pub trait GpuMultisampling {
+    fn install(&self, module: &mut Module) -> Result<(), ShaderError>;
+}
+
+impl GpuMultisampling for Multisampling {
+    fn install(&self, module: &mut Module) -> Result<(), ShaderError> {
+        self.install_sample_count(module)?;
+        self.install_sample_offsets(module)?;
+        Ok(())
+    }
+}
+
+impl Multisampling {
+    fn install_sample_count(&self, module: &mut Module) -> Result<(), ShaderError> {
+        replace_constant(
+            &mut module.constants,
+            SAMPLE_COUNT_NAME,
+            ConstantInner::Scalar {
+                width: 4,
+                value: ScalarValue::Uint(self.sample_count() as u64),
+            },
+        )
+    }
+
+    fn install_sample_offsets(&self, module: &mut Module) -> Result<(), ShaderError> {
+        let sample_count_handle = find_constant(&module.constants, SAMPLE_COUNT_NAME)?;
+        let vec2_f32_type_handle = module
+            .types
+            .fetch_if(|t| {
+                t.inner
+                    == TypeInner::Vector {
+                        size: VectorSize::Bi,
+                        kind: ScalarKind::Float,
+                        width: 4,
+                    }
+            })
+            .ok_or_else(|| ShaderError::MissingTemplateType("vec2<f32>".to_string()))?;
+        let sample_count_type_handle = module
+            .types
+            .fetch_if(|t| {
+                t.inner
+                    == TypeInner::Array {
+                        base: vec2_f32_type_handle,
+                        size: ArraySize::Constant(sample_count_handle),
+                        stride: 8,
+                    }
+            })
+            .ok_or_else(|| {
+                ShaderError::MissingTemplateType("array<vec2<f32>, t_sample_count>".to_string())
+            })?;
+
+        let handle = find_function_handle(&module.functions, SAMPLE_OFFSETS_NAME)?;
+
+        let function = module.functions.get_mut(handle);
+        function.body = Block::new();
+        function.expressions.clear();
+        function.local_variables.clear();
+        function.named_expressions.clear();
+
+        let mut constants = HashMap::new();
+
+        let offsets = self.offsets();
+        for offset in offsets.iter() {
+            let x_key = FloatKey::from_f32(offset.x);
+            let y_key = FloatKey::from_f32(offset.y);
+
+            if !constants.contains_key(&x_key) {
+                constants.insert(
+                    x_key,
+                    function.expressions.append(
+                        Expression::Constant(get_float_constant(&mut module.constants, offset.x)),
+                        Span::Unknown,
+                    ),
+                );
+            }
+
+            if !constants.contains_key(&y_key) {
+                constants.insert(
+                    y_key,
+                    function.expressions.append(
+                        Expression::Constant(get_float_constant(&mut module.constants, offset.y)),
+                        Span::Unknown,
+                    ),
+                );
+            }
+        }
+
+        let compose_start = function.expressions.len();
+        let mut vec_handles = vec![];
+        for offset in offsets {
+            let x_key = FloatKey::from_f32(offset.x);
+            let y_key = FloatKey::from_f32(offset.y);
+            vec_handles.push(function.expressions.append(
+                Expression::Compose {
+                    ty: vec2_f32_type_handle,
+                    components: vec![constants[&x_key], constants[&y_key]],
+                },
+                Span::Unknown,
+            ));
+        }
+
+        let final_handle = function.expressions.append(
+            Expression::Compose {
+                ty: sample_count_type_handle,
+                components: vec_handles,
+            },
+            Span::Unknown,
+        );
+        let compose_range = function.expressions.range_from(compose_start);
+
+        function
+            .body
+            .push(Statement::Emit(compose_range), Span::Unknown);
+        function.body.push(
+            Statement::Return {
+                value: Some(final_handle),
+            },
+            Span::Unknown,
+        );
+
+        Ok(())
+    }
+}
+
+fn find_function_handle(
+    functions: &Arena<Function>,
+    name: &str,
+) -> Result<Handle<Function>, ShaderError> {
+    functions
         .fetch_if(|f| match f.name {
             None => false,
             Some(ref fname) => fname == name,
@@ -299,16 +433,19 @@ fn replace_constant(
     name: &str,
     inner: ConstantInner,
 ) -> Result<(), ShaderError> {
-    let handle = constants
-        .fetch_if(|c| match c.name {
-            None => false,
-            Some(ref const_name) => const_name == name,
-        })
-        .ok_or_else(|| ShaderError::MissingTemplateConstant(name.to_string()))?;
-
+    let handle = find_constant(constants, name)?;
     let constant = constants.get_mut(handle);
 
     constant.inner = inner;
 
     Ok(())
+}
+
+fn find_constant(constants: &Arena<Constant>, name: &str) -> Result<Handle<Constant>, ShaderError> {
+    constants
+        .fetch_if(|c| match c.name {
+            None => false,
+            Some(ref const_name) => const_name == name,
+        })
+        .ok_or_else(|| ShaderError::MissingTemplateConstant(name.to_string()))
 }

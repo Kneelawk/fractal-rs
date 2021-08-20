@@ -1,7 +1,8 @@
 use crate::generator::{
-    cpu::opts::CpuFractalOpts, view::View, FractalGenerator, FractalGeneratorInstance, FractalOpts,
-    PixelBlock, BYTES_PER_PIXEL,
+    color::RGBA8Color, cpu::opts::CpuFractalOpts, view::View, FractalGenerator,
+    FractalGeneratorInstance, FractalOpts, PixelBlock, BYTES_PER_PIXEL,
 };
+use cgmath::Vector4;
 use futures::{
     executor::block_on,
     future::{ready, BoxFuture},
@@ -73,8 +74,14 @@ impl CpuFractalGeneratorInstance {
         let completed = Arc::new(RwLock::new(0));
         let async_completed = completed.clone();
 
+        let sample_count = opts.multisampling.sample_count();
+        let sample_count_f32 = sample_count as f32;
+        let sample_count = sample_count as usize;
+        let offsets = Arc::new(opts.multisampling.offsets());
+
         tokio::spawn(async move {
             for view in views {
+                let spawn_offsets = offsets.clone();
                 let spawn_completed = async_completed.clone();
                 let spawn_tx = sender.clone().reserve_owned().await.unwrap();
                 thread_pool.spawn(move || {
@@ -84,7 +91,24 @@ impl CpuFractalGeneratorInstance {
                     for y in 0..view.image_height {
                         for x in 0..view.image_width {
                             let index = (x + y * view.image_width) * BYTES_PER_PIXEL;
-                            let color: [u8; 4] = opts.gen_pixel(view, x, y).into();
+
+                            let mut color = Vector4 {
+                                x: 0.0,
+                                y: 0.0,
+                                z: 0.0,
+                                w: 0.0,
+                            };
+
+                            for i in 0..sample_count {
+                                let offset = spawn_offsets[i];
+                                color +=
+                                    opts.gen_pixel(view, x as f32 + offset.x, y as f32 + offset.y)
+                                        / sample_count_f32;
+                            }
+
+                            let color: RGBA8Color = color.into();
+                            let color: [u8; 4] = color.into();
+
                             image[index..index + BYTES_PER_PIXEL].copy_from_slice(&color);
                         }
                     }

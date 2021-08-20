@@ -3,6 +3,10 @@
 // replaced when this file is loaded, allowing efficient manipulation of the
 // fractal generator.
 
+//
+// Structs
+//
+
 struct FragmentData {
     [[builtin(position)]] position: vec4<f32>;
 };
@@ -18,12 +22,20 @@ struct Uniforms {
     view: View;
 };
 
+//
+// Constants
+//
+
 let offset: vec2<f32> = vec2<f32>(-0.5, -0.5);
 
 var indexable: array<vec2<f32>,6u> = array<vec2<f32>,6u>(
     vec2<f32>(1.0, 1.0), vec2<f32>(-1.0, -1.0), vec2<f32>(1.0, -1.0),
     vec2<f32>(1.0, 1.0), vec2<f32>(-1.0, 1.0), vec2<f32>(-1.0, -1.0)
 );
+
+//
+// Template Constants
+//
 
 // This constant is designed to have its value replaced.
 let t_c_real: f32 = 0.0;
@@ -40,8 +52,19 @@ let t_mandelbrot: bool = false;
 // This constant is designed to have its value replaced.
 let t_radius_squared: f32 = 0.0;
 
+// This constant is designed to have its value replaced.
+let t_sample_count: u32 = 1u32;
+
+//
+// Uniforms
+//
+
 [[group(0), binding(0)]]
 var<uniform> uniforms: Uniforms;
+
+//
+// Vertex Shader
+//
 
 [[stage(vertex)]]
 fn vert_main([[builtin(vertex_index)]] vert_index: u32) -> FragmentData {
@@ -50,6 +73,10 @@ fn vert_main([[builtin(vertex_index)]] vert_index: u32) -> FragmentData {
     data.position = vec4<f32>(xy, 0.0, 1.0);
     return data;
 }
+
+//
+// Utility Functions
+//
 
 fn complex_add(a: vec2<f32>, b: vec2<f32>) -> vec2<f32> {
     return a + b;
@@ -156,6 +183,15 @@ fn fromHSB(hue: f32, saturation: f32, brightness: f32, alpha: f32) -> vec4<f32> 
     }
 }
 
+//
+// Template Functions
+//
+
+// This function is designed to have its contents replaced.
+fn t_sample_offsets() -> array<vec2<f32>, t_sample_count> {
+    return array<vec2<f32>, t_sample_count>(vec2<f32>(0.0, 0.0));
+}
+
 // This function is designed to have its contents replaced.
 fn t_f(z: vec2<f32>, c: vec2<f32>) -> vec2<f32> {
     return complex_add(complex_sqr(z), c);
@@ -166,14 +202,12 @@ fn t_smooth(iterations: u32, z_curr: vec2<f32>, z_prev: vec2<f32>) -> f32 {
     return f32(iterations);
 }
 
-[[stage(fragment)]]
-fn frag_main(data: FragmentData) -> [[location(0)]] vec4<f32> {
-    // Only generate fractals for the requested area.
-    if (data.position.x >= uniforms.view.image_size.x || data.position.y >= uniforms.view.image_size.y) {
-        return vec4<f32>(0.0, 0.0, 0.0, 1.0);
-    }
+//
+// Generator Functions
+//
 
-    let loc = uniforms.view.plane_start + (data.position.xy + offset) * uniforms.view.image_scale;
+fn gen_pixel(pixel_location: vec2<f32>) -> vec4<f32> {
+    let loc = uniforms.view.plane_start + (pixel_location + offset) * uniforms.view.image_scale;
 
     var z: vec2<f32>;
     var c: vec2<f32>;
@@ -203,4 +237,23 @@ fn frag_main(data: FragmentData) -> [[location(0)]] vec4<f32> {
         let v = t_smooth(n, z, z_prev);
         return fromHSB((v * 3.3 / 256.0) % 1.0, 1.0, (v / 16.0) % 1.0, 1.0);
     }
+}
+
+[[stage(fragment)]]
+fn frag_main(data: FragmentData) -> [[location(0)]] vec4<f32> {
+    // Only generate fractals for the requested area.
+    if (data.position.x >= uniforms.view.image_size.x || data.position.y >= uniforms.view.image_size.y) {
+        return vec4<f32>(0.0, 0.0, 0.0, 1.0);
+    }
+
+    let sample_count_f32 = f32(t_sample_count);
+    var sample_offsets = t_sample_offsets();
+
+    var color = vec4<f32>(0.0, 0.0, 0.0, 0.0);
+
+    for (var i = 0u32; i < t_sample_count; i = i + 1u32) {
+        color = color + gen_pixel(data.position.xy + sample_offsets[i]) / sample_count_f32;
+    }
+
+    return color;
 }

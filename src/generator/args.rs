@@ -1,3 +1,5 @@
+use crate::generator::util::{build_four_points_offsets, build_linear_offsets};
+use cgmath::Vector2;
 use regex::{Regex, RegexBuilder};
 use std::{num::ParseFloatError, str::FromStr};
 
@@ -65,5 +67,43 @@ pub enum ParseSmoothingError {
 impl From<ParseFloatError> for ParseSmoothingError {
     fn from(e: ParseFloatError) -> Self {
         ParseSmoothingError::ParseFloatError(e)
+    }
+}
+
+/// Represents an image multisampling function.
+#[allow(dead_code)]
+#[derive(Copy, Clone, Debug)]
+pub enum Multisampling {
+    None,
+    /// Samples the fractal at four points within the pixel. Each point is
+    /// (offset, offset) away from the center of the pixel.
+    FourPoints {
+        /// Half the manhattan distance each of the four points is away from the
+        /// center of the pixel.
+        offset: f32,
+    },
+    /// Divides the pixel into `axial_points` points in each direction,
+    /// resulting in a total of `axial_points * axial_points` points.
+    Linear {
+        /// The number of points per axis.
+        axial_points: u32,
+    },
+}
+
+impl Multisampling {
+    pub fn sample_count(&self) -> u32 {
+        match self {
+            Multisampling::None => 1,
+            Multisampling::FourPoints { .. } => 4,
+            Multisampling::Linear { axial_points } => *axial_points * *axial_points,
+        }
+    }
+
+    pub fn offsets(&self) -> Vec<Vector2<f32>> {
+        match self {
+            Multisampling::None => vec![Vector2 { x: 0.0, y: 0.0 }],
+            Multisampling::FourPoints { offset } => build_four_points_offsets(*offset),
+            Multisampling::Linear { axial_points } => build_linear_offsets(*axial_points),
+        }
     }
 }
