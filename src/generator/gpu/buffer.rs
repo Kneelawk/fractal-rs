@@ -7,7 +7,7 @@
 use bytemuck::{cast_slice, Pod};
 use std::{marker::PhantomData, mem::size_of};
 use wgpu::{
-    Buffer, BufferAddress, BufferAsyncError, BufferDescriptor, BufferUsage, CommandBuffer,
+    Buffer, BufferAddress, BufferAsyncError, BufferDescriptor, BufferUsages, CommandBuffer,
     CommandEncoderDescriptor, Device, MapMode,
 };
 
@@ -32,14 +32,14 @@ impl<D: Encodable + Sized> BufferWrapper<D> {
     pub fn from_data(
         device: &Device,
         data: &[D],
-        usage: BufferUsage,
+        usage: BufferUsages,
     ) -> (BufferWrapper<D>, CommandBuffer) {
         let size = data.len() as BufferAddress;
         let buffer_size = size * BufferWrapper::<D>::data_size();
         let staging_buffer = device.create_buffer(&BufferDescriptor {
             label: Some("wrapped_staging_buffer"),
             size: buffer_size,
-            usage: BufferUsage::MAP_WRITE | BufferUsage::COPY_SRC,
+            usage: BufferUsages::MAP_WRITE | BufferUsages::COPY_SRC,
             mapped_at_creation: true,
         });
         D::encode_slice(
@@ -51,7 +51,7 @@ impl<D: Encodable + Sized> BufferWrapper<D> {
         let buffer = device.create_buffer(&BufferDescriptor {
             label: Some("wrapped_buffer"),
             size: buffer_size,
-            usage: usage | BufferUsage::COPY_DST,
+            usage: usage | BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
 
@@ -75,11 +75,11 @@ impl<D: Encodable + Sized> BufferWrapper<D> {
     }
 
     /// Creates a new buffer wrapper with the given capacity.
-    pub fn new(device: &Device, capacity: BufferAddress, usage: BufferUsage) -> BufferWrapper<D> {
+    pub fn new(device: &Device, capacity: BufferAddress, usage: BufferUsages) -> BufferWrapper<D> {
         let buffer = device.create_buffer(&BufferDescriptor {
             label: Some("wrapped_buffer"),
             size: capacity * BufferWrapper::<D>::data_size(),
-            usage: usage | BufferUsage::COPY_DST,
+            usage: usage | BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
 
@@ -211,7 +211,7 @@ impl<D: Encodable + Sized> BufferWrapper<D> {
             self.staging_buffer = Some(device.create_buffer(&BufferDescriptor {
                 label: Some("wrapped_staging_buffer"),
                 size: size * BufferWrapper::<D>::data_size(),
-                usage: BufferUsage::MAP_WRITE | BufferUsage::COPY_SRC,
+                usage: BufferUsages::MAP_WRITE | BufferUsages::COPY_SRC,
                 mapped_at_creation: false,
             }));
             self.staging_capacity = size;

@@ -21,7 +21,7 @@ use std::{
     },
 };
 use tokio::{sync::mpsc, task};
-use wgpu::{BackendBit, Instance, Maintain, RequestAdapterOptions};
+use wgpu::{Backends, Instance, Maintain, RequestAdapterOptions};
 use crate::generator::args::Multisampling;
 
 mod generator;
@@ -57,7 +57,7 @@ async fn main() {
         .collect();
 
     info!("Creating Instance...");
-    let instance = Instance::new(BackendBit::PRIMARY);
+    let instance = Instance::new(Backends::PRIMARY);
     let adapter = instance
         .request_adapter(&RequestAdapterOptions {
             power_preference: Default::default(),

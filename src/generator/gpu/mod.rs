@@ -25,12 +25,12 @@ use tokio::sync::mpsc::Sender;
 use wgpu::{
     BindGroupDescriptor, BindGroupEntry, BindGroupLayout, BindGroupLayoutDescriptor,
     BindGroupLayoutEntry, BindingResource, BindingType, BlendState, BufferAddress, BufferBinding,
-    BufferBindingType, BufferUsage, Color, ColorTargetState, ColorWrite, CommandEncoderDescriptor,
+    BufferBindingType, BufferUsages, Color, ColorTargetState, ColorWrites, CommandEncoderDescriptor,
     Device, Extent3d, Face, FragmentState, FrontFace, ImageCopyBuffer, ImageCopyTexture,
     ImageDataLayout, LoadOp, MapMode, MultisampleState, Operations, Origin3d,
     PipelineLayoutDescriptor, PolygonMode, PrimitiveState, PrimitiveTopology, Queue,
     RenderPassColorAttachment, RenderPassDescriptor, RenderPipeline, RenderPipelineDescriptor,
-    ShaderFlags, ShaderModuleDescriptor, ShaderStage, TextureFormat, VertexState,
+    ShaderModuleDescriptor, ShaderStages, TextureFormat, VertexState,
 };
 
 mod buffer;
@@ -57,7 +57,6 @@ impl GpuFractalGenerator {
         let module = device.create_shader_module(&ShaderModuleDescriptor {
             label: Some("Vertex Shader"),
             source: shader,
-            flags: ShaderFlags::VALIDATION | ShaderFlags::EXPERIMENTAL_TRANSLATION,
         });
 
         info!("Creating uniform bind group layout...");
@@ -66,7 +65,7 @@ impl GpuFractalGenerator {
                 label: Some("Uniform Bind Group Layout"),
                 entries: &[BindGroupLayoutEntry {
                     binding: 0,
-                    visibility: ShaderStage::VERTEX_FRAGMENT,
+                    visibility: ShaderStages::VERTEX_FRAGMENT,
                     ty: BindingType::Buffer {
                         ty: BufferBindingType::Uniform,
                         has_dynamic_offset: false,
@@ -97,7 +96,7 @@ impl GpuFractalGenerator {
                 targets: &[ColorTargetState {
                     format: TextureFormat::Rgba8Unorm,
                     blend: Some(BlendState::REPLACE),
-                    write_mask: ColorWrite::ALL,
+                    write_mask: ColorWrites::ALL,
                 }],
             }),
             primitive: PrimitiveState {
@@ -178,7 +177,7 @@ impl GpuFractalGeneratorInstance {
         let mut uniforms_buffer = BufferWrapper::<Uniforms>::new(
             &device,
             Uniforms::size() as BufferAddress,
-            BufferUsage::UNIFORM,
+            BufferUsages::UNIFORM,
         );
 
         let uniform_bind_group = device.create_bind_group(&BindGroupDescriptor {
@@ -272,6 +271,7 @@ impl GpuFractalGeneratorInstance {
                             texture,
                             mip_level: 0,
                             origin: Origin3d::ZERO,
+                            aspect: Default::default()
                         },
                         ImageCopyBuffer {
                             buffer,

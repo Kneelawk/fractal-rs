@@ -1,7 +1,7 @@
 use std::mem::size_of;
 use wgpu::{
-    Buffer, BufferAddress, BufferDescriptor, BufferUsage, Device, Extent3d, Texture,
-    TextureDescriptor, TextureDimension, TextureFormat, TextureUsage, TextureView,
+    Buffer, BufferAddress, BufferDescriptor, BufferUsages, Device, Extent3d, Texture,
+    TextureDescriptor, TextureDimension, TextureFormat, TextureUsages, TextureView,
 };
 
 pub fn create_texture(device: &Device, width: u32, height: u32) -> (Texture, TextureView) {
@@ -16,7 +16,7 @@ pub fn create_texture(device: &Device, width: u32, height: u32) -> (Texture, Tex
         sample_count: 1,
         dimension: TextureDimension::D2,
         format: TextureFormat::Rgba8Unorm,
-        usage: TextureUsage::COPY_SRC | TextureUsage::RENDER_ATTACHMENT,
+        usage: TextureUsages::COPY_SRC | TextureUsages::RENDER_ATTACHMENT,
     });
     let texture_view = texture.create_view(&Default::default());
 
@@ -28,7 +28,7 @@ pub fn create_texture_buffer(device: &Device, width: u32, height: u32) -> Buffer
     let texture_buffer = device.create_buffer(&BufferDescriptor {
         label: Some("Framebuffer Buffer"),
         size: size as BufferAddress,
-        usage: BufferUsage::COPY_DST | BufferUsage::MAP_READ,
+        usage: BufferUsages::COPY_DST | BufferUsages::MAP_READ,
         mapped_at_creation: false,
     });
 
