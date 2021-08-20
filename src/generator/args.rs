@@ -73,5 +73,17 @@ impl From<ParseFloatError> for ParseSmoothingError {
 #[derive(Copy, Clone, Debug)]
 pub enum Multisampling {
     None,
-    FourPoints { offset: f32 },
+    /// Samples the fractal at four points within the pixel. Each point is
+    /// (offset, offset) away from the center of the pixel.
+    FourPoints {
+        /// Half the manhattan distance each of the four points is away from the
+        /// center of the pixel.
+        offset: f32,
+    },
+    /// Divides the pixel into `axial_points` points in each direction,
+    /// resulting in a total of `axial_points * axial_points` points.
+    Linear {
+        /// The number of points per axis.
+        axial_points: u32,
+    },
 }

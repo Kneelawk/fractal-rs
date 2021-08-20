@@ -130,19 +130,21 @@ pub fn generate(
     spawn_completed: Arc<AtomicUsize>,
     offsets: Vec<Vector2<f32>>,
 ) {
+    let sample_count = offsets.len();
+
     info!("Creating uniform buffers...");
     let uniform_size = Uniforms::size() as BufferAddress;
     let mut uniform_buffers = vec![];
-    for _ in 0..4 {
+    for _ in 0..sample_count {
         uniform_buffers.push(BufferWrapper::new(
             &device,
-            uniform_size * 4,
+            uniform_size,
             BufferUsages::UNIFORM,
         ));
     }
 
     let mut uniform_bind_groups = vec![];
-    for i in 0..4 {
+    for i in 0..sample_count {
         uniform_bind_groups.push(device.create_bind_group(&BindGroupDescriptor {
             label: Some(&format!("Uniforms Bind Group {}", i)),
             layout: uniform_bind_group_layout,
@@ -184,7 +186,7 @@ pub fn generate(
                 MultisampleFramebuffer::new(
                     texture_width,
                     texture_height,
-                    4,
+                    sample_count as u32,
                     &device,
                     &multisample_bind_group_layout,
                     &sampler,
@@ -196,7 +198,7 @@ pub fn generate(
                 view.image_x, view.image_y
             );
             let mut command_buffers = vec![];
-            for i in 0..4 {
+            for i in 0..sample_count {
                 command_buffers.push(
                     uniform_buffers[i]
                         .replace_all(&device, &[Uniforms::new(view, offsets[i])])
@@ -214,7 +216,7 @@ pub fn generate(
                     label: Some("Multisample Command Encoder"),
                 });
 
-                for i in 0..4 {
+                for i in 0..sample_count {
                     let render_pass_name = format!("Sample Render Pass {}", i);
                     let mut render_pass = encoder.begin_render_pass(&RenderPassDescriptor {
                         label: Some(&render_pass_name),

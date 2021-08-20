@@ -118,6 +118,10 @@ impl GpuFractalGenerator {
             Multisampling::FourPoints { .. } => {
                 multisample::create_layout_and_pipeline(&device, 4).await?
             },
+            Multisampling::Linear { axial_points } => {
+                multisample::create_layout_and_pipeline(&device, axial_points * axial_points)
+                    .await?
+            },
         };
 
         Ok(GpuFractalGenerator {
@@ -196,24 +200,6 @@ impl GpuFractalGeneratorInstance {
                 );
             },
             Multisampling::FourPoints { offset } => {
-                let offsets = vec![
-                    Vector2 {
-                        x: -offset,
-                        y: -offset,
-                    },
-                    Vector2 {
-                        x: offset,
-                        y: -offset,
-                    },
-                    Vector2 {
-                        x: -offset,
-                        y: offset,
-                    },
-                    Vector2 {
-                        x: offset,
-                        y: offset,
-                    },
-                ];
                 multisample::generate(
                     device,
                     queue,
@@ -224,7 +210,21 @@ impl GpuFractalGeneratorInstance {
                     sender,
                     views,
                     spawn_completed,
-                    offsets,
+                    build_four_points_offsets(offset),
+                );
+            },
+            Multisampling::Linear { axial_points } => {
+                multisample::generate(
+                    device,
+                    queue,
+                    uniform_bind_group_layout,
+                    render_pipeline,
+                    multisample_bind_group_layout.unwrap(),
+                    multisample_render_pipeline.unwrap(),
+                    sender,
+                    views,
+                    spawn_completed,
+                    build_linear_offsets(axial_points),
                 );
             },
         }
@@ -247,4 +247,43 @@ impl FractalGeneratorInstance for GpuFractalGeneratorInstance {
     fn running(&self) -> BoxFuture<anyhow::Result<bool>> {
         ready(Ok(self.completed.load(Ordering::Relaxed) < self.view_count)).boxed()
     }
+}
+
+fn build_four_points_offsets(offset: f32) -> Vec<Vector2<f32>> {
+    vec![
+        Vector2 {
+            x: -offset,
+            y: -offset,
+        },
+        Vector2 {
+            x: offset,
+            y: -offset,
+        },
+        Vector2 {
+            x: -offset,
+            y: offset,
+        },
+        Vector2 {
+            x: offset,
+            y: offset,
+        },
+    ]
+}
+
+fn build_linear_offsets(axial_points: u32) -> Vec<Vector2<f32>> {
+    let mut vec = vec![];
+
+    let offset = 1.0 / axial_points as f32;
+    let initial_offset = offset / 2.0;
+
+    for y in 0..axial_points {
+        for x in 0..axial_points {
+            vec.push(Vector2 {
+                x: x as f32 * offset + initial_offset - 0.5,
+                y: y as f32 * offset + initial_offset - 0.5,
+            })
+        }
+    }
+
+    vec
 }

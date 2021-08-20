@@ -33,8 +33,8 @@ mod logging;
 const IMAGE_WIDTH: u32 = 4096;
 const IMAGE_HEIGHT: u32 = 4096;
 
-const CHUNK_WIDTH: usize = 256;
-const CHUNK_HEIGHT: usize = 256;
+const CHUNK_WIDTH: usize = 1024;
+const CHUNK_HEIGHT: usize = 1024;
 
 const CHUNK_BACKLOG: usize = 32;
 
@@ -48,7 +48,7 @@ async fn main() {
         mandelbrot: false,
         iterations: 200,
         smoothing: Smoothing::from_logarithmic_distance(4.0, 2.0),
-        multisampling: Multisampling::FourPoints { offset: 0.25 },
+        multisampling: Multisampling::None,
         c: Complex32 {
             re: 0.16611,
             im: 0.59419,
