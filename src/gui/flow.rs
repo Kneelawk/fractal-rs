@@ -21,22 +21,27 @@ use winit::{
     window::{Fullscreen, WindowBuilder},
 };
 
+#[async_trait]
+pub trait FlowModel: Sized {
+    async fn init(
+        device: Arc<Device>,
+        queue: Arc<Queue>,
+        window_size: PhysicalSize<u32>,
+        frame_format: TextureFormat,
+    ) -> Self;
+
+    async fn event(&mut self, _event: WindowEvent<'async_trait>) -> ControlFlow;
+
+    async fn update(&mut self, _update_delta: Duration) -> ControlFlow;
+
+    async fn render(&mut self, _frame_view: &TextureView, _render_delta: Duration);
+
+    async fn shutdown(self);
+}
+
 /// Used to manage an application's control flow as well as integration with the
 /// window manager.
-pub struct Flow<Model: 'static> {
-    model_init: Box<
-        dyn Fn(
-            Arc<Device>,
-            Arc<Queue>,
-            PhysicalSize<u32>,
-            TextureFormat,
-        ) -> BoxFuture<'static, Model>,
-    >,
-    event_callback: Option<Box<dyn Fn(&mut Model, WindowEvent) -> BoxFuture<'static, ControlFlow>>>,
-    update_callback: Option<Box<dyn Fn(&mut Model, Duration) -> BoxFuture<'static, ControlFlow>>>,
-    render_callback:
-        Option<Box<dyn Fn(&mut Model, &TextureView, Duration) -> BoxFuture<'static, ()>>>,
-
+pub struct Flow {
     /// The window's title.
     pub title: String,
     /// Whether the window should be fullscreen.
@@ -47,26 +52,12 @@ pub struct Flow<Model: 'static> {
     pub height: u32,
 }
 
-impl<Model: 'static> Flow<Model> {
+impl Flow {
     /// Creates a new Flow designed to handle a specific kind of model.
     ///
     /// This model is instantiated when the Flow is started.
-    pub fn new<
-        F: Fn(
-                Arc<Device>,
-                Arc<Queue>,
-                PhysicalSize<u32>,
-                TextureFormat,
-            ) -> BoxFuture<'static, Model>
-            + 'static,
-    >(
-        model_init: F,
-    ) -> Flow<Model> {
+    pub fn new() -> Flow {
         Flow {
-            model_init: Box::new(model_init),
-            event_callback: None,
-            update_callback: None,
-            render_callback: None,
             title: "".to_string(),
             fullscreen: false,
             width: 1280,
@@ -74,32 +65,8 @@ impl<Model: 'static> Flow<Model> {
         }
     }
 
-    /// Sets the Flow's window event callback.
-    pub fn event<F: Fn(&mut Model, WindowEvent) -> BoxFuture<'static, ControlFlow> + 'static>(
-        &mut self,
-        event_callback: F,
-    ) {
-        self.event_callback = Some(Box::new(event_callback));
-    }
-
-    /// Sets the Flow's update callback.
-    pub fn update<F: Fn(&mut Model, Duration) -> BoxFuture<'static, ControlFlow> + 'static>(
-        &mut self,
-        update_callback: F,
-    ) {
-        self.update_callback = Some(Box::new(update_callback));
-    }
-
-    /// Sets the Flow's render callback.
-    pub fn render<F: Fn(&mut Model, &TextureView, Duration) -> BoxFuture<'static, ()> + 'static>(
-        &mut self,
-        render_callback: F,
-    ) {
-        self.render_callback = Some(Box::new(render_callback));
-    }
-
     /// Starts the Flow's event loop.
-    pub fn start(self) -> Result<(), FlowStartError> {
+    pub fn start<Model: FlowModel + Send + 'static>(self) -> Result<(), FlowStartError> {
         info!("Creating runtime...");
         let runtime = runtime::Builder::new_multi_thread().enable_all().build()?;
 
@@ -174,12 +141,12 @@ impl<Model: 'static> Flow<Model> {
 
         // setup model
         info!("Creating model...");
-        let mut model: Model = runtime.block_on((self.model_init)(
+        let mut model: Option<Model> = Some(runtime.block_on(Model::init(
             device.clone(),
             queue.clone(),
             window_size,
             config.format,
-        ));
+        )));
         let mut previous_update = SystemTime::now();
         let mut previous_render = SystemTime::now();
 
@@ -208,15 +175,13 @@ impl<Model: 'static> Flow<Model> {
                     _ => {},
                 }
 
-                if let Some(event_callback) = &self.event_callback {
-                    if runtime
-                        .as_ref()
-                        .unwrap()
-                        .block_on(event_callback(&mut model, event))
-                        == ControlFlow::Exit
-                    {
-                        *control = ControlFlow::Exit;
-                    }
+                if runtime
+                    .as_ref()
+                    .unwrap()
+                    .block_on(model.as_mut().unwrap().event(event))
+                    == ControlFlow::Exit
+                {
+                    *control = ControlFlow::Exit;
                 }
             },
             Event::MainEventsCleared => {
@@ -224,15 +189,13 @@ impl<Model: 'static> Flow<Model> {
                 let delta = now.duration_since(previous_update).unwrap();
                 previous_update = now;
 
-                if let Some(update_callback) = &self.update_callback {
-                    if runtime
-                        .as_ref()
-                        .unwrap()
-                        .block_on(update_callback(&mut model, delta))
-                        == ControlFlow::Exit
-                    {
-                        *control = ControlFlow::Exit;
-                    }
+                if runtime
+                    .as_ref()
+                    .unwrap()
+                    .block_on(model.as_mut().unwrap().update(delta))
+                    == ControlFlow::Exit
+                {
+                    *control = ControlFlow::Exit;
                 }
 
                 if *control != ControlFlow::Exit {
@@ -244,33 +207,36 @@ impl<Model: 'static> Flow<Model> {
                 let delta = now.duration_since(previous_render).unwrap();
                 previous_render = now;
 
-                if let Some(render_callback) = &self.render_callback {
-                    let frame = match surface.get_current_frame() {
-                        Ok(output) => Some(output),
-                        Err(SurfaceError::OutOfMemory) => {
-                            error!("Unable to obtain surface frame: OutOfMemory! Exiting...");
-                            *control = ControlFlow::Exit;
+                let frame = match surface.get_current_frame() {
+                    Ok(output) => Some(output),
+                    Err(SurfaceError::OutOfMemory) => {
+                        error!("Unable to obtain surface frame: OutOfMemory! Exiting...");
+                        *control = ControlFlow::Exit;
 
-                            None
-                        },
-                        Err(_) => None,
-                    };
+                        None
+                    },
+                    Err(_) => None,
+                };
 
-                    if let Some(frame) = frame {
-                        let output = frame.output;
-                        let view = output
-                            .texture
-                            .create_view(&TextureViewDescriptor::default());
+                if let Some(frame) = frame {
+                    let output = frame.output;
+                    let view = output
+                        .texture
+                        .create_view(&TextureViewDescriptor::default());
 
-                        runtime
-                            .as_ref()
-                            .unwrap()
-                            .block_on(render_callback(&mut model, &view, delta));
-                    }
+                    runtime
+                        .as_ref()
+                        .unwrap()
+                        .block_on(model.as_mut().unwrap().render(&view, delta));
                 }
             },
             Event::LoopDestroyed => {
                 info!("Shutting down...");
+
+                runtime
+                    .as_ref()
+                    .unwrap()
+                    .block_on(model.take().unwrap().shutdown());
 
                 status.store(false, Ordering::Relaxed);
                 if let Err(e) = runtime
