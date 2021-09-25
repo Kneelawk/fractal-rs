@@ -90,7 +90,7 @@ impl Flow {
         let window_size = window.inner_size();
 
         info!("Creating instance...");
-        let instance = Instance::new(Backends::all());
+        let instance = Instance::new(Backends::PRIMARY);
 
         info!("Creating surface...");
         let surface = unsafe { instance.create_surface(&window) };
@@ -171,6 +171,9 @@ impl Flow {
                         config.width = new_inner_size.width;
                         config.height = new_inner_size.height;
                         surface.configure(&device, &config);
+                    },
+                    WindowEvent::CloseRequested => {
+                        *control = ControlFlow::Exit;
                     },
                     _ => {},
                 }
