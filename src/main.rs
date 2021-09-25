@@ -7,33 +7,9 @@ extern crate serde;
 #[macro_use]
 extern crate thiserror;
 
-use crate::{
-    generator::{
-        args::{Multisampling, Smoothing},
-        cpu::CpuFractalGenerator,
-        gpu::GpuFractalGenerator,
-        row_stitcher::RowStitcher,
-        view::View,
-        FractalGenerator, FractalOpts,
-    },
-    gui::flow::{Flow, FlowModel},
-};
-use futures::task::Poll;
-use mtpng::{encoder, ColorType, Header};
-use num_complex::Complex32;
-use std::{
-    fs::File,
-    io::BufWriter,
-    sync::{
-        atomic::{AtomicBool, Ordering},
-        Arc,
-    },
-    time::Duration,
-};
-use tokio::{sync::mpsc, task};
-use wgpu::{
-    Backends, Device, Instance, Maintain, Queue, RequestAdapterOptions, TextureFormat, TextureView,
-};
+use crate::gui::flow::{Flow, FlowModel};
+use std::{sync::Arc, time::Duration};
+use wgpu::{Device, Queue, TextureFormat, TextureView};
 use winit::{dpi::PhysicalSize, event::WindowEvent, event_loop::ControlFlow};
 
 mod generator;
@@ -55,7 +31,7 @@ fn main() {
     let mut flow = Flow::new();
     flow.title = "Fractal-RS 2".to_string();
 
-    flow.start::<FractalRSMain>();
+    flow.start::<FractalRSMain>().expect("Error starting Flow!");
 }
 
 struct FractalRSMain {}

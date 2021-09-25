@@ -1,4 +1,3 @@
-use futures::{executor::block_on, future::BoxFuture};
 use std::{
     io,
     sync::{
