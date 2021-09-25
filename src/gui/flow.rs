@@ -134,7 +134,9 @@ impl Flow {
         info!("Configuring surface...");
         let mut config = SurfaceConfiguration {
             usage: TextureUsages::RENDER_ATTACHMENT,
-            format: TextureFormat::Bgra8UnormSrgb,
+            format: surface
+                .get_preferred_format(&adapter)
+                .unwrap_or(TextureFormat::Bgra8Unorm),
             width: window_size.width,
             height: window_size.height,
             present_mode: PresentMode::Fifo,
