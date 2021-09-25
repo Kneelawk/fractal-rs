@@ -47,7 +47,7 @@ impl FlowModel for FractalRSMain {
         FractalRSMain {}
     }
 
-    async fn event(&mut self, event: WindowEvent<'async_trait>) -> ControlFlow {
+    async fn event(&mut self, event: WindowEvent<'_>) -> ControlFlow {
         ControlFlow::Poll
     }
 

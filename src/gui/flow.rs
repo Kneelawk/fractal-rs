@@ -20,6 +20,9 @@ use winit::{
     window::{Fullscreen, WindowBuilder},
 };
 
+/// Represents an application's data, allowing the application to receive
+/// lifecycle events. This version of `Flow` and `FlowModel` are designed to
+/// support an asynchronous application.
 #[async_trait]
 pub trait FlowModel: Sized {
     async fn init(
@@ -29,7 +32,7 @@ pub trait FlowModel: Sized {
         frame_format: TextureFormat,
     ) -> Self;
 
-    async fn event(&mut self, _event: WindowEvent<'async_trait>) -> ControlFlow;
+    async fn event(&mut self, _event: WindowEvent<'_>) -> ControlFlow;
 
     async fn update(&mut self, _update_delta: Duration) -> ControlFlow;
 
@@ -39,7 +42,8 @@ pub trait FlowModel: Sized {
 }
 
 /// Used to manage an application's control flow as well as integration with the
-/// window manager.
+/// window manager. This version of `Flow` and `FlowModel` are designed to
+/// support an asynchronous application.
 pub struct Flow {
     /// The window's title.
     pub title: String,
