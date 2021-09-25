@@ -1,11 +1,17 @@
+use futures::{executor::block_on, future::BoxFuture};
 use std::{
-    sync::Arc,
+    io,
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc,
+    },
     time::{Duration, SystemTime},
 };
+use tokio::{runtime, task};
 use wgpu::{
-    Backends, Device, DeviceDescriptor, Instance, PowerPreference,
-    PresentMode, Queue, RequestAdapterOptions, SurfaceConfiguration, SurfaceError,
-    TextureFormat, TextureUsages, TextureView, TextureViewDescriptor,
+    Backends, Device, DeviceDescriptor, Instance, Maintain, PowerPreference, PresentMode, Queue,
+    RequestAdapterOptions, RequestDeviceError, SurfaceConfiguration, SurfaceError, TextureFormat,
+    TextureUsages, TextureView, TextureViewDescriptor,
 };
 use winit::{
     dpi::PhysicalSize,
@@ -18,10 +24,18 @@ use winit::{
 /// Used to manage an application's control flow as well as integration with the
 /// window manager.
 pub struct Flow<Model: 'static> {
-    model_init: Box<dyn Fn(Arc<Device>, Arc<Queue>, PhysicalSize<u32>, TextureFormat) -> Model>,
-    event_callback: Option<Box<dyn Fn(&mut Model, WindowEvent) -> ControlFlow>>,
-    update_callback: Option<Box<dyn Fn(&mut Model, Duration) -> ControlFlow>>,
-    render_callback: Option<Box<dyn Fn(&mut Model, &TextureView, Duration)>>,
+    model_init: Box<
+        dyn Fn(
+            Arc<Device>,
+            Arc<Queue>,
+            PhysicalSize<u32>,
+            TextureFormat,
+        ) -> BoxFuture<'static, Model>,
+    >,
+    event_callback: Option<Box<dyn Fn(&mut Model, WindowEvent) -> BoxFuture<'static, ControlFlow>>>,
+    update_callback: Option<Box<dyn Fn(&mut Model, Duration) -> BoxFuture<'static, ControlFlow>>>,
+    render_callback:
+        Option<Box<dyn Fn(&mut Model, &TextureView, Duration) -> BoxFuture<'static, ()>>>,
 
     /// The window's title.
     pub title: String,
@@ -38,7 +52,13 @@ impl<Model: 'static> Flow<Model> {
     ///
     /// This model is instantiated when the Flow is started.
     pub fn new<
-        F: Fn(Arc<Device>, Arc<Queue>, PhysicalSize<u32>, TextureFormat) -> Model + 'static,
+        F: Fn(
+                Arc<Device>,
+                Arc<Queue>,
+                PhysicalSize<u32>,
+                TextureFormat,
+            ) -> BoxFuture<'static, Model>
+            + 'static,
     >(
         model_init: F,
     ) -> Flow<Model> {
@@ -55,7 +75,7 @@ impl<Model: 'static> Flow<Model> {
     }
 
     /// Sets the Flow's window event callback.
-    pub fn event<F: Fn(&mut Model, WindowEvent) -> ControlFlow + 'static>(
+    pub fn event<F: Fn(&mut Model, WindowEvent) -> BoxFuture<'static, ControlFlow> + 'static>(
         &mut self,
         event_callback: F,
     ) {
@@ -63,7 +83,7 @@ impl<Model: 'static> Flow<Model> {
     }
 
     /// Sets the Flow's update callback.
-    pub fn update<F: Fn(&mut Model, Duration) -> ControlFlow + 'static>(
+    pub fn update<F: Fn(&mut Model, Duration) -> BoxFuture<'static, ControlFlow> + 'static>(
         &mut self,
         update_callback: F,
     ) {
@@ -71,7 +91,7 @@ impl<Model: 'static> Flow<Model> {
     }
 
     /// Sets the Flow's render callback.
-    pub fn render<F: Fn(&mut Model, &TextureView, Duration) + 'static>(
+    pub fn render<F: Fn(&mut Model, &TextureView, Duration) -> BoxFuture<'static, ()> + 'static>(
         &mut self,
         render_callback: F,
     ) {
@@ -79,9 +99,14 @@ impl<Model: 'static> Flow<Model> {
     }
 
     /// Starts the Flow's event loop.
-    pub async fn start(self) -> Result<(), FlowStartError> {
+    pub fn start(self) -> Result<(), FlowStartError> {
+        info!("Creating runtime...");
+        let runtime = runtime::Builder::new_multi_thread().enable_all().build()?;
+
+        info!("Creating event loop...");
         let event_loop = EventLoop::new();
 
+        info!("Creating window...");
         let window = {
             let mut builder = WindowBuilder::new().with_title(self.title.clone());
 
@@ -97,34 +122,46 @@ impl<Model: 'static> Flow<Model> {
         // setup wgpu
         let window_size = window.inner_size();
 
+        info!("Creating instance...");
         let instance = Instance::new(Backends::all());
 
+        info!("Creating surface...");
         let surface = unsafe { instance.create_surface(&window) };
 
-        let adapter = instance
-            .request_adapter(&RequestAdapterOptions {
+        info!("Requesting adapter...");
+        let adapter = runtime
+            .block_on(instance.request_adapter(&RequestAdapterOptions {
                 // We will be doing quite a lot of calculation on the GPU, might as well warn it.
                 power_preference: PowerPreference::HighPerformance,
                 compatible_surface: Some(&surface),
-            })
-            .await
-            .expect("Error getting adapter");
+            }))
+            .ok_or(FlowStartError::AdapterRequestError)?;
 
-        let (device, queue) = adapter
-            .request_device(
-                &DeviceDescriptor {
-                    label: Some("Device"),
-                    limits: Default::default(),
-                    features: Default::default(),
-                },
-                None,
-            )
-            .await
-            .expect("Error getting device");
+        info!("Requesting device...");
+        let (device, queue) = runtime.block_on(adapter.request_device(
+            &DeviceDescriptor {
+                label: Some("Device"),
+                limits: Default::default(),
+                features: Default::default(),
+            },
+            None,
+        ))?;
 
         let device = Arc::new(device);
         let queue = Arc::new(queue);
 
+        info!("Creating device poll task");
+        let poll_device = device.clone();
+        let status = Arc::new(AtomicBool::new(true));
+        let poll_status = status.clone();
+        let mut poll_task = Some(runtime.spawn(async move {
+            while poll_status.load(Ordering::Relaxed) {
+                poll_device.poll(Maintain::Poll);
+                task::yield_now().await;
+            }
+        }));
+
+        info!("Configuring surface...");
         let mut config = SurfaceConfiguration {
             usage: TextureUsages::RENDER_ATTACHMENT,
             format: TextureFormat::Bgra8UnormSrgb,
@@ -136,11 +173,23 @@ impl<Model: 'static> Flow<Model> {
         surface.configure(&device, &config);
 
         // setup model
-        let mut model =
-            (self.model_init)(device.clone(), queue.clone(), window_size, config.format);
+        info!("Creating model...");
+        let mut model: Model = runtime.block_on((self.model_init)(
+            device.clone(),
+            queue.clone(),
+            window_size,
+            config.format,
+        ));
         let mut previous_update = SystemTime::now();
         let mut previous_render = SystemTime::now();
 
+        let mut runtime = Some(runtime);
+
+        let mut instance = Some(instance);
+        let mut adapter = Some(adapter);
+        let mut queue = Some(queue);
+
+        info!("Starting event loop...");
         event_loop.run(move |event, _, control| match event {
             Event::WindowEvent { event, window_id } if window_id == window.id() => {
                 match event {
@@ -160,7 +209,12 @@ impl<Model: 'static> Flow<Model> {
                 }
 
                 if let Some(event_callback) = &self.event_callback {
-                    if event_callback(&mut model, event) == ControlFlow::Exit {
+                    if runtime
+                        .as_ref()
+                        .unwrap()
+                        .block_on(event_callback(&mut model, event))
+                        == ControlFlow::Exit
+                    {
                         *control = ControlFlow::Exit;
                     }
                 }
@@ -171,7 +225,12 @@ impl<Model: 'static> Flow<Model> {
                 previous_update = now;
 
                 if let Some(update_callback) = &self.update_callback {
-                    if update_callback(&mut model, delta) == ControlFlow::Exit {
+                    if runtime
+                        .as_ref()
+                        .unwrap()
+                        .block_on(update_callback(&mut model, delta))
+                        == ControlFlow::Exit
+                    {
                         *control = ControlFlow::Exit;
                     }
                 }
@@ -203,22 +262,48 @@ impl<Model: 'static> Flow<Model> {
                             .texture
                             .create_view(&TextureViewDescriptor::default());
 
-                        render_callback(&mut model, &view, delta);
+                        runtime
+                            .as_ref()
+                            .unwrap()
+                            .block_on(render_callback(&mut model, &view, delta));
                     }
                 }
+            },
+            Event::LoopDestroyed => {
+                info!("Shutting down...");
+
+                status.store(false, Ordering::Relaxed);
+                if let Err(e) = runtime
+                    .as_ref()
+                    .unwrap()
+                    .block_on(poll_task.take().unwrap())
+                {
+                    error!("Error stopping device poll task: {:?}", e);
+                }
+
+                // shutdown WGPU
+                drop(queue.take());
+                drop(adapter.take());
+                drop(instance.take());
+
+                // shutdown the runtime
+                drop(runtime.take());
+
+                info!("Done.");
             },
             _ => {},
         });
     }
 }
 
-#[derive(Debug)]
+#[derive(Error, Debug)]
 pub enum FlowStartError {
-    OsError(OsError),
-}
-
-impl From<OsError> for FlowStartError {
-    fn from(e: OsError) -> Self {
-        FlowStartError::OsError(e)
-    }
+    #[error("IO error")]
+    IOError(#[from] io::Error),
+    #[error("Window Builder error")]
+    OsError(#[from] OsError),
+    #[error("Error requesting adapter")]
+    AdapterRequestError,
+    #[error("Error requesting device")]
+    RequestDeviceError(#[from] RequestDeviceError),
 }
