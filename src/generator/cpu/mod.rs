@@ -3,14 +3,11 @@ use crate::generator::{
     FractalGeneratorInstance, FractalOpts, PixelBlock, BYTES_PER_PIXEL,
 };
 use cgmath::Vector4;
-use futures::{
-    executor::block_on,
-    future::{ready, BoxFuture},
-    FutureExt,
-};
+use futures::executor::block_on;
 use rayon::{ThreadPool, ThreadPoolBuilder};
 use std::sync::Arc;
 use tokio::sync::{mpsc::Sender, RwLock};
+use wgpu::{Texture, TextureView};
 
 pub mod opts;
 
@@ -30,30 +27,35 @@ impl CpuFractalGenerator {
     }
 }
 
+#[async_trait]
 impl FractalGenerator for CpuFractalGenerator {
-    fn min_views_hint(&self) -> BoxFuture<anyhow::Result<usize>> {
-        ready(Ok(self.thread_count)).boxed()
+    async fn min_views_hint(&self) -> anyhow::Result<usize> {
+        Ok(self.thread_count)
     }
 
-    fn start_generation(
+    async fn start_generation_to_cpu(
         &self,
         views: &[View],
         sender: Sender<anyhow::Result<PixelBlock>>,
-    ) -> BoxFuture<Result<Box<dyn FractalGeneratorInstance>, anyhow::Error>> {
-        let views = views.to_vec();
-        async move {
-            let boxed: Box<dyn FractalGeneratorInstance> = Box::new(
-                CpuFractalGeneratorInstance::start(
-                    self.thread_pool.clone(),
-                    views,
-                    sender,
-                    self.opts,
-                )
-                .await,
-            );
-            Ok(boxed)
-        }
-        .boxed()
+    ) -> Result<Box<dyn FractalGeneratorInstance>, anyhow::Error> {
+        Ok(Box::new(
+            CpuFractalGeneratorInstance::start(
+                self.thread_pool.clone(),
+                views.to_vec(),
+                sender,
+                self.opts,
+            )
+            .await,
+        ))
+    }
+
+    async fn start_generation_to_gpu(
+        &self,
+        views: &[View],
+        texture: Arc<Texture>,
+        texture_view: Arc<TextureView>,
+    ) -> anyhow::Result<Box<dyn FractalGeneratorInstance>> {
+        todo!("TODO: Implement CPU-generation to GPU")
     }
 }
 
@@ -136,13 +138,14 @@ impl CpuFractalGeneratorInstance {
     }
 }
 
+#[async_trait]
 impl FractalGeneratorInstance for CpuFractalGeneratorInstance {
-    fn progress(&self) -> BoxFuture<anyhow::Result<f32>> {
-        async move { Ok(*self.completed.read().await as f32 / self.view_count as f32) }.boxed()
+    async fn progress(&self) -> anyhow::Result<f32> {
+        Ok(*self.completed.read().await as f32 / self.view_count as f32)
     }
 
-    fn running(&self) -> BoxFuture<anyhow::Result<bool>> {
-        async move { Ok(*self.completed.read().await < self.view_count) }.boxed()
+    async fn running(&self) -> anyhow::Result<bool> {
+        Ok(*self.completed.read().await < self.view_count)
     }
 }
 

@@ -3,31 +3,38 @@
 // Note: https://docs.rs/futures/0.3.12/futures/future/fn.join_all.html
 
 use crate::generator::{view::View, FractalGenerator, FractalGeneratorInstance, PixelBlock};
-use futures::{
-    future::{join_all, BoxFuture},
-    FutureExt,
-};
+use std::sync::Arc;
 use tokio::sync::mpsc::Sender;
+use wgpu::{Texture, TextureView};
 
 pub struct CompositeFractalGenerator {
-    generators: Vec<Box<dyn FractalGenerator>>,
+    generators: Vec<Box<dyn FractalGenerator + Send + Sync>>,
 }
 
+#[async_trait]
 impl FractalGenerator for CompositeFractalGenerator {
-    fn min_views_hint(&self) -> BoxFuture<'_, anyhow::Result<usize>> {
-        join_all(self.generators.iter().map(|g| g.min_views_hint()))
-            .map(|s| {
-                let res: Result<Vec<_>, _> = s.into_iter().collect();
-                res.map(|v| v.into_iter().sum::<usize>())
-            })
-            .boxed()
+    async fn min_views_hint(&self) -> anyhow::Result<usize> {
+        let mut sum = 0;
+        for g in self.generators.iter() {
+            sum += g.min_views_hint().await?;
+        }
+        Ok(sum)
     }
 
-    fn start_generation(
+    async fn start_generation_to_cpu(
         &self,
         views: &[View],
         sender: Sender<anyhow::Result<PixelBlock>>,
-    ) -> BoxFuture<anyhow::Result<Box<dyn FractalGeneratorInstance>>> {
+    ) -> anyhow::Result<Box<dyn FractalGeneratorInstance>> {
+        unimplemented!()
+    }
+
+    async fn start_generation_to_gpu(
+        &self,
+        views: &[View],
+        texture: Arc<Texture>,
+        texture_view: Arc<TextureView>,
+    ) -> anyhow::Result<Box<dyn FractalGeneratorInstance>> {
         unimplemented!()
     }
 }

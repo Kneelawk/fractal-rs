@@ -11,10 +11,11 @@ use crate::generator::{
     args::{Multisampling, Smoothing},
     view::View,
 };
-use futures::future::BoxFuture;
 use num_complex::Complex;
 use std::mem::size_of;
 use tokio::sync::mpsc::Sender;
+use wgpu::{Texture, TextureView};
+use std::sync::Arc;
 
 pub const BYTES_PER_PIXEL: usize = size_of::<u32>();
 
@@ -39,26 +40,37 @@ pub struct PixelBlock {
 ///
 /// Note: all these methods return futures because they may require
 /// communication over a network.
+#[async_trait]
 pub trait FractalGenerator {
     /// Gets the recommended minimum number of views that should be submitted to
     /// this generator together as a single batch in order to operate
     /// efficiently.
-    fn min_views_hint(&self) -> BoxFuture<anyhow::Result<usize>>;
+    async fn min_views_hint(&self) -> anyhow::Result<usize>;
 
-    /// Starts the generation of a fractal. Results are sent in the same order
-    /// that views are presented in the `views` iterator.
-    fn start_generation(
+    /// Starts the generation of a fractal.
+    async fn start_generation_to_cpu(
         &self,
         views: &[View],
         sender: Sender<anyhow::Result<PixelBlock>>,
-    ) -> BoxFuture<anyhow::Result<Box<dyn FractalGeneratorInstance>>>;
+    ) -> anyhow::Result<Box<dyn FractalGeneratorInstance>>;
+
+    /// Starts the generation of a fractal. This variant writes fractal image
+    /// data directly to a gpu-side image instead of sending it as cpu-side
+    /// pixel blocks.
+    async fn start_generation_to_gpu(
+        &self,
+        views: &[View],
+        texture: Arc<Texture>,
+        texture_view: Arc<TextureView>,
+    ) -> anyhow::Result<Box<dyn FractalGeneratorInstance>>;
 }
 
 /// Represents a running fractal generator.
+#[async_trait]
 pub trait FractalGeneratorInstance {
     /// Gets this generator instance's current progress.
-    fn progress(&self) -> BoxFuture<anyhow::Result<f32>>;
+    async fn progress(&self) -> anyhow::Result<f32>;
 
     /// Checks whether this fractal generator instance is still running.
-    fn running(&self) -> BoxFuture<anyhow::Result<bool>>;
+    async fn running(&self) -> anyhow::Result<bool>;
 }
