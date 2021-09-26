@@ -6,7 +6,7 @@ use std::{
     },
     time::{Duration, SystemTime},
 };
-use tokio::{runtime, task};
+use tokio::{runtime, runtime::Runtime, task};
 use wgpu::{
     Backends, Device, DeviceDescriptor, Instance, Maintain, PowerPreference, PresentMode, Queue,
     RequestAdapterOptions, RequestDeviceError, SurfaceConfiguration, SurfaceError, TextureFormat,
@@ -17,28 +17,30 @@ use winit::{
     error::OsError,
     event::{Event, WindowEvent},
     event_loop::{ControlFlow, EventLoop},
-    window::{Fullscreen, WindowBuilder},
+    window::{Fullscreen, Window, WindowBuilder},
 };
 
 /// Represents an application's data, allowing the application to receive
 /// lifecycle events. This version of `Flow` and `FlowModel` are designed to
 /// support an asynchronous application.
-#[async_trait]
 pub trait FlowModel: Sized {
-    async fn init(
+    fn init(
+        runtime: Arc<Runtime>,
         device: Arc<Device>,
         queue: Arc<Queue>,
-        window_size: PhysicalSize<u32>,
+        window: Arc<Window>,
         frame_format: TextureFormat,
     ) -> Self;
 
-    async fn event(&mut self, _event: WindowEvent<'_>) -> ControlFlow;
+    fn event(&mut self, _event: &WindowEvent<'_>) -> Option<ControlFlow>;
 
-    async fn update(&mut self, _update_delta: Duration) -> ControlFlow;
+    fn all_events(&mut self, _event: &Event<()>) {}
 
-    async fn render(&mut self, _frame_view: &TextureView, _render_delta: Duration);
+    fn update(&mut self, _update_delta: Duration) -> Option<ControlFlow>;
 
-    async fn shutdown(self);
+    fn render(&mut self, _frame_view: &TextureView, _render_delta: Duration);
+
+    fn shutdown(self);
 }
 
 /// Used to manage an application's control flow as well as integration with the
@@ -69,9 +71,9 @@ impl Flow {
     }
 
     /// Starts the Flow's event loop.
-    pub fn start<Model: FlowModel + Send + 'static>(self) -> Result<(), FlowStartError> {
+    pub fn start<Model: FlowModel + 'static>(self) -> Result<!, FlowStartError> {
         info!("Creating runtime...");
-        let runtime = runtime::Builder::new_multi_thread().enable_all().build()?;
+        let runtime = Arc::new(runtime::Builder::new_multi_thread().enable_all().build()?);
 
         info!("Creating event loop...");
         let event_loop = EventLoop::new();
@@ -89,6 +91,8 @@ impl Flow {
             builder.build(&event_loop)?
         };
 
+        let window = Arc::new(window);
+
         // setup wgpu
         let window_size = window.inner_size();
 
@@ -96,7 +100,7 @@ impl Flow {
         let instance = Instance::new(Backends::PRIMARY);
 
         info!("Creating surface...");
-        let surface = unsafe { instance.create_surface(&window) };
+        let surface = unsafe { instance.create_surface(window.as_ref()) };
 
         info!("Requesting adapter...");
         let adapter = runtime
@@ -146,12 +150,13 @@ impl Flow {
 
         // setup model
         info!("Creating model...");
-        let mut model: Option<Model> = Some(runtime.block_on(Model::init(
+        let mut model: Option<Model> = Some(Model::init(
+            runtime.clone(),
             device.clone(),
             queue.clone(),
-            window_size,
+            window.clone(),
             config.format,
-        )));
+        ));
         let mut previous_update = SystemTime::now();
         let mut previous_render = SystemTime::now();
 
@@ -162,110 +167,102 @@ impl Flow {
         let mut queue = Some(queue);
 
         info!("Starting event loop...");
-        event_loop.run(move |event, _, control| match event {
-            Event::WindowEvent { event, window_id } if window_id == window.id() => {
-                match event {
-                    WindowEvent::Resized(size) => {
-                        config.width = size.width;
-                        config.height = size.height;
-                        surface.configure(&device, &config);
-                    },
-                    WindowEvent::ScaleFactorChanged {
-                        ref new_inner_size, ..
-                    } => {
-                        config.width = new_inner_size.width;
-                        config.height = new_inner_size.height;
-                        surface.configure(&device, &config);
-                    },
-                    WindowEvent::CloseRequested => {
-                        *control = ControlFlow::Exit;
-                    },
-                    _ => {},
-                }
+        event_loop.run(move |event, _, control| {
+            match &event {
+                Event::WindowEvent { event, window_id } if *window_id == window.id() => {
+                    match event {
+                        WindowEvent::Resized(size) => {
+                            config.width = size.width;
+                            config.height = size.height;
+                            surface.configure(&device, &config);
+                        },
+                        WindowEvent::ScaleFactorChanged {
+                            ref new_inner_size, ..
+                        } => {
+                            config.width = new_inner_size.width;
+                            config.height = new_inner_size.height;
+                            surface.configure(&device, &config);
+                        },
+                        WindowEvent::CloseRequested => {
+                            *control = ControlFlow::Exit;
+                        },
+                        _ => {},
+                    }
 
-                if runtime
-                    .as_ref()
-                    .unwrap()
-                    .block_on(model.as_mut().unwrap().event(event))
-                    == ControlFlow::Exit
-                {
-                    *control = ControlFlow::Exit;
-                }
-            },
-            Event::MainEventsCleared => {
-                let now = SystemTime::now();
-                let delta = now.duration_since(previous_update).unwrap();
-                previous_update = now;
+                    if let Some(new_control) = model.as_mut().unwrap().event(event) {
+                        *control = new_control;
+                    }
+                },
+                Event::MainEventsCleared => {
+                    let now = SystemTime::now();
+                    let delta = now.duration_since(previous_update).unwrap();
+                    previous_update = now;
 
-                if runtime
-                    .as_ref()
-                    .unwrap()
-                    .block_on(model.as_mut().unwrap().update(delta))
-                    == ControlFlow::Exit
-                {
-                    *control = ControlFlow::Exit;
-                }
+                    if let Some(new_control) = model.as_mut().unwrap().update(delta) {
+                        *control = new_control;
+                    }
 
-                if *control != ControlFlow::Exit {
-                    window.request_redraw();
-                }
-            },
-            Event::RedrawRequested(window_id) if window_id == window.id() => {
-                let now = SystemTime::now();
-                let delta = now.duration_since(previous_render).unwrap();
-                previous_render = now;
+                    if *control != ControlFlow::Exit {
+                        window.request_redraw();
+                    }
+                },
+                Event::RedrawRequested(window_id) if *window_id == window.id() => {
+                    let now = SystemTime::now();
+                    let delta = now.duration_since(previous_render).unwrap();
+                    previous_render = now;
 
-                let frame = match surface.get_current_frame() {
-                    Ok(output) => Some(output),
-                    Err(SurfaceError::OutOfMemory) => {
-                        error!("Unable to obtain surface frame: OutOfMemory! Exiting...");
-                        *control = ControlFlow::Exit;
+                    let frame = match surface.get_current_frame() {
+                        Ok(output) => Some(output),
+                        Err(SurfaceError::OutOfMemory) => {
+                            error!("Unable to obtain surface frame: OutOfMemory! Exiting...");
+                            *control = ControlFlow::Exit;
 
-                        None
-                    },
-                    Err(_) => None,
-                };
+                            None
+                        },
+                        Err(_) => None,
+                    };
 
-                if let Some(frame) = frame {
-                    let output = frame.output;
-                    let view = output
-                        .texture
-                        .create_view(&TextureViewDescriptor::default());
+                    if let Some(frame) = frame {
+                        let output = frame.output;
+                        let view = output
+                            .texture
+                            .create_view(&TextureViewDescriptor::default());
 
-                    runtime
+                        model.as_mut().unwrap().render(&view, delta);
+                    }
+                },
+                Event::LoopDestroyed => {
+                    info!("Shutting down...");
+
+                    let mut model = model.take().unwrap();
+                    model.all_events(&event);
+                    model.shutdown();
+
+                    status.store(false, Ordering::Relaxed);
+                    if let Err(e) = runtime
                         .as_ref()
                         .unwrap()
-                        .block_on(model.as_mut().unwrap().render(&view, delta));
-                }
-            },
-            Event::LoopDestroyed => {
-                info!("Shutting down...");
+                        .block_on(poll_task.take().unwrap())
+                    {
+                        error!("Error stopping device poll task: {:?}", e);
+                    }
 
-                runtime
-                    .as_ref()
-                    .unwrap()
-                    .block_on(model.take().unwrap().shutdown());
+                    // shutdown WGPU
+                    drop(queue.take());
+                    drop(adapter.take());
+                    drop(instance.take());
 
-                status.store(false, Ordering::Relaxed);
-                if let Err(e) = runtime
-                    .as_ref()
-                    .unwrap()
-                    .block_on(poll_task.take().unwrap())
-                {
-                    error!("Error stopping device poll task: {:?}", e);
-                }
+                    // shutdown the runtime
+                    drop(runtime.take());
 
-                // shutdown WGPU
-                drop(queue.take());
-                drop(adapter.take());
-                drop(instance.take());
+                    info!("Done.");
+                },
+                _ => {},
+            }
 
-                // shutdown the runtime
-                drop(runtime.take());
-
-                info!("Done.");
-            },
-            _ => {},
+            if let Some(model) = &mut model {
+                model.all_events(&event);
+            }
         });
     }
 }
