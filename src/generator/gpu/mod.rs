@@ -1,13 +1,17 @@
-use crate::generator::{
+use crate::{
+    generator::{
+        gpu::{
+            shader::load_shaders,
+            uniforms::{GpuView, Uniforms},
+        },
+        util::{copy_region, smallest_multiple_containing},
+        view::View,
+        FractalGenerator, FractalGeneratorInstance, FractalOpts, PixelBlock, BYTES_PER_PIXEL,
+    },
     gpu::{
         buffer::{BufferWrapper, Encodable},
-        shader::load_shaders,
-        uniforms::{GpuView, Uniforms},
         util::{create_texture, create_texture_buffer},
     },
-    util::{copy_region, smallest_multiple_containing},
-    view::View,
-    FractalGenerator, FractalGeneratorInstance, FractalOpts, PixelBlock, BYTES_PER_PIXEL,
 };
 use std::{
     collections::HashMap,
@@ -27,13 +31,11 @@ use wgpu::{
     MultisampleState, Operations, Origin3d, PipelineLayoutDescriptor, PolygonMode, PrimitiveState,
     PrimitiveTopology, Queue, RenderPassColorAttachment, RenderPassDescriptor, RenderPipeline,
     RenderPipelineDescriptor, ShaderModuleDescriptor, ShaderStages, Texture, TextureAspect,
-    TextureFormat, TextureView, VertexState,
+    TextureFormat, TextureUsages, TextureView, VertexState,
 };
 
-mod buffer;
 mod shader;
 mod uniforms;
-mod util;
 
 pub struct GpuFractalGenerator {
     opts: FractalOpts,
@@ -508,8 +510,19 @@ fn find_texture_buffer_for_view<'a>(
             "Creating new framebuffer with dimensions ({}x{})...",
             width, height
         );
-        let (texture, texture_view) = create_texture(&device, width as u32, height as u32);
-        let buffer = create_texture_buffer(&device, width as u32, height as u32);
+        let (texture, texture_view) = create_texture(
+            &device,
+            width as u32,
+            height as u32,
+            TextureFormat::Rgba8Unorm,
+            TextureUsages::COPY_SRC | TextureUsages::RENDER_ATTACHMENT,
+        );
+        let buffer = create_texture_buffer(
+            &device,
+            width as u32,
+            height as u32,
+            BufferUsages::COPY_DST | BufferUsages::MAP_READ,
+        );
         (texture, texture_view, buffer)
     });
     (texture_width, texture_height, texture, texture_view, buffer)
@@ -531,7 +544,13 @@ fn find_texture_for_view<'a>(
             "Creating new framebuffer with dimensions ({}x{})...",
             width, height
         );
-        let (texture, texture_view) = create_texture(&device, width as u32, height as u32);
+        let (texture, texture_view) = create_texture(
+            &device,
+            width as u32,
+            height as u32,
+            TextureFormat::Rgba8Unorm,
+            TextureUsages::COPY_SRC | TextureUsages::RENDER_ATTACHMENT,
+        );
         (texture, texture_view)
     });
     (texture, texture_view)

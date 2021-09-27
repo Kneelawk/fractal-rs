@@ -4,7 +4,13 @@ use wgpu::{
     TextureDescriptor, TextureDimension, TextureFormat, TextureUsages, TextureView,
 };
 
-pub fn create_texture(device: &Device, width: u32, height: u32) -> (Texture, TextureView) {
+pub fn create_texture(
+    device: &Device,
+    width: u32,
+    height: u32,
+    format: TextureFormat,
+    usage: TextureUsages,
+) -> (Texture, TextureView) {
     let texture = device.create_texture(&TextureDescriptor {
         label: Some("Framebuffer"),
         size: Extent3d {
@@ -15,20 +21,25 @@ pub fn create_texture(device: &Device, width: u32, height: u32) -> (Texture, Tex
         mip_level_count: 1,
         sample_count: 1,
         dimension: TextureDimension::D2,
-        format: TextureFormat::Rgba8Unorm,
-        usage: TextureUsages::COPY_SRC | TextureUsages::RENDER_ATTACHMENT,
+        format,
+        usage,
     });
     let texture_view = texture.create_view(&Default::default());
 
     (texture, texture_view)
 }
 
-pub fn create_texture_buffer(device: &Device, width: u32, height: u32) -> Buffer {
+pub fn create_texture_buffer(
+    device: &Device,
+    width: u32,
+    height: u32,
+    usage: BufferUsages,
+) -> Buffer {
     let size = width * height * size_of::<u32>() as u32;
     let texture_buffer = device.create_buffer(&BufferDescriptor {
         label: Some("Framebuffer Buffer"),
         size: size as BufferAddress,
-        usage: BufferUsages::COPY_DST | BufferUsages::MAP_READ,
+        usage,
         mapped_at_creation: false,
     });
 

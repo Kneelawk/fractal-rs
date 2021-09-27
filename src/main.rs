@@ -16,6 +16,7 @@ extern crate serde;
 extern crate thiserror;
 
 mod generator;
+mod gpu;
 mod gui;
 mod logging;
 

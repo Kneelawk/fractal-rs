@@ -220,9 +220,11 @@ impl<D: Encodable + Sized> BufferWrapper<D> {
 }
 
 /// Error potentially returned from write operations.
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, Error)]
 pub enum BufferWriteError {
+    #[error("Insufficient Capacity")]
     InsufficientCapacity,
+    #[error("Buffer Async Error")]
     BufferAsyncError,
 }
 
@@ -233,8 +235,9 @@ impl From<BufferAsyncError> for BufferWriteError {
 }
 
 /// Error potentially returned from remove operations.
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, Error)]
 pub enum BufferRemoveError {
+    #[error("Insufficient Size")]
     InsufficientSize,
 }
 

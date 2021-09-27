@@ -16,7 +16,8 @@ use winit::{
     window::Window,
 };
 
-pub mod flow;
+mod flow;
+mod viewer;
 
 /// Launches the application as a GUI application.
 pub fn start_gui_application() -> ! {
