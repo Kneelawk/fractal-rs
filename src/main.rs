@@ -19,6 +19,7 @@ mod generator;
 mod gpu;
 mod gui;
 mod logging;
+mod util;
 
 fn main() {
     logging::init();

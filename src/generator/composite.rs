@@ -25,7 +25,7 @@ impl FractalGenerator for CompositeFractalGenerator {
         &self,
         views: &[View],
         sender: Sender<anyhow::Result<PixelBlock>>,
-    ) -> anyhow::Result<Box<dyn FractalGeneratorInstance>> {
+    ) -> anyhow::Result<Box<dyn FractalGeneratorInstance + Send + 'static>> {
         unimplemented!()
     }
 
@@ -34,7 +34,7 @@ impl FractalGenerator for CompositeFractalGenerator {
         views: &[View],
         texture: Arc<Texture>,
         texture_view: Arc<TextureView>,
-    ) -> anyhow::Result<Box<dyn FractalGeneratorInstance>> {
+    ) -> anyhow::Result<Box<dyn FractalGeneratorInstance + Send + 'static>> {
         unimplemented!()
     }
 }

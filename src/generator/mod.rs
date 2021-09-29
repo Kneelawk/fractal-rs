@@ -52,7 +52,7 @@ pub trait FractalGenerator {
         &self,
         views: &[View],
         sender: Sender<anyhow::Result<PixelBlock>>,
-    ) -> anyhow::Result<Box<dyn FractalGeneratorInstance>>;
+    ) -> anyhow::Result<Box<dyn FractalGeneratorInstance + Send + 'static>>;
 
     /// Starts the generation of a fractal. This variant writes fractal image
     /// data directly to a gpu-side image instead of sending it as cpu-side
@@ -62,7 +62,7 @@ pub trait FractalGenerator {
         views: &[View],
         texture: Arc<Texture>,
         texture_view: Arc<TextureView>,
-    ) -> anyhow::Result<Box<dyn FractalGeneratorInstance>>;
+    ) -> anyhow::Result<Box<dyn FractalGeneratorInstance + Send + 'static>>;
 }
 
 /// Represents a running fractal generator.

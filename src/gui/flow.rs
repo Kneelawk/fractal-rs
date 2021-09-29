@@ -6,7 +6,11 @@ use std::{
     },
     time::{Duration, SystemTime},
 };
-use tokio::{runtime, runtime::Runtime, task};
+use tokio::{
+    runtime,
+    runtime::{Handle, Runtime},
+    task,
+};
 use wgpu::{
     Backends, Device, DeviceDescriptor, Instance, Maintain, PowerPreference, PresentMode, Queue,
     RequestAdapterOptions, RequestDeviceError, SurfaceConfiguration, SurfaceError, TextureFormat,
@@ -25,7 +29,7 @@ use winit::{
 /// support an asynchronous application.
 pub trait FlowModel: Sized {
     fn init(
-        runtime: Arc<Runtime>,
+        handle: Handle,
         device: Arc<Device>,
         queue: Arc<Queue>,
         window: Arc<Window>,
@@ -73,7 +77,7 @@ impl Flow {
     /// Starts the Flow's event loop.
     pub fn start<Model: FlowModel + 'static>(self) -> Result<!, FlowStartError> {
         info!("Creating runtime...");
-        let runtime = Arc::new(runtime::Builder::new_multi_thread().enable_all().build()?);
+        let runtime = runtime::Builder::new_multi_thread().enable_all().build()?;
 
         info!("Creating event loop...");
         let event_loop = EventLoop::new();
@@ -151,7 +155,7 @@ impl Flow {
         // setup model
         info!("Creating model...");
         let mut model: Option<Model> = Some(Model::init(
-            runtime.clone(),
+            runtime.handle().clone(),
             device.clone(),
             queue.clone(),
             window.clone(),

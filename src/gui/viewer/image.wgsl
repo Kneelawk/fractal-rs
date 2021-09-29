@@ -8,8 +8,9 @@ struct FragmentData {
 
 [[block]]
 struct Uniforms {
-    screen: mat4x4<f32>;
+    from_screen: mat4x4<f32>;
     model: mat4x4<f32>;
+    to_screen: mat4x4<f32>;
 };
 
 var indexable: array<vec2<f32>,6u> = array<vec2<f32>,6u>(
@@ -28,7 +29,7 @@ var u_texture: texture_2d<f32>;
 fn vert_main([[builtin(vertex_index)]] vert_index: u32) -> FragmentData {
     var data: FragmentData;
     let xy = indexable[vert_index];
-    data.position = uniforms.screen * uniforms.model * vec4<f32>(xy, 0.0, 1.0);
+    data.position = uniforms.from_screen * uniforms.model * uniforms.to_screen * vec4<f32>(xy, 0.0, 1.0);
     let small_xy: vec2<f32> = ((xy + vec2<f32>(1.0, 1.0)) / vec2<f32>(2.0));
     data.texture_position = vec2<f32>(small_xy.x, (1.0 - small_xy.y));
     return data;

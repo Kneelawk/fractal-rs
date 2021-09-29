@@ -562,6 +562,7 @@ dependencies = [
  "num-complex",
  "num-traits",
  "num_cpus",
+ "pin-utils",
  "rayon",
  "regex",
  "serde",

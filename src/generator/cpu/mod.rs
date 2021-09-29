@@ -37,7 +37,7 @@ impl FractalGenerator for CpuFractalGenerator {
         &self,
         views: &[View],
         sender: Sender<anyhow::Result<PixelBlock>>,
-    ) -> Result<Box<dyn FractalGeneratorInstance>, anyhow::Error> {
+    ) -> anyhow::Result<Box<dyn FractalGeneratorInstance + Send + 'static>> {
         Ok(Box::new(
             CpuFractalGeneratorInstance::start(
                 self.thread_pool.clone(),
@@ -54,7 +54,7 @@ impl FractalGenerator for CpuFractalGenerator {
         views: &[View],
         texture: Arc<Texture>,
         texture_view: Arc<TextureView>,
-    ) -> anyhow::Result<Box<dyn FractalGeneratorInstance>> {
+    ) -> anyhow::Result<Box<dyn FractalGeneratorInstance + Send + 'static>> {
         todo!("TODO: Implement CPU-generation to GPU")
     }
 }

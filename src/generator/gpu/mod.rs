@@ -135,7 +135,7 @@ impl FractalGenerator for GpuFractalGenerator {
         &self,
         views: &[View],
         sender: Sender<anyhow::Result<PixelBlock>>,
-    ) -> anyhow::Result<Box<dyn FractalGeneratorInstance>> {
+    ) -> anyhow::Result<Box<dyn FractalGeneratorInstance + Send + 'static>> {
         Ok(Box::new(GpuFractalGeneratorInstance::start_to_cpu(
             self.opts,
             self.device.clone(),
@@ -152,7 +152,7 @@ impl FractalGenerator for GpuFractalGenerator {
         views: &[View],
         texture: Arc<Texture>,
         texture_view: Arc<TextureView>,
-    ) -> anyhow::Result<Box<dyn FractalGeneratorInstance>> {
+    ) -> anyhow::Result<Box<dyn FractalGeneratorInstance + Send + 'static>> {
         Ok(Box::new(GpuFractalGeneratorInstance::start_to_gpu(
             self.opts,
             self.device.clone(),
@@ -466,7 +466,7 @@ fn setup_uniforms(
 ) -> (BufferWrapper<Uniforms>, BindGroup) {
     info!("Creating uniform buffer...");
     let uniforms_buffer = BufferWrapper::<Uniforms>::new(
-        &device,
+        device,
         Uniforms::size() as BufferAddress,
         BufferUsages::UNIFORM,
     );
@@ -511,14 +511,14 @@ fn find_texture_buffer_for_view<'a>(
             width, height
         );
         let (texture, texture_view) = create_texture(
-            &device,
+            device,
             width as u32,
             height as u32,
             TextureFormat::Rgba8Unorm,
             TextureUsages::COPY_SRC | TextureUsages::RENDER_ATTACHMENT,
         );
         let buffer = create_texture_buffer(
-            &device,
+            device,
             width as u32,
             height as u32,
             BufferUsages::COPY_DST | BufferUsages::MAP_READ,
@@ -545,7 +545,7 @@ fn find_texture_for_view<'a>(
             width, height
         );
         let (texture, texture_view) = create_texture(
-            &device,
+            device,
             width as u32,
             height as u32,
             TextureFormat::Rgba8Unorm,
@@ -567,7 +567,7 @@ async fn write_uniforms(
     );
     let cb = uniforms_buffer
         .replace_all(
-            &device,
+            device,
             &[Uniforms {
                 view: GpuView::from_view(view),
             }],
@@ -601,8 +601,8 @@ fn encode_render_pass(
         depth_stencil_attachment: None,
     });
 
-    render_pass.set_pipeline(&render_pipeline);
-    render_pass.set_bind_group(0, &uniform_bind_group, &[]);
+    render_pass.set_pipeline(render_pipeline);
+    render_pass.set_bind_group(0, uniform_bind_group, &[]);
     render_pass.draw(0..6, 0..1);
 }
 

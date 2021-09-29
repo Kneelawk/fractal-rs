@@ -1,14 +1,32 @@
 //! gui/mod.rs - This is where the GUI-based core application logic happens.
 
-use crate::gui::flow::{Flow, FlowModel};
-use imgui::{Condition, FontConfig, FontSource, MenuItem, MouseCursor};
+use crate::{
+    generator::{
+        args::{Multisampling, Smoothing},
+        gpu::GpuFractalGenerator,
+        view::View,
+        FractalGenerator, FractalGeneratorInstance, FractalOpts,
+    },
+    gui::{
+        flow::{Flow, FlowModel},
+        viewer::FractalViewer,
+    },
+    util::{poll_join_result, poll_optional, push_or_else, RunningState},
+};
+use futures::{future::BoxFuture, FutureExt};
+use imgui::{Condition, FontConfig, FontSource, MenuItem, MouseCursor, ProgressBar};
 use imgui_wgpu::{Renderer, RendererConfig};
 use imgui_winit_support::{HiDpiMode, WinitPlatform};
-use std::{sync::Arc, time::Duration};
-use tokio::runtime::Runtime;
+use num_complex::Complex32;
+use std::{
+    borrow::Cow,
+    sync::{atomic::AtomicBool, Arc},
+    time::Duration,
+};
+use tokio::{runtime::Handle, sync::Mutex, task::JoinHandle};
 use wgpu::{
-    Color, CommandEncoderDescriptor, Device, LoadOp, Operations, Queue, RenderPassColorAttachment,
-    RenderPassDescriptor, TextureFormat, TextureView,
+    Color, CommandBuffer, CommandEncoderDescriptor, Device, LoadOp, Operations, Queue,
+    RenderPassColorAttachment, RenderPassDescriptor, TextureFormat, TextureView,
 };
 use winit::{
     event::{Event, WindowEvent},
@@ -18,6 +36,11 @@ use winit::{
 
 mod flow;
 mod viewer;
+
+const INITIAL_FRACTAL_WIDTH: u32 = 1024;
+const INITIAL_FRACTAL_HEIGHT: u32 = 1024;
+
+const DEFAULT_GENERATION_MESSAGE: &str = "Not Generating";
 
 /// Launches the application as a GUI application.
 pub fn start_gui_application() -> ! {
@@ -30,27 +53,34 @@ pub fn start_gui_application() -> ! {
 
 struct FractalRSGuiMain {
     // initialization state
-    runtime: Arc<Runtime>,
+    handle: Handle,
     device: Arc<Device>,
     queue: Arc<Queue>,
     window: Arc<Window>,
     imgui: imgui::Context,
     platform: WinitPlatform,
     renderer: Renderer,
+    viewer: FractalViewer,
+    generator: GpuFractalGenerator,
 
     // running state
+    commands: Vec<CommandBuffer>,
     last_cursor: Option<Option<MouseCursor>>,
     state: UIState,
+    current_instance: Option<Box<dyn FractalGeneratorInstance + Send>>,
 }
 
 #[derive(Clone)]
 struct UIState {
     close_requested: bool,
+    generate_fractal: bool,
+    generation_fraction: f32,
+    generation_message: Cow<'static, str>,
 }
 
 impl FlowModel for FractalRSGuiMain {
     fn init(
-        runtime: Arc<Runtime>,
+        handle: Handle,
         device: Arc<Device>,
         queue: Arc<Queue>,
         window: Arc<Window>,
@@ -85,22 +115,88 @@ impl FlowModel for FractalRSGuiMain {
 
         let renderer = Renderer::new(&mut imgui, &device, &queue, renderer_config);
 
+        // Set up the fractal viewer element
+        info!("Creating Fractal Viewer element...");
+        let window_size = window.inner_size();
+        let viewer = handle
+            .block_on(FractalViewer::new(
+                &device,
+                &queue,
+                frame_format,
+                window_size.width,
+                window_size.height,
+                INITIAL_FRACTAL_WIDTH,
+                INITIAL_FRACTAL_HEIGHT,
+            ))
+            .expect("Error creating Fractal Viewer element");
+
+        // Set up the fractal generator
+        info!("Creating Fractal Generator...");
+        let opts = FractalOpts {
+            mandelbrot: false,
+            iterations: 200,
+            smoothing: Smoothing::from_logarithmic_distance(4.0, 2.0),
+            multisampling: Multisampling::Linear { axial_points: 16 },
+            c: Complex32 {
+                re: 0.16611,
+                im: 0.59419,
+            },
+        };
+
+        let generator = handle
+            .block_on(GpuFractalGenerator::new(
+                opts,
+                device.clone(),
+                queue.clone(),
+            ))
+            .expect("Error creating Fractal Generator");
+
         FractalRSGuiMain {
-            runtime,
+            handle,
             device,
             queue,
             window,
             imgui,
             platform,
             renderer,
+            viewer,
+            generator,
+            commands: vec![],
             last_cursor: None,
             state: UIState {
                 close_requested: false,
+                generate_fractal: false,
+                generation_fraction: 0.0,
+                generation_message: Cow::Borrowed(DEFAULT_GENERATION_MESSAGE),
             },
+            current_instance: None,
         }
     }
 
     fn event(&mut self, event: &WindowEvent<'_>) -> Option<ControlFlow> {
+        if let WindowEvent::Resized(new_size) = event {
+            push_or_else(
+                self.handle.block_on(self.viewer.set_frame_size(
+                    &self.device,
+                    new_size.width,
+                    new_size.height,
+                )),
+                &mut self.commands,
+                |e| error!("Error setting frame size: {:?}", e),
+            );
+        }
+        if let WindowEvent::ScaleFactorChanged { new_inner_size, .. } = event {
+            push_or_else(
+                self.handle.block_on(self.viewer.set_frame_size(
+                    &self.device,
+                    new_inner_size.width,
+                    new_inner_size.height,
+                )),
+                &mut self.commands,
+                |e| error!("Error setting frame size: {:?}", e),
+            );
+        }
+
         None
     }
 
@@ -110,6 +206,12 @@ impl FlowModel for FractalRSGuiMain {
     }
 
     fn update(&mut self, update_delta: Duration) -> Option<ControlFlow> {
+        if self.state.generate_fractal {
+            self.state.generate_fractal = false;
+
+            // TODO: start fractal generator
+        }
+
         if self.state.close_requested {
             Some(ControlFlow::Exit)
         } else {
@@ -138,11 +240,21 @@ impl FlowModel for FractalRSGuiMain {
 
         {
             // Draw UI
+            let is_started = self.current_instance.is_some();
             let window = imgui::Window::new("Hello World!");
             window
                 .size([400.0, 500.0], Condition::FirstUseEver)
                 .build(&ui, || {
                     ui.text("Hello World!");
+                    ui.disabled(is_started, || {
+                        if ui.button("Generate!") {
+                            state.generate_fractal = true;
+                        }
+                    });
+
+                    ProgressBar::new(state.generation_fraction)
+                        .overlay_text(&state.generation_message)
+                        .build(&ui);
                 });
 
             ui.main_menu_bar(|| {
@@ -199,7 +311,9 @@ impl FlowModel for FractalRSGuiMain {
             }
         }
 
-        self.queue.submit([encoder.finish()]);
+        self.commands.push(encoder.finish());
+
+        self.queue.submit(self.commands.drain(..));
     }
 
     fn shutdown(self) {}
