@@ -13,6 +13,10 @@ use crate::{
         util::{create_texture, create_texture_buffer},
     },
 };
+use futures::{
+    future::{ready, BoxFuture},
+    FutureExt,
+};
 use std::{
     collections::HashMap,
     num::{NonZeroU32, NonZeroU64},
@@ -41,7 +45,7 @@ pub struct GpuFractalGenerator {
     opts: FractalOpts,
     device: Arc<Device>,
     queue: Arc<Queue>,
-    uniform_bind_group_layout: BindGroupLayout,
+    uniform_bind_group_layout: Arc<BindGroupLayout>,
     render_pipeline: Arc<RenderPipeline>,
 }
 
@@ -60,7 +64,7 @@ impl GpuFractalGenerator {
 
         info!("Creating uniform bind group layout...");
         let uniform_bind_group_layout =
-            device.create_bind_group_layout(&BindGroupLayoutDescriptor {
+            Arc::new(device.create_bind_group_layout(&BindGroupLayoutDescriptor {
                 label: Some("Uniform Bind Group Layout"),
                 entries: &[BindGroupLayoutEntry {
                     binding: 0,
@@ -72,7 +76,7 @@ impl GpuFractalGenerator {
                     },
                     count: None,
                 }],
-            });
+            }));
 
         info!("Creating render pipeline...");
         let render_pipeline_layout = device.create_pipeline_layout(&PipelineLayoutDescriptor {
@@ -125,44 +129,70 @@ impl GpuFractalGenerator {
     }
 }
 
-#[async_trait]
 impl FractalGenerator for GpuFractalGenerator {
-    async fn min_views_hint(&self) -> anyhow::Result<usize> {
-        Ok(1)
+    fn min_views_hint(&self) -> BoxFuture<'static, anyhow::Result<usize>> {
+        ready(Ok(1)).boxed()
     }
 
-    async fn start_generation_to_cpu(
+    fn start_generation_to_cpu(
         &self,
         views: &[View],
         sender: Sender<anyhow::Result<PixelBlock>>,
-    ) -> anyhow::Result<Box<dyn FractalGeneratorInstance + Send + 'static>> {
-        Ok(Box::new(GpuFractalGeneratorInstance::start_to_cpu(
-            self.opts,
-            self.device.clone(),
-            self.queue.clone(),
-            &self.uniform_bind_group_layout,
-            self.render_pipeline.clone(),
-            views.to_vec(),
-            sender,
-        )))
+    ) -> BoxFuture<'static, anyhow::Result<Box<dyn FractalGeneratorInstance + Send + 'static>>>
+    {
+        // This future must be 'static so we need to copy everything or use Arcs.
+        let opts = self.opts;
+        let device = self.device.clone();
+        let queue = self.queue.clone();
+        let uniform_bind_group_layout = self.uniform_bind_group_layout.clone();
+        let render_pipeline = self.render_pipeline.clone();
+        let views = views.to_vec();
+
+        async move {
+            let boxed: Box<dyn FractalGeneratorInstance + Send> =
+                Box::new(GpuFractalGeneratorInstance::start_to_cpu(
+                    opts,
+                    device,
+                    queue,
+                    uniform_bind_group_layout,
+                    render_pipeline,
+                    views,
+                    sender,
+                ));
+            Ok(boxed)
+        }
+        .boxed()
     }
 
-    async fn start_generation_to_gpu(
+    fn start_generation_to_gpu(
         &self,
         views: &[View],
         texture: Arc<Texture>,
         texture_view: Arc<TextureView>,
-    ) -> anyhow::Result<Box<dyn FractalGeneratorInstance + Send + 'static>> {
-        Ok(Box::new(GpuFractalGeneratorInstance::start_to_gpu(
-            self.opts,
-            self.device.clone(),
-            self.queue.clone(),
-            &self.uniform_bind_group_layout,
-            self.render_pipeline.clone(),
-            views.to_vec(),
-            texture,
-            texture_view,
-        )))
+    ) -> BoxFuture<'static, anyhow::Result<Box<dyn FractalGeneratorInstance + Send + 'static>>>
+    {
+        let opts = self.opts;
+        let device = self.device.clone();
+        let queue = self.queue.clone();
+        let uniform_bind_group_layout = self.uniform_bind_group_layout.clone();
+        let render_pipeline = self.render_pipeline.clone();
+        let views = views.to_vec();
+
+        async move {
+            let boxed: Box<dyn FractalGeneratorInstance + Send> =
+                Box::new(GpuFractalGeneratorInstance::start_to_gpu(
+                    opts,
+                    device,
+                    queue,
+                    uniform_bind_group_layout,
+                    render_pipeline,
+                    views,
+                    texture,
+                    texture_view,
+                ));
+            Ok(boxed)
+        }
+        .boxed()
     }
 }
 
@@ -176,7 +206,7 @@ impl GpuFractalGeneratorInstance {
         _opts: FractalOpts,
         device: Arc<Device>,
         queue: Arc<Queue>,
-        uniform_bind_group_layout: &BindGroupLayout,
+        uniform_bind_group_layout: Arc<BindGroupLayout>,
         render_pipeline: Arc<RenderPipeline>,
         views: Vec<View>,
         sender: Sender<anyhow::Result<PixelBlock>>,
@@ -186,7 +216,7 @@ impl GpuFractalGeneratorInstance {
         let spawn_completed = completed.clone();
 
         let (mut uniforms_buffer, uniform_bind_group) =
-            setup_uniforms(&device, uniform_bind_group_layout);
+            setup_uniforms(&device, &uniform_bind_group_layout);
 
         info!("Spawning gpu manager task...");
 
@@ -306,7 +336,7 @@ impl GpuFractalGeneratorInstance {
         _opts: FractalOpts,
         device: Arc<Device>,
         queue: Arc<Queue>,
-        uniform_bind_group_layout: &BindGroupLayout,
+        uniform_bind_group_layout: Arc<BindGroupLayout>,
         render_pipeline: Arc<RenderPipeline>,
         views: Vec<View>,
         out_texture: Arc<Texture>,
@@ -317,7 +347,7 @@ impl GpuFractalGeneratorInstance {
         let spawn_completed = completed.clone();
 
         let (uniforms_buffer, uniform_bind_group) =
-            setup_uniforms(&device, uniform_bind_group_layout);
+            setup_uniforms(&device, &uniform_bind_group_layout);
 
         info!("Spawning gpu manager task...");
 
@@ -606,13 +636,15 @@ fn encode_render_pass(
     render_pass.draw(0..6, 0..1);
 }
 
-#[async_trait]
 impl FractalGeneratorInstance for GpuFractalGeneratorInstance {
-    async fn progress(&self) -> anyhow::Result<f32> {
-        Ok(self.completed.load(Ordering::Relaxed) as f32 / self.view_count as f32)
+    fn progress(&self) -> BoxFuture<'static, anyhow::Result<f32>> {
+        ready(Ok(
+            self.completed.load(Ordering::Relaxed) as f32 / self.view_count as f32
+        ))
+        .boxed()
     }
 
-    async fn running(&self) -> anyhow::Result<bool> {
-        Ok(self.completed.load(Ordering::Relaxed) < self.view_count)
+    fn running(&self) -> BoxFuture<'static, anyhow::Result<bool>> {
+        ready(Ok(self.completed.load(Ordering::Relaxed) < self.view_count)).boxed()
     }
 }

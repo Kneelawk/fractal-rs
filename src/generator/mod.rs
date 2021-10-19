@@ -11,11 +11,11 @@ use crate::generator::{
     args::{Multisampling, Smoothing},
     view::View,
 };
+use futures::future::BoxFuture;
 use num_complex::Complex;
-use std::mem::size_of;
+use std::{mem::size_of, sync::Arc};
 use tokio::sync::mpsc::Sender;
 use wgpu::{Texture, TextureView};
-use std::sync::Arc;
 
 pub const BYTES_PER_PIXEL: usize = size_of::<u32>();
 
@@ -40,37 +40,35 @@ pub struct PixelBlock {
 ///
 /// Note: all these methods return futures because they may require
 /// communication over a network.
-#[async_trait]
 pub trait FractalGenerator {
     /// Gets the recommended minimum number of views that should be submitted to
     /// this generator together as a single batch in order to operate
     /// efficiently.
-    async fn min_views_hint(&self) -> anyhow::Result<usize>;
+    fn min_views_hint(&self) -> BoxFuture<'static, anyhow::Result<usize>>;
 
     /// Starts the generation of a fractal.
-    async fn start_generation_to_cpu(
+    fn start_generation_to_cpu(
         &self,
         views: &[View],
         sender: Sender<anyhow::Result<PixelBlock>>,
-    ) -> anyhow::Result<Box<dyn FractalGeneratorInstance + Send + 'static>>;
+    ) -> BoxFuture<'static, anyhow::Result<Box<dyn FractalGeneratorInstance + Send + 'static>>>;
 
     /// Starts the generation of a fractal. This variant writes fractal image
     /// data directly to a gpu-side image instead of sending it as cpu-side
     /// pixel blocks.
-    async fn start_generation_to_gpu(
+    fn start_generation_to_gpu(
         &self,
         views: &[View],
         texture: Arc<Texture>,
         texture_view: Arc<TextureView>,
-    ) -> anyhow::Result<Box<dyn FractalGeneratorInstance + Send + 'static>>;
+    ) -> BoxFuture<'static, anyhow::Result<Box<dyn FractalGeneratorInstance + Send + 'static>>>;
 }
 
 /// Represents a running fractal generator.
-#[async_trait]
 pub trait FractalGeneratorInstance {
     /// Gets this generator instance's current progress.
-    async fn progress(&self) -> anyhow::Result<f32>;
+    fn progress(&self) -> BoxFuture<'static, anyhow::Result<f32>>;
 
     /// Checks whether this fractal generator instance is still running.
-    async fn running(&self) -> anyhow::Result<bool>;
+    fn running(&self) -> BoxFuture<'static, anyhow::Result<bool>>;
 }

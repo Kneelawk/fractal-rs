@@ -1,11 +1,8 @@
 //! util.rs - Random utility functions for the program.
 
-use futures::{task::Context, FutureExt};
+use futures::task::Context;
 use std::{future::Future, pin::Pin, task::Poll};
-use tokio::{
-    runtime::Handle,
-    task::{JoinError, JoinHandle},
-};
+use tokio::{runtime::Handle, task::JoinHandle};
 
 pub fn push_or_else<T, E, F: FnOnce(E)>(res: Result<T, E>, vec: &mut Vec<T>, or_else: F) {
     match res {
@@ -14,51 +11,40 @@ pub fn push_or_else<T, E, F: FnOnce(E)>(res: Result<T, E>, vec: &mut Vec<T>, or_
     }
 }
 
-pub fn poll_join_result<R, F1: FnOnce(R), F2: FnOnce(anyhow::Error)>(
-    future: &mut JoinHandle<anyhow::Result<R>>,
-    handle: &Handle,
-    on_success: F1,
-    on_error: F2,
-) -> bool {
+pub fn poll_unpin<R, F: Future<Output = R> + Unpin>(future: &mut F, handle: &Handle) -> Poll<R> {
     let _guard = handle.enter();
 
     let noop_waker = futures::task::noop_waker();
     let mut cx = Context::from_waker(&noop_waker);
 
-    let future = Pin::new(future);
+    Pin::new(future).poll(&mut cx)
+}
 
-    if let Poll::Ready(res) = future.poll(&mut cx) {
-        match res {
-            Ok(res) => match res {
-                Ok(val) => on_success(val),
-                Err(err) => on_error(err),
-            },
-            Err(err) => on_error(anyhow::Error::from(err)),
-        }
-        true
+pub fn poll_join_result<R>(
+    future: &mut JoinHandle<anyhow::Result<R>>,
+    handle: &Handle,
+) -> Option<anyhow::Result<R>> {
+    if let Poll::Ready(res) = poll_unpin(future, handle) {
+        Some(match res {
+            Ok(res) => res,
+            Err(err) => Err(anyhow::Error::from(err)),
+        })
     } else {
-        false
+        None
     }
 }
 
-pub fn poll_optional<
-    R,
-    F1: FnOnce(R),
-    F2: FnOnce(anyhow::Error),
-    F3: FnOnce() -> Option<JoinHandle<anyhow::Result<R>>>,
->(
+pub fn poll_optional<R, N: FnOnce() -> Option<JoinHandle<anyhow::Result<R>>>>(
     optional_future: &mut Option<JoinHandle<anyhow::Result<R>>>,
     handle: &Handle,
-    on_success: F1,
-    on_error: F2,
-    on_new: F3,
-) {
-    let mut reset = false;
+    on_new: N,
+) -> Option<anyhow::Result<R>> {
+    let mut res = None;
     if let Some(future) = optional_future {
-        reset = poll_join_result(future, handle, on_success, on_error);
+        res = poll_join_result(future, handle);
     }
 
-    if reset {
+    if res.is_some() {
         *optional_future = None;
     }
 
@@ -67,6 +53,8 @@ pub fn poll_optional<
             *optional_future = Some(future);
         }
     }
+
+    res
 }
 
 pub enum RunningState<I, F: Future> {
@@ -86,19 +74,14 @@ impl<I, F: Future> RunningState<I, F> {
 }
 
 impl<I> RunningState<I, JoinHandle<anyhow::Result<I>>> {
-    pub fn poll_starting<F: FnOnce(anyhow::Error)>(&mut self, handle: &Handle, on_error: F) {
+    pub fn poll_starting<F: FnOnce(anyhow::Error)>(
+        &mut self,
+        handle: &Handle,
+    ) -> anyhow::Result<()> {
         let mut reset = false;
         let mut inst = None;
         if let RunningState::Starting(f) = self {
-            poll_join_result(
-                f,
-                handle,
-                |r| inst = Some(r),
-                |e| {
-                    reset = true;
-                    on_error(e);
-                },
-            );
+            inst = poll_join_result(f, handle).transpose()?;
         }
         if let Some(inst) = inst {
             *self = RunningState::Running(inst);
@@ -106,5 +89,6 @@ impl<I> RunningState<I, JoinHandle<anyhow::Result<I>>> {
         if reset {
             *self = RunningState::NotStarted;
         }
+        Ok(())
     }
 }
