@@ -74,7 +74,7 @@ impl<I, F: Future> RunningState<I, F> {
 }
 
 impl<I> RunningState<I, JoinHandle<anyhow::Result<I>>> {
-    pub fn poll_starting<F: FnOnce(anyhow::Error)>(
+    pub fn poll_starting(
         &mut self,
         handle: &Handle,
     ) -> anyhow::Result<()> {
