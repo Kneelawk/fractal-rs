@@ -25,9 +25,9 @@ use tokio::sync::mpsc::Sender;
 use wgpu::{
     BindGroupDescriptor, BindGroupEntry, BindGroupLayout, BindGroupLayoutDescriptor,
     BindGroupLayoutEntry, BindingResource, BindingType, BlendState, BufferAddress, BufferBinding,
-    BufferBindingType, BufferUsages, Color, ColorTargetState, ColorWrites, CommandEncoderDescriptor,
-    Device, Extent3d, Face, FragmentState, FrontFace, ImageCopyBuffer, ImageCopyTexture,
-    ImageDataLayout, LoadOp, MapMode, MultisampleState, Operations, Origin3d,
+    BufferBindingType, BufferUsages, Color, ColorTargetState, ColorWrites,
+    CommandEncoderDescriptor, Device, Extent3d, Face, FragmentState, FrontFace, ImageCopyBuffer,
+    ImageCopyTexture, ImageDataLayout, LoadOp, MapMode, MultisampleState, Operations, Origin3d,
     PipelineLayoutDescriptor, PolygonMode, PrimitiveState, PrimitiveTopology, Queue,
     RenderPassColorAttachment, RenderPassDescriptor, RenderPipeline, RenderPipelineDescriptor,
     ShaderModuleDescriptor, ShaderStages, TextureFormat, VertexState,
@@ -239,12 +239,17 @@ impl GpuFractalGeneratorInstance {
                         view.image_x, view.image_y
                     );
                     let mut encoder = device.create_command_encoder(&CommandEncoderDescriptor {
-                        label: Some("Render Command Encoder"),
+                        label: Some(&format!(
+                            "Render Command Encoder for ({}, {})",
+                            view.image_x, view.image_y
+                        )),
                     });
 
                     {
+                        let render_pass_label =
+                            format!("Render Pass for ({}, {})", view.image_x, view.image_y);
                         let mut render_pass = encoder.begin_render_pass(&RenderPassDescriptor {
-                            label: Some("Render Pass"),
+                            label: Some(&render_pass_label),
                             color_attachments: &[RenderPassColorAttachment {
                                 view: texture_view,
                                 resolve_target: None,
@@ -271,7 +276,7 @@ impl GpuFractalGeneratorInstance {
                             texture,
                             mip_level: 0,
                             origin: Origin3d::ZERO,
-                            aspect: Default::default()
+                            aspect: Default::default(),
                         },
                         ImageCopyBuffer {
                             buffer,
@@ -305,9 +310,12 @@ impl GpuFractalGeneratorInstance {
                         "Reading framebuffer for ({}, {})...",
                         view.image_x, view.image_y
                     );
+                    info!("Getting buffer slice...");
                     let buffer_slice = buffer.slice(..);
+                    info!("Mapping buffer...");
                     buffer_slice.map_async(MapMode::Read).await.unwrap();
 
+                    info!("Getting buffer mapped range...");
                     let data = buffer_slice.get_mapped_range();
 
                     info!("Copying image for ({}, {})...", view.image_x, view.image_y);

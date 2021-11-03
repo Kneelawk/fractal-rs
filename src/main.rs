@@ -30,8 +30,8 @@ mod logging;
 const IMAGE_WIDTH: u32 = 4096;
 const IMAGE_HEIGHT: u32 = 4096;
 
-const CHUNK_WIDTH: usize = 256;
-const CHUNK_HEIGHT: usize = 256;
+const CHUNK_WIDTH: usize = 512;
+const CHUNK_HEIGHT: usize = 512;
 
 const CHUNK_BACKLOG: usize = 32;
 
@@ -61,6 +61,7 @@ async fn main() {
     let adapter = instance
         .request_adapter(&RequestAdapterOptions {
             power_preference: Default::default(),
+            force_fallback_adapter: false,
             compatible_surface: None,
         })
         .await
@@ -80,7 +81,9 @@ async fn main() {
     let poll_status = status.clone();
     let poll_task = tokio::spawn(async move {
         while poll_status.load(Ordering::Relaxed) {
+            // info!("==POLL== Polling device...");
             poll_device.poll(Maintain::Poll);
+            // info!("==POLL== Yielding...");
             task::yield_now().await;
         }
     });
