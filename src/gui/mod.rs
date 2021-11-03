@@ -3,6 +3,7 @@
 use crate::{
     generator::{
         args::{Multisampling, Smoothing},
+        cpu::CpuFractalGenerator,
         gpu::GpuFractalGenerator,
         view::View,
         FractalGenerator, FractalGeneratorInstance, FractalOpts,
@@ -88,6 +89,8 @@ impl FlowModel for FractalRSGuiMain {
     ) -> Self {
         info!("Setting up UI...");
 
+        let mut commands = vec![];
+
         // Set up dear imgui
         let mut imgui = imgui::Context::create();
         let mut platform = WinitPlatform::init(&mut imgui);
@@ -118,10 +121,9 @@ impl FlowModel for FractalRSGuiMain {
         // Set up the fractal viewer element
         info!("Creating Fractal Viewer element...");
         let window_size = window.inner_size();
-        let viewer = handle
+        let (viewer, viewer_cb) = handle
             .block_on(FractalViewer::new(
                 &device,
-                &queue,
                 frame_format,
                 window_size.width,
                 window_size.height,
@@ -129,6 +131,7 @@ impl FlowModel for FractalRSGuiMain {
                 INITIAL_FRACTAL_HEIGHT,
             ))
             .expect("Error creating Fractal Viewer element");
+        commands.push(viewer_cb);
 
         // Set up the fractal generator
         info!("Creating Fractal Generator...");
@@ -161,7 +164,7 @@ impl FlowModel for FractalRSGuiMain {
             renderer,
             viewer,
             generator,
-            commands: vec![],
+            commands,
             last_cursor: None,
             state: UIState {
                 close_requested: false,

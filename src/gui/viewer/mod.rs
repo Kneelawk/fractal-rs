@@ -43,13 +43,12 @@ pub struct FractalViewer {
 impl FractalViewer {
     pub async fn new(
         device: &Device,
-        queue: &Queue,
         frame_format: TextureFormat,
         frame_width: u32,
         frame_height: u32,
         fractal_width: u32,
         fractal_height: u32,
-    ) -> Result<FractalViewer, FractalViewerError> {
+    ) -> Result<(FractalViewer, CommandBuffer), FractalViewerError> {
         //
         // Static Components
         //
@@ -207,9 +206,7 @@ impl FractalViewer {
             ],
         });
 
-        queue.submit([image_uniforms_buffer_cb]);
-
-        Ok(FractalViewer {
+        Ok((FractalViewer {
             image_bind_group_layout,
             image_pipeline,
             image_sampler,
@@ -218,7 +215,7 @@ impl FractalViewer {
             image_texture,
             image_texture_view,
             image_bind_group,
-        })
+        }, image_uniforms_buffer_cb))
     }
 
     pub fn get_texture(&self) -> Arc<Texture> {
