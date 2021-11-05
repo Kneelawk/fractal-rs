@@ -2,7 +2,7 @@
 name = "fractal-rs-2"
 version = "0.1.0"
 authors = ["Kneelawk <kneelawk@gmail.com>"]
-edition = "2018"
+edition = "2021"
 resolver = "2"
 
 [dependencies]
@@ -11,10 +11,13 @@ async-trait = "^0.1.51"
 bytemuck = "^1.7.2"
 chrono = "^0.4.19"
 cgmath = "^0.18.0"
+egui = "^0.15.0"
+egui_wgpu_backend = "^0.14.0"
+egui_winit_platform = "^0.11.0"
 futures = "^0.3.12"
-imgui = "^0.8.0"
-imgui-wgpu = "^0.17.0"
-imgui-winit-support = "^0.8.0"
+#imgui = "^0.8.0"
+#imgui-wgpu = "^0.17.0"
+#imgui-winit-support = "^0.8.0"
 lazy_static = "^1.4.0"
 log = "^0.4.14"
 log4rs = "^1.0.0"
@@ -32,4 +35,4 @@ thiserror = "^1.0.26"
 tokio = { version = "^1.2.0", features = ["fs", "io-util", "macros", "rt", "rt-multi-thread", "sync"] }
 tokio-stream = { version = "^0.1.7", features = ["sync"] }
 winit = "^0.25.0"
-wgpu = "^0.10.2"
+wgpu = "^0.11.0"

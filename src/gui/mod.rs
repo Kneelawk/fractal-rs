@@ -3,35 +3,28 @@
 use crate::{
     generator::{
         args::{Multisampling, Smoothing},
-        cpu::CpuFractalGenerator,
         gpu::GpuFractalGenerator,
-        view::View,
-        FractalGenerator, FractalGeneratorInstance, FractalOpts,
+        FractalGeneratorInstance, FractalOpts,
     },
     gui::{
-        flow::{Flow, FlowModel},
+        flow::{Flow, FlowModel, FlowModelInit, FlowSignal},
         viewer::FractalViewer,
     },
-    util::{poll_join_result, poll_optional, push_or_else, RunningState},
+    util::push_or_else,
 };
-use futures::{future::BoxFuture, FutureExt};
-use imgui::{Condition, FontConfig, FontSource, MenuItem, MouseCursor, ProgressBar};
-use imgui_wgpu::{Renderer, RendererConfig};
-use imgui_winit_support::{HiDpiMode, WinitPlatform};
+use egui::ProgressBar;
+use egui_wgpu_backend::{RenderPass, ScreenDescriptor};
+use egui_winit_platform::{Platform, PlatformDescriptor};
 use num_complex::Complex32;
 use std::{
     borrow::Cow,
-    sync::{atomic::AtomicBool, Arc},
-    time::Duration,
+    sync::Arc,
+    time::{Duration, Instant},
 };
-use tokio::{runtime::Handle, sync::Mutex, task::JoinHandle};
-use wgpu::{
-    Color, CommandBuffer, CommandEncoderDescriptor, Device, LoadOp, Operations, Queue,
-    RenderPassColorAttachment, RenderPassDescriptor, TextureFormat, TextureView,
-};
+use wgpu::{Color, CommandBuffer, CommandEncoderDescriptor, Device, Queue, TextureView};
 use winit::{
+    dpi::PhysicalSize,
     event::{Event, WindowEvent},
-    event_loop::ControlFlow,
     window::Window,
 };
 
@@ -45,28 +38,29 @@ const DEFAULT_GENERATION_MESSAGE: &str = "Not Generating";
 
 /// Launches the application as a GUI application.
 pub fn start_gui_application() -> ! {
-    let mut flow = Flow::new();
-    flow.title = "Fractal-RS 2".to_string();
-
-    flow.start::<FractalRSGuiMain>()
+    Flow::new()
+        .width(1600)
+        .height(900)
+        .title("Fractal-RS 2")
+        .start::<FractalRSGuiMain>()
         .expect("Error starting Flow!")
 }
 
 struct FractalRSGuiMain {
     // initialization state
-    handle: Handle,
     device: Arc<Device>,
     queue: Arc<Queue>,
     window: Arc<Window>,
-    imgui: imgui::Context,
-    platform: WinitPlatform,
-    renderer: Renderer,
+    window_size: PhysicalSize<u32>,
+    scale_factor: f64,
+    platform: Platform,
+    render_pass: RenderPass,
     viewer: FractalViewer,
     generator: GpuFractalGenerator,
+    start_time: Instant,
 
     // running state
     commands: Vec<CommandBuffer>,
-    last_cursor: Option<Option<MouseCursor>>,
     state: UIState,
     current_instance: Option<Box<dyn FractalGeneratorInstance + Send>>,
 }
@@ -79,58 +73,43 @@ struct UIState {
     generation_message: Cow<'static, str>,
 }
 
+#[async_trait]
 impl FlowModel for FractalRSGuiMain {
-    fn init(
-        handle: Handle,
-        device: Arc<Device>,
-        queue: Arc<Queue>,
-        window: Arc<Window>,
-        frame_format: TextureFormat,
-    ) -> Self {
+    async fn init(init: FlowModelInit) -> Self {
+        let device = init.device;
+        let queue = init.queue;
+        let window = init.window;
+        let window_size = init.window_size;
+        let scale_factor = window.scale_factor();
+        let frame_format = init.frame_format;
+
         info!("Setting up UI...");
 
         let mut commands = vec![];
 
-        // Set up dear imgui
-        let mut imgui = imgui::Context::create();
-        let mut platform = WinitPlatform::init(&mut imgui);
-        platform.attach_window(imgui.io_mut(), &window, HiDpiMode::Default);
-        imgui.set_ini_filename(None);
+        // Setup Egui
+        let platform = Platform::new(PlatformDescriptor {
+            physical_width: window_size.width,
+            physical_height: window_size.height,
+            scale_factor,
+            font_definitions: Default::default(),
+            style: Default::default(),
+        });
 
-        let hdpi_factor = window.scale_factor();
-        let font_size = (13.0 * hdpi_factor) as f32;
-        imgui.io_mut().font_global_scale = (1.0 / hdpi_factor) as f32;
-
-        imgui.fonts().add_font(&[FontSource::DefaultFontData {
-            config: Some(FontConfig {
-                oversample_h: 1,
-                pixel_snap_h: true,
-                size_pixels: font_size,
-                ..Default::default()
-            }),
-        }]);
-
-        // Set up the renderer
-        let renderer_config = RendererConfig {
-            texture_format: frame_format,
-            ..Default::default()
-        };
-
-        let renderer = Renderer::new(&mut imgui, &device, &queue, renderer_config);
+        let render_pass = RenderPass::new(&device, frame_format, 1);
 
         // Set up the fractal viewer element
         info!("Creating Fractal Viewer element...");
-        let window_size = window.inner_size();
-        let (viewer, viewer_cb) = handle
-            .block_on(FractalViewer::new(
-                &device,
-                frame_format,
-                window_size.width,
-                window_size.height,
-                INITIAL_FRACTAL_WIDTH,
-                INITIAL_FRACTAL_HEIGHT,
-            ))
-            .expect("Error creating Fractal Viewer element");
+        let (viewer, viewer_cb) = FractalViewer::new(
+            &device,
+            frame_format,
+            window_size.width,
+            window_size.height,
+            INITIAL_FRACTAL_WIDTH,
+            INITIAL_FRACTAL_HEIGHT,
+        )
+        .await
+        .expect("Error creating Fractal Viewer element");
         commands.push(viewer_cb);
 
         // Set up the fractal generator
@@ -146,26 +125,22 @@ impl FlowModel for FractalRSGuiMain {
             },
         };
 
-        let generator = handle
-            .block_on(GpuFractalGenerator::new(
-                opts,
-                device.clone(),
-                queue.clone(),
-            ))
+        let generator = GpuFractalGenerator::new(opts, device.clone(), queue.clone())
+            .await
             .expect("Error creating Fractal Generator");
 
         FractalRSGuiMain {
-            handle,
             device,
             queue,
             window,
-            imgui,
+            window_size,
+            scale_factor,
             platform,
-            renderer,
+            render_pass,
             viewer,
             generator,
+            start_time: Instant::now(),
             commands,
-            last_cursor: None,
             state: UIState {
                 close_requested: false,
                 generate_fractal: false,
@@ -176,25 +151,31 @@ impl FlowModel for FractalRSGuiMain {
         }
     }
 
-    fn event(&mut self, event: &WindowEvent<'_>) -> Option<ControlFlow> {
+    async fn event(&mut self, event: &WindowEvent<'_>) -> Option<FlowSignal> {
         if let WindowEvent::Resized(new_size) = event {
+            self.window_size = *new_size;
+
             push_or_else(
-                self.handle.block_on(self.viewer.set_frame_size(
-                    &self.device,
-                    new_size.width,
-                    new_size.height,
-                )),
+                self.viewer
+                    .set_frame_size(&self.device, new_size.width, new_size.height)
+                    .await,
                 &mut self.commands,
                 |e| error!("Error setting frame size: {:?}", e),
             );
         }
-        if let WindowEvent::ScaleFactorChanged { new_inner_size, .. } = event {
+
+        if let WindowEvent::ScaleFactorChanged {
+            new_inner_size,
+            scale_factor,
+        } = event
+        {
+            self.window_size = **new_inner_size;
+            self.scale_factor = *scale_factor;
+
             push_or_else(
-                self.handle.block_on(self.viewer.set_frame_size(
-                    &self.device,
-                    new_inner_size.width,
-                    new_inner_size.height,
-                )),
+                self.viewer
+                    .set_frame_size(&self.device, new_inner_size.width, new_inner_size.height)
+                    .await,
                 &mut self.commands,
                 |e| error!("Error setting frame size: {:?}", e),
             );
@@ -203,12 +184,11 @@ impl FlowModel for FractalRSGuiMain {
         None
     }
 
-    fn all_events(&mut self, event: &Event<()>) {
-        self.platform
-            .handle_event(self.imgui.io_mut(), &self.window, event);
+    async fn all_events(&mut self, event: &Event<FlowSignal>) {
+        self.platform.handle_event(event);
     }
 
-    fn update(&mut self, update_delta: Duration) -> Option<ControlFlow> {
+    async fn update(&mut self, _update_delta: Duration) -> Option<FlowSignal> {
         if self.state.generate_fractal {
             self.state.generate_fractal = false;
 
@@ -216,108 +196,93 @@ impl FlowModel for FractalRSGuiMain {
         }
 
         if self.state.close_requested {
-            Some(ControlFlow::Exit)
+            Some(FlowSignal::Exit)
         } else {
             None
         }
     }
 
-    fn render(&mut self, frame_view: &TextureView, render_delta: Duration) {
-        self.imgui.io_mut().update_delta_time(render_delta);
+    async fn render(&mut self, frame_view: &TextureView, _render_delta: Duration) {
+        // Setup platform for frame
+        self.platform
+            .update_time(self.start_time.elapsed().as_secs_f64());
 
-        match self
-            .platform
-            .prepare_frame(self.imgui.io_mut(), &self.window)
-        {
-            Ok(_) => {},
-            Err(e) => {
-                error!("Error preparing platform: {:?}", e);
-                return;
-            },
-        }
+        self.platform.begin_frame();
 
-        // State variables to be stored into self
-        let mut state = self.state.clone();
+        // Setup UI variables
+        let state = &mut self.state;
+        let is_stopped = self.current_instance.is_none();
 
-        let ui = self.imgui.frame();
-
-        {
-            // Draw UI
-            let is_started = self.current_instance.is_some();
-            let window = imgui::Window::new("Hello World!");
-            window
-                .size([400.0, 500.0], Condition::FirstUseEver)
-                .build(&ui, || {
-                    ui.text("Hello World!");
-                    ui.disabled(is_started, || {
-                        if ui.button("Generate!") {
-                            state.generate_fractal = true;
-                        }
-                    });
-
-                    ProgressBar::new(state.generation_fraction)
-                        .overlay_text(&state.generation_message)
-                        .build(&ui);
-                });
-
-            ui.main_menu_bar(|| {
-                ui.menu("File", || {
-                    let exit = MenuItem::new("Exit");
-                    if exit.build(&ui) {
+        // Draw UI
+        egui::TopBottomPanel::top("Menu Bar").show(&self.platform.context(), |ui| {
+            egui::menu::bar(ui, |ui| {
+                egui::menu::menu(ui, "File", |ui| {
+                    if ui.button("Quit").clicked() {
                         state.close_requested = true;
                     }
                 });
             });
-        }
+        });
 
-        // store the state variables into self
-        self.state = state;
+        egui::Window::new("Hello World!")
+            .default_size([250.0, 500.0])
+            .show(&self.platform.context(), |ui| {
+                ui.label("Hello World!");
+                ui.add_enabled_ui(is_stopped, |ui| {
+                    if ui.button("Generate!").clicked() {
+                        state.generate_fractal = true;
+                    }
+                });
 
-        if self.last_cursor != Some(ui.mouse_cursor()) {
-            self.last_cursor = Some(ui.mouse_cursor());
-            self.platform.prepare_render(&ui, &self.window);
-        }
+                ui.add(ProgressBar::new(state.generation_fraction).text(&state.generation_message));
+            });
+
+        // Encode UI draw commands
+        let (_output, paint_commands) = self.platform.end_frame(Some(&self.window));
+        let paint_jobs = self.platform.context().tessellate(paint_commands);
 
         let mut encoder = self
             .device
             .create_command_encoder(&CommandEncoderDescriptor {
-                label: Some("UI Render Pass Encoder"),
-            });
-        {
-            let mut render_pass = encoder.begin_render_pass(&RenderPassDescriptor {
-                label: Some("UI Render Pass"),
-                color_attachments: &[RenderPassColorAttachment {
-                    view: frame_view,
-                    resolve_target: None,
-                    ops: Operations {
-                        load: LoadOp::Clear(Color {
-                            r: 0.1,
-                            g: 0.1,
-                            b: 0.1,
-                            a: 1.0,
-                        }),
-                        store: true,
-                    },
-                }],
-                depth_stencil_attachment: None,
+                label: Some("UI Render Encoder"),
             });
 
-            match self
-                .renderer
-                .render(ui.render(), &self.queue, &self.device, &mut render_pass)
-            {
-                Ok(_) => {},
-                Err(e) => {
-                    error!("Error rendering UI: {:?}", e);
-                    return;
-                },
-            }
-        }
+        let screen_descriptor = ScreenDescriptor {
+            physical_width: self.window_size.width,
+            physical_height: self.window_size.height,
+            scale_factor: self.scale_factor as f32,
+        };
+        self.render_pass.update_texture(
+            &self.device,
+            &self.queue,
+            &self.platform.context().texture(),
+        );
+        self.render_pass
+            .update_user_textures(&self.device, &self.queue);
+        self.render_pass
+            .update_buffers(&self.device, &self.queue, &paint_jobs, &screen_descriptor);
 
+        self.render_pass
+            .execute(
+                &mut encoder,
+                frame_view,
+                &paint_jobs,
+                &screen_descriptor,
+                Some(Color {
+                    r: 0.1,
+                    g: 0.1,
+                    b: 0.1,
+                    a: 1.0,
+                }),
+            )
+            .unwrap();
+
+        // Add UI render command to list of commands for this frame
         self.commands.push(encoder.finish());
 
+        // Submit all commands encoded since the last frame
         self.queue.submit(self.commands.drain(..));
     }
 
-    fn shutdown(self) {}
+    async fn shutdown(self) {}
 }

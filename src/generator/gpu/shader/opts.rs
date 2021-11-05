@@ -6,10 +6,10 @@ use naga::{
 };
 
 use crate::generator::{
-    args::{DEFAULT_RADIUS_SQUARED, Multisampling, Smoothing},
-    FractalOpts,
+    args::{Multisampling, Smoothing, DEFAULT_RADIUS_SQUARED},
     gpu::shader::ShaderError,
     util::FloatKey,
+    FractalOpts,
 };
 
 const C_REAL_NAME: &str = "t_c_real";
@@ -165,7 +165,7 @@ impl Smoothing {
                     },
                     Span::default(),
                 )));
-            }
+            },
             Smoothing::LogarithmicDistance {
                 divisor, addend, ..
             } => {
@@ -194,6 +194,7 @@ impl Smoothing {
                         arg: z_curr_handle,
                         arg1: Some(z_curr_handle),
                         arg2: None,
+                        arg3: None,
                     },
                     Span::default(),
                 );
@@ -203,6 +204,7 @@ impl Smoothing {
                         arg: length_handle,
                         arg1: None,
                         arg2: None,
+                        arg3: None,
                     },
                     Span::default(),
                 );
@@ -212,6 +214,7 @@ impl Smoothing {
                         arg: log0_handle,
                         arg1: None,
                         arg2: None,
+                        arg3: None,
                     },
                     Span::default(),
                 );
@@ -250,7 +253,7 @@ impl Smoothing {
                     },
                     Span::default(),
                 )));
-            }
+            },
             Smoothing::LinearIntersection => {
                 let linear_intersection_call_handle = function.expressions.append(
                     Expression::CallResult(linear_intersection_handle),
@@ -271,7 +274,7 @@ impl Smoothing {
                     },
                     Span::default(),
                 )));
-            }
+            },
         }
 
         Ok(())
@@ -308,28 +311,32 @@ impl Multisampling {
         let sample_count_handle = find_constant(&module.constants, SAMPLE_COUNT_NAME)?;
         let vec2_f32_type_handle = module
             .types
-            .fetch_if(|t| {
+            .iter()
+            .find(|(_handle, t)| {
                 t.inner
                     == TypeInner::Vector {
-                    size: VectorSize::Bi,
-                    kind: ScalarKind::Float,
-                    width: 4,
-                }
+                        size: VectorSize::Bi,
+                        kind: ScalarKind::Float,
+                        width: 4,
+                    }
             })
-            .ok_or_else(|| ShaderError::MissingTemplateType("vec2<f32>".to_string()))?;
+            .ok_or_else(|| ShaderError::MissingTemplateType("vec2<f32>".to_string()))?
+            .0;
         let sample_count_type_handle = module
             .types
-            .fetch_if(|t| {
+            .iter()
+            .find(|(_handle, t)| {
                 t.inner
                     == TypeInner::Array {
-                    base: vec2_f32_type_handle,
-                    size: ArraySize::Constant(sample_count_handle),
-                    stride: 8,
-                }
+                        base: vec2_f32_type_handle,
+                        size: ArraySize::Constant(sample_count_handle),
+                        stride: 8,
+                    }
             })
             .ok_or_else(|| {
                 ShaderError::MissingTemplateType("array<vec2<f32>, t_sample_count>".to_string())
-            })?;
+            })?
+            .0;
 
         let handle = find_function_handle(&module.functions, SAMPLE_OFFSETS_NAME)?;
 

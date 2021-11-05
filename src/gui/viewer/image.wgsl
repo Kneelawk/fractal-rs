@@ -13,11 +13,6 @@ struct Uniforms {
     to_screen: mat4x4<f32>;
 };
 
-var indexable: array<vec2<f32>,6u> = array<vec2<f32>,6u>(
-    vec2<f32>(1.0, 1.0), vec2<f32>(-1.0, -1.0), vec2<f32>(1.0, -1.0),
-    vec2<f32>(1.0, 1.0), vec2<f32>(-1.0, 1.0), vec2<f32>(-1.0, -1.0)
-);
-
 [[group(0), binding(0)]]
 var<uniform> uniforms: Uniforms;
 [[group(0), binding(1)]]
@@ -27,6 +22,11 @@ var u_texture: texture_2d<f32>;
 
 [[stage(vertex)]]
 fn vert_main([[builtin(vertex_index)]] vert_index: u32) -> FragmentData {
+    var indexable: array<vec2<f32>,6u> = array<vec2<f32>,6u>(
+        vec2<f32>(1.0, 1.0), vec2<f32>(-1.0, -1.0), vec2<f32>(1.0, -1.0),
+        vec2<f32>(1.0, 1.0), vec2<f32>(-1.0, 1.0), vec2<f32>(-1.0, -1.0)
+    );
+
     var data: FragmentData;
     let xy = indexable[vert_index];
     data.position = uniforms.from_screen * uniforms.model * uniforms.to_screen * vec4<f32>(xy, 0.0, 1.0);
