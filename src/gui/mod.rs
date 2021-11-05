@@ -25,7 +25,7 @@ use wgpu::{Color, CommandBuffer, CommandEncoderDescriptor, Device, Queue, Textur
 use winit::{
     dpi::PhysicalSize,
     event::{Event, WindowEvent},
-    window::Window,
+    window::{Fullscreen, Window},
 };
 
 mod flow;
@@ -71,6 +71,8 @@ struct UIState {
     generate_fractal: bool,
     generation_fraction: f32,
     generation_message: Cow<'static, str>,
+    previous_fullscreen: bool,
+    request_fullscreen: bool,
 }
 
 #[async_trait]
@@ -146,6 +148,8 @@ impl FlowModel for FractalRSGuiMain {
                 generate_fractal: false,
                 generation_fraction: 0.0,
                 generation_message: Cow::Borrowed(DEFAULT_GENERATION_MESSAGE),
+                previous_fullscreen: false,
+                request_fullscreen: false,
             },
             current_instance: None,
         }
@@ -197,6 +201,13 @@ impl FlowModel for FractalRSGuiMain {
 
         if self.state.close_requested {
             Some(FlowSignal::Exit)
+        } else if self.state.request_fullscreen != self.state.previous_fullscreen {
+            self.state.previous_fullscreen = self.state.request_fullscreen;
+            if self.state.request_fullscreen {
+                Some(FlowSignal::Fullscreen(Some(Fullscreen::Borderless(None))))
+            } else {
+                Some(FlowSignal::Fullscreen(None))
+            }
         } else {
             None
         }
@@ -220,6 +231,9 @@ impl FlowModel for FractalRSGuiMain {
                     if ui.button("Quit").clicked() {
                         state.close_requested = true;
                     }
+                });
+                egui::menu::menu(ui, "Window", |ui| {
+                    ui.checkbox(&mut state.request_fullscreen, "Fullscreen");
                 });
             });
         });

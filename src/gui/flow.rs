@@ -26,6 +26,7 @@ use winit::{
 pub enum FlowSignal {
     RequestRedraw,
     Exit,
+    Fullscreen(Option<Fullscreen>),
 }
 
 /// Contains data to be used when initializing the FlowModel.
@@ -237,6 +238,9 @@ impl Flow {
                         match signal {
                             FlowSignal::RequestRedraw => window.request_redraw(),
                             FlowSignal::Exit => *control = ControlFlow::Exit,
+                            FlowSignal::Fullscreen(fullscreen) => {
+                                window.set_fullscreen(fullscreen);
+                            },
                         }
                     }
                 },
@@ -252,11 +256,16 @@ impl Flow {
                     {
                         None | Some(FlowSignal::RequestRedraw) => window.request_redraw(),
                         Some(FlowSignal::Exit) => *control = ControlFlow::Exit,
+                        Some(FlowSignal::Fullscreen(fullscreen)) => {
+                            window.set_fullscreen(fullscreen);
+                            window.request_redraw();
+                        },
                     }
                 },
                 Event::UserEvent(signal) => match signal {
                     FlowSignal::RequestRedraw => window.request_redraw(),
                     FlowSignal::Exit => *control = ControlFlow::Exit,
+                    FlowSignal::Fullscreen(fullscreen) => window.set_fullscreen(fullscreen.clone()),
                 },
                 Event::RedrawRequested(window_id) if *window_id == window.id() => {
                     let now = SystemTime::now();
