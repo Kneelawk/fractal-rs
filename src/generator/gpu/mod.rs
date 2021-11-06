@@ -478,7 +478,7 @@ impl GpuFractalGeneratorInstance {
                     Extent3d {
                         width: view.image_width as u32,
                         height: view.image_height as u32,
-                        depth_or_array_layers: 0,
+                        depth_or_array_layers: 1,
                     },
                 );
 
