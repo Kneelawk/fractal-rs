@@ -1,5 +1,7 @@
+use crate::gui::keyboard::KeyboardTracker;
 use egui::{CtxRef, ProgressBar};
 use std::borrow::Cow;
+use winit::event::VirtualKeyCode;
 
 const DEFAULT_GENERATION_MESSAGE: &str = "Not Generating";
 
@@ -29,6 +31,8 @@ pub struct UIRenderContext<'a> {
     pub ctx: &'a CtxRef,
     /// Whether the fractal generator instance is currently running.
     pub not_running: bool,
+    /// Tracker for currently pressed keys.
+    pub keys: &'a KeyboardTracker,
 }
 
 impl Default for UIState {
@@ -48,7 +52,28 @@ impl Default for UIState {
 
 impl UIState {
     /// Render the current UI state to the Egui context.
-    pub fn render(&mut self, ctx: UIRenderContext) {
+    pub fn draw(&mut self, ctx: &UIRenderContext) {
+        self.handle_keyboard_shortcuts(ctx);
+        self.draw_menubar(ctx);
+        self.draw_generator_controls(ctx);
+        self.draw_misc_windows(ctx);
+    }
+
+    fn handle_keyboard_shortcuts(&mut self, ctx: &UIRenderContext) {
+        let keys = ctx.keys;
+
+        // Quit keyboard shortcut
+        if keys.modifiers().command && keys.was_pressed(VirtualKeyCode::Q) {
+            self.close_requested = true;
+        }
+
+        // Fullscreen keyboard shortcut
+        if keys.was_pressed(VirtualKeyCode::F11) {
+            self.request_fullscreen = !self.request_fullscreen;
+        }
+    }
+
+    fn draw_menubar(&mut self, ctx: &UIRenderContext) {
         egui::TopBottomPanel::top("Menu Bar").show(ctx.ctx, |ui| {
             egui::menu::bar(ui, |ui| {
                 egui::menu::menu(ui, "File", |ui| {
@@ -64,7 +89,9 @@ impl UIState {
                 });
             });
         });
+    }
 
+    fn draw_generator_controls(&mut self, ctx: &UIRenderContext) {
         egui::Window::new("Generator Controls")
             .default_size([250.0, 500.0])
             .open(&mut self.show_generator_controls)
@@ -77,7 +104,9 @@ impl UIState {
 
                 ui.add(ProgressBar::new(self.generation_fraction).text(&self.generation_message));
             });
+    }
 
+    fn draw_misc_windows(&mut self, ctx: &UIRenderContext) {
         egui::Window::new("UI Settings")
             .open(&mut self.show_ui_settings)
             .show(ctx.ctx, |ui| {

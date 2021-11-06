@@ -10,6 +10,7 @@ use crate::{
     },
     gui::{
         flow::{Flow, FlowModel, FlowModelInit, FlowSignal},
+        keyboard::KeyboardTracker,
         ui::{UIRenderContext, UIState},
         viewer::FractalViewer,
     },
@@ -31,6 +32,7 @@ use winit::{
 };
 
 mod flow;
+mod keyboard;
 mod ui;
 mod viewer;
 
@@ -59,6 +61,7 @@ struct FractalRSGuiMain {
     viewer: FractalViewer,
     generator: GpuFractalGenerator,
     instance_manager: InstanceManager,
+    keyboard_tracker: KeyboardTracker,
     start_time: Instant,
 
     // running state
@@ -133,6 +136,7 @@ impl FlowModel for FractalRSGuiMain {
             viewer,
             generator,
             instance_manager: InstanceManager::new(),
+            keyboard_tracker: KeyboardTracker::new(),
             start_time: Instant::now(),
             commands,
             ui: Default::default(),
@@ -167,6 +171,14 @@ impl FlowModel for FractalRSGuiMain {
                 &mut self.commands,
                 |e| error!("Error setting frame size: {:?}", e),
             );
+        }
+
+        if let WindowEvent::KeyboardInput { input, .. } = event {
+            self.keyboard_tracker.keyboard_input(input);
+        }
+
+        if let WindowEvent::ModifiersChanged(state) = event {
+            self.keyboard_tracker.modifiers_changed(state);
         }
 
         None
@@ -233,12 +245,16 @@ impl FlowModel for FractalRSGuiMain {
         // Draw UI
         self.platform.begin_frame();
 
-        self.ui.render(UIRenderContext {
+        self.ui.draw(&UIRenderContext {
             ctx: &self.platform.context(),
             not_running: !self.instance_manager.running(),
+            keys: &self.keyboard_tracker,
         });
 
         let (_output, paint_commands) = self.platform.end_frame(Some(&self.window));
+
+        // Clear keyboard keypress events.
+        self.keyboard_tracker.reset_keyboard_input();
 
         // Encode UI draw commands
         let paint_jobs = self.platform.context().tessellate(paint_commands);
