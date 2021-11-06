@@ -28,7 +28,7 @@ pub struct UIRenderContext<'a> {
     /// Egui context reference.
     pub ctx: &'a CtxRef,
     /// Whether the fractal generator instance is currently running.
-    pub is_stopped: bool,
+    pub not_running: bool,
 }
 
 impl Default for UIState {
@@ -69,7 +69,7 @@ impl UIState {
             .default_size([250.0, 500.0])
             .open(&mut self.show_generator_controls)
             .show(ctx.ctx, |ui| {
-                ui.add_enabled_ui(ctx.is_stopped, |ui| {
+                ui.add_enabled_ui(ctx.not_running, |ui| {
                     if ui.button("Generate!").clicked() {
                         self.generate_fractal = true;
                     }

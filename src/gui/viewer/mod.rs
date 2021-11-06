@@ -15,13 +15,13 @@ use std::{borrow::Cow, num::NonZeroU64, sync::Arc};
 use wgpu::{
     AddressMode, BindGroup, BindGroupDescriptor, BindGroupEntry, BindGroupLayout,
     BindGroupLayoutDescriptor, BindGroupLayoutEntry, BindingResource, BindingType, BlendState,
-    BufferAddress, BufferBinding, BufferBindingType, BufferUsages, Color, ColorTargetState,
-    ColorWrites, CommandBuffer, CommandEncoderDescriptor, Device, Face, FilterMode, FragmentState,
-    FrontFace, LoadOp, MultisampleState, Operations, PipelineLayoutDescriptor, PolygonMode,
-    PrimitiveState, PrimitiveTopology, Queue, RenderPassColorAttachment, RenderPassDescriptor,
-    RenderPipeline, RenderPipelineDescriptor, Sampler, SamplerDescriptor, ShaderModuleDescriptor,
-    ShaderSource, ShaderStages, Texture, TextureFormat, TextureSampleType, TextureUsages,
-    TextureView, TextureViewDimension, VertexState,
+    BufferBinding, BufferBindingType, BufferUsages, Color, ColorTargetState, ColorWrites,
+    CommandBuffer, CommandEncoderDescriptor, Device, Face, FilterMode, FragmentState, FrontFace,
+    LoadOp, MultisampleState, Operations, PipelineLayoutDescriptor, PolygonMode, PrimitiveState,
+    PrimitiveTopology, RenderPassColorAttachment, RenderPassDescriptor, RenderPipeline,
+    RenderPipelineDescriptor, Sampler, SamplerDescriptor, ShaderModuleDescriptor, ShaderSource,
+    ShaderStages, Texture, TextureFormat, TextureSampleType, TextureUsages, TextureView,
+    TextureViewDimension, VertexState,
 };
 
 const IMAGE_SOURCE: &str = include_str!("image.wgsl");
@@ -206,16 +206,19 @@ impl FractalViewer {
             ],
         });
 
-        Ok((FractalViewer {
-            image_bind_group_layout,
-            image_pipeline,
-            image_sampler,
-            image_uniforms_buffer,
-            image_uniforms,
-            image_texture,
-            image_texture_view,
-            image_bind_group,
-        }, image_uniforms_buffer_cb))
+        Ok((
+            FractalViewer {
+                image_bind_group_layout,
+                image_pipeline,
+                image_sampler,
+                image_uniforms_buffer,
+                image_uniforms,
+                image_texture,
+                image_texture_view,
+                image_bind_group,
+            },
+            image_uniforms_buffer_cb,
+        ))
     }
 
     pub fn get_texture(&self) -> Arc<Texture> {

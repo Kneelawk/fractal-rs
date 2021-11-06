@@ -4,7 +4,9 @@ use crate::{
     generator::{
         args::{Multisampling, Smoothing},
         gpu::GpuFractalGenerator,
-        FractalGeneratorInstance, FractalOpts,
+        instance_manager::InstanceManager,
+        view::View,
+        FractalGenerator, FractalOpts,
     },
     gui::{
         flow::{Flow, FlowModel, FlowModelInit, FlowSignal},
@@ -17,10 +19,11 @@ use egui_wgpu_backend::{RenderPass, ScreenDescriptor};
 use egui_winit_platform::{Platform, PlatformDescriptor};
 use num_complex::Complex32;
 use std::{
+    borrow::Cow,
     sync::Arc,
     time::{Duration, Instant},
 };
-use wgpu::{Color, CommandBuffer, CommandEncoderDescriptor, Device, Queue, TextureView};
+use wgpu::{Color, CommandBuffer, CommandEncoderDescriptor, Device, LoadOp, Queue, TextureView};
 use winit::{
     dpi::PhysicalSize,
     event::{Event, WindowEvent},
@@ -55,12 +58,12 @@ struct FractalRSGuiMain {
     render_pass: RenderPass,
     viewer: FractalViewer,
     generator: GpuFractalGenerator,
+    instance_manager: InstanceManager,
     start_time: Instant,
 
     // running state
     commands: Vec<CommandBuffer>,
     ui: UIState,
-    current_instance: Option<Box<dyn FractalGeneratorInstance + Send>>,
 }
 
 #[async_trait]
@@ -129,10 +132,10 @@ impl FlowModel for FractalRSGuiMain {
             render_pass,
             viewer,
             generator,
+            instance_manager: InstanceManager::new(),
             start_time: Instant::now(),
             commands,
             ui: Default::default(),
-            current_instance: None,
         }
     }
 
@@ -177,8 +180,24 @@ impl FlowModel for FractalRSGuiMain {
         if self.ui.generate_fractal {
             self.ui.generate_fractal = false;
 
-            // TODO: start fractal generator
+            if !self.instance_manager.running() {
+                let view = View::new_centered_uniform(
+                    INITIAL_FRACTAL_WIDTH as usize,
+                    INITIAL_FRACTAL_HEIGHT as usize,
+                    3.0,
+                );
+                let views: Vec<_> = view.subdivide_rectangles(256, 256).collect();
+                self.instance_manager.start(self.generator.start_generation_to_gpu(&views, self.viewer.get_texture(), self.viewer.get_texture_view())).expect("Attempted to start new fractal generator while one was already running! (This is a bug)");
+            }
         }
+
+        if let Err(e) = self.instance_manager.poll() {
+            error!("Error polling instance manager: {:?}", e);
+        }
+
+        let gen_progress = self.instance_manager.progress();
+        self.ui.generation_fraction = gen_progress;
+        self.ui.generation_message = Cow::Owned(format!("{:.1}%", gen_progress * 100.0));
 
         if self.ui.close_requested {
             Some(FlowSignal::Exit)
@@ -199,19 +218,24 @@ impl FlowModel for FractalRSGuiMain {
         self.platform
             .update_time(self.start_time.elapsed().as_secs_f64());
 
-        // Start command encoder for presentation rendering
-        let mut encoder = self
-            .device
-            .create_command_encoder(&CommandEncoderDescriptor {
-                label: Some("Frame Render Encoder"),
-            });
+        // Draw fractal background
+        self.commands.push(self.viewer.render(
+            &self.device,
+            frame_view,
+            LoadOp::Clear(Color {
+                r: 0.1,
+                g: 0.1,
+                b: 0.1,
+                a: 1.0,
+            }),
+        ));
 
         // Draw UI
         self.platform.begin_frame();
 
         self.ui.render(UIRenderContext {
             ctx: &self.platform.context(),
-            is_stopped: self.current_instance.is_none(),
+            not_running: !self.instance_manager.running(),
         });
 
         let (_output, paint_commands) = self.platform.end_frame(Some(&self.window));
@@ -234,18 +258,19 @@ impl FlowModel for FractalRSGuiMain {
         self.render_pass
             .update_buffers(&self.device, &self.queue, &paint_jobs, &screen_descriptor);
 
+        let mut encoder = self
+            .device
+            .create_command_encoder(&CommandEncoderDescriptor {
+                label: Some("UI Render Encoder"),
+            });
+
         self.render_pass
             .execute(
                 &mut encoder,
                 frame_view,
                 &paint_jobs,
                 &screen_descriptor,
-                Some(Color {
-                    r: 0.1,
-                    g: 0.1,
-                    b: 0.1,
-                    a: 1.0,
-                }),
+                None,
             )
             .unwrap();
 
