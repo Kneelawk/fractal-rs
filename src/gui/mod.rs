@@ -8,11 +8,11 @@ use crate::{
     },
     gui::{
         flow::{Flow, FlowModel, FlowModelInit, FlowSignal},
+        ui::{UIRenderContext, UIState},
         viewer::FractalViewer,
     },
     util::push_or_else,
 };
-use egui::ProgressBar;
 use egui_wgpu_backend::{RenderPass, ScreenDescriptor};
 use egui_winit_platform::{Platform, PlatformDescriptor};
 use num_complex::Complex32;
@@ -29,6 +29,7 @@ use winit::{
 };
 
 mod flow;
+mod ui;
 mod viewer;
 
 const INITIAL_FRACTAL_WIDTH: u32 = 1024;
@@ -61,18 +62,8 @@ struct FractalRSGuiMain {
 
     // running state
     commands: Vec<CommandBuffer>,
-    state: UIState,
+    ui: UIState,
     current_instance: Option<Box<dyn FractalGeneratorInstance + Send>>,
-}
-
-#[derive(Clone)]
-struct UIState {
-    close_requested: bool,
-    generate_fractal: bool,
-    generation_fraction: f32,
-    generation_message: Cow<'static, str>,
-    previous_fullscreen: bool,
-    request_fullscreen: bool,
 }
 
 #[async_trait]
@@ -143,7 +134,7 @@ impl FlowModel for FractalRSGuiMain {
             generator,
             start_time: Instant::now(),
             commands,
-            state: UIState {
+            ui: UIState {
                 close_requested: false,
                 generate_fractal: false,
                 generation_fraction: 0.0,
@@ -193,17 +184,17 @@ impl FlowModel for FractalRSGuiMain {
     }
 
     async fn update(&mut self, _update_delta: Duration) -> Option<FlowSignal> {
-        if self.state.generate_fractal {
-            self.state.generate_fractal = false;
+        if self.ui.generate_fractal {
+            self.ui.generate_fractal = false;
 
             // TODO: start fractal generator
         }
 
-        if self.state.close_requested {
+        if self.ui.close_requested {
             Some(FlowSignal::Exit)
-        } else if self.state.request_fullscreen != self.state.previous_fullscreen {
-            self.state.previous_fullscreen = self.state.request_fullscreen;
-            if self.state.request_fullscreen {
+        } else if self.ui.request_fullscreen != self.ui.previous_fullscreen {
+            self.ui.previous_fullscreen = self.ui.request_fullscreen;
+            if self.ui.request_fullscreen {
                 Some(FlowSignal::Fullscreen(Some(Fullscreen::Borderless(None))))
             } else {
                 Some(FlowSignal::Fullscreen(None))
@@ -218,48 +209,25 @@ impl FlowModel for FractalRSGuiMain {
         self.platform
             .update_time(self.start_time.elapsed().as_secs_f64());
 
-        self.platform.begin_frame();
-
-        // Setup UI variables
-        let state = &mut self.state;
-        let is_stopped = self.current_instance.is_none();
-
-        // Draw UI
-        egui::TopBottomPanel::top("Menu Bar").show(&self.platform.context(), |ui| {
-            egui::menu::bar(ui, |ui| {
-                egui::menu::menu(ui, "File", |ui| {
-                    if ui.button("Quit").clicked() {
-                        state.close_requested = true;
-                    }
-                });
-                egui::menu::menu(ui, "Window", |ui| {
-                    ui.checkbox(&mut state.request_fullscreen, "Fullscreen");
-                });
-            });
-        });
-
-        egui::Window::new("Hello World!")
-            .default_size([250.0, 500.0])
-            .show(&self.platform.context(), |ui| {
-                ui.label("Hello World!");
-                ui.add_enabled_ui(is_stopped, |ui| {
-                    if ui.button("Generate!").clicked() {
-                        state.generate_fractal = true;
-                    }
-                });
-
-                ui.add(ProgressBar::new(state.generation_fraction).text(&state.generation_message));
-            });
-
-        // Encode UI draw commands
-        let (_output, paint_commands) = self.platform.end_frame(Some(&self.window));
-        let paint_jobs = self.platform.context().tessellate(paint_commands);
-
+        // Start command encoder for presentation rendering
         let mut encoder = self
             .device
             .create_command_encoder(&CommandEncoderDescriptor {
-                label: Some("UI Render Encoder"),
+                label: Some("Frame Render Encoder"),
             });
+
+        // Draw UI
+        self.platform.begin_frame();
+
+        self.ui.render(UIRenderContext {
+            ctx: &self.platform.context(),
+            is_stopped: self.current_instance.is_none(),
+        });
+
+        let (_output, paint_commands) = self.platform.end_frame(Some(&self.window));
+
+        // Encode UI draw commands
+        let paint_jobs = self.platform.context().tessellate(paint_commands);
 
         let screen_descriptor = ScreenDescriptor {
             physical_width: self.window_size.width,
