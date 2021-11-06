@@ -49,6 +49,8 @@ impl FractalViewer {
         fractal_width: u32,
         fractal_height: u32,
     ) -> Result<(FractalViewer, CommandBuffer), FractalViewerError> {
+        info!("Using frame texture format: {:?}", frame_format);
+
         //
         // Static Components
         //
@@ -174,7 +176,7 @@ impl FractalViewer {
             device,
             fractal_width,
             fractal_height,
-            TextureFormat::Rgba8Unorm,
+            TextureFormat::Rgba8UnormSrgb,
             TextureUsages::COPY_DST
                 | TextureUsages::RENDER_ATTACHMENT
                 | TextureUsages::TEXTURE_BINDING,
