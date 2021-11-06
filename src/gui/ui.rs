@@ -110,7 +110,9 @@ impl UIState {
         egui::Window::new("UI Settings")
             .open(&mut self.show_ui_settings)
             .show(ctx.ctx, |ui| {
-                ctx.ctx.settings_ui(ui);
+                egui::ScrollArea::vertical().show(ui, |ui| {
+                    ctx.ctx.settings_ui(ui);
+                });
             });
     }
 }
