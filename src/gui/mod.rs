@@ -17,7 +17,6 @@ use egui_wgpu_backend::{RenderPass, ScreenDescriptor};
 use egui_winit_platform::{Platform, PlatformDescriptor};
 use num_complex::Complex32;
 use std::{
-    borrow::Cow,
     sync::Arc,
     time::{Duration, Instant},
 };
@@ -34,8 +33,6 @@ mod viewer;
 
 const INITIAL_FRACTAL_WIDTH: u32 = 1024;
 const INITIAL_FRACTAL_HEIGHT: u32 = 1024;
-
-const DEFAULT_GENERATION_MESSAGE: &str = "Not Generating";
 
 /// Launches the application as a GUI application.
 pub fn start_gui_application() -> ! {
@@ -134,14 +131,7 @@ impl FlowModel for FractalRSGuiMain {
             generator,
             start_time: Instant::now(),
             commands,
-            ui: UIState {
-                close_requested: false,
-                generate_fractal: false,
-                generation_fraction: 0.0,
-                generation_message: Cow::Borrowed(DEFAULT_GENERATION_MESSAGE),
-                previous_fullscreen: false,
-                request_fullscreen: false,
-            },
+            ui: Default::default(),
             current_instance: None,
         }
     }
