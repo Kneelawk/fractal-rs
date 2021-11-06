@@ -346,146 +346,68 @@ impl GpuFractalGeneratorInstance {
         let completed = Arc::new(AtomicUsize::new(0));
         let spawn_completed = completed.clone();
 
-        let (uniforms_buffer, uniform_bind_group) =
+        let (mut uniforms_buffer, uniform_bind_group) =
             setup_uniforms(&device, &uniform_bind_group_layout);
 
         info!("Spawning gpu manager task...");
 
         tokio::spawn(async move {
-            if view_count == 1 {
-                GpuFractalGeneratorInstance::start_to_gpu_single_view(
-                    _opts,
-                    device,
-                    queue,
-                    render_pipeline,
-                    views.into_iter().next().unwrap(),
-                    uniforms_buffer,
-                    uniform_bind_group,
-                    out_texture_view,
-                )
-                .await;
+            let mut buffers = HashMap::new();
+            for view in views {
+                let (texture, texture_view) = find_texture_for_view(&device, &mut buffers, view);
+
+                let uniforms_cb = write_uniforms(&device, &mut uniforms_buffer, view).await;
+
+                {
+                    info!(
+                        "Encoding render command buffer for ({}, {})...",
+                        view.image_x, view.image_y
+                    );
+                    let mut encoder = device.create_command_encoder(&CommandEncoderDescriptor {
+                        label: Some("Render Command Encoder"),
+                    });
+
+                    encode_render_pass(
+                        &render_pipeline,
+                        &uniform_bind_group,
+                        texture_view,
+                        &mut encoder,
+                    );
+
+                    encoder.copy_texture_to_texture(
+                        ImageCopyTexture {
+                            texture,
+                            mip_level: 0,
+                            origin: Origin3d::ZERO,
+                            aspect: TextureAspect::All,
+                        },
+                        ImageCopyTexture {
+                            texture: &out_texture,
+                            mip_level: 0,
+                            origin: Origin3d {
+                                x: view.image_x as u32,
+                                y: view.image_y as u32,
+                                z: 0,
+                            },
+                            aspect: TextureAspect::All,
+                        },
+                        Extent3d {
+                            width: view.image_width as u32,
+                            height: view.image_height as u32,
+                            depth_or_array_layers: 1,
+                        },
+                    );
+
+                    queue.submit([uniforms_cb, encoder.finish()]);
+                }
 
                 spawn_completed.fetch_add(1, Ordering::Relaxed);
-            } else {
-                GpuFractalGeneratorInstance::start_to_gpu_multi_view(
-                    _opts,
-                    device,
-                    queue,
-                    render_pipeline,
-                    views,
-                    uniforms_buffer,
-                    uniform_bind_group,
-                    out_texture,
-                    spawn_completed,
-                )
-                .await;
             }
         });
 
         GpuFractalGeneratorInstance {
             view_count,
             completed,
-        }
-    }
-
-    async fn start_to_gpu_single_view(
-        _opts: FractalOpts,
-        device: Arc<Device>,
-        queue: Arc<Queue>,
-        render_pipeline: Arc<RenderPipeline>,
-        view: View,
-        mut uniforms_buffer: BufferWrapper<Uniforms>,
-        uniform_bind_group: BindGroup,
-        out_texture_view: Arc<TextureView>,
-    ) {
-        let uniforms_cb = write_uniforms(&device, &mut uniforms_buffer, view).await;
-
-        {
-            info!(
-                "Encoding render command buffer for ({}, {})...",
-                view.image_x, view.image_y
-            );
-            let mut encoder = device.create_command_encoder(&CommandEncoderDescriptor {
-                label: Some("Render Command Encoder"),
-            });
-
-            encode_render_pass(
-                &render_pipeline,
-                &uniform_bind_group,
-                &out_texture_view,
-                &mut encoder,
-            );
-
-            info!(
-                "Submitting command buffers for ({}, {})...",
-                view.image_x, view.image_y
-            );
-            queue.submit([uniforms_cb, encoder.finish()]);
-        }
-    }
-
-    async fn start_to_gpu_multi_view(
-        _opts: FractalOpts,
-        device: Arc<Device>,
-        queue: Arc<Queue>,
-        render_pipeline: Arc<RenderPipeline>,
-        views: Vec<View>,
-        mut uniforms_buffer: BufferWrapper<Uniforms>,
-        uniform_bind_group: BindGroup,
-        out_texture: Arc<Texture>,
-        spawn_completed: Arc<AtomicUsize>,
-    ) {
-        let mut buffers = HashMap::new();
-
-        for view in views {
-            let (texture, texture_view) = find_texture_for_view(&device, &mut buffers, view);
-
-            let uniforms_cb = write_uniforms(&device, &mut uniforms_buffer, view).await;
-
-            {
-                info!(
-                    "Encoding render command buffer for ({}, {})...",
-                    view.image_x, view.image_y
-                );
-                let mut encoder = device.create_command_encoder(&CommandEncoderDescriptor {
-                    label: Some("Render Command Encoder"),
-                });
-
-                encode_render_pass(
-                    &render_pipeline,
-                    &uniform_bind_group,
-                    texture_view,
-                    &mut encoder,
-                );
-
-                encoder.copy_texture_to_texture(
-                    ImageCopyTexture {
-                        texture,
-                        mip_level: 0,
-                        origin: Origin3d::ZERO,
-                        aspect: TextureAspect::All,
-                    },
-                    ImageCopyTexture {
-                        texture: &out_texture,
-                        mip_level: 0,
-                        origin: Origin3d {
-                            x: view.image_x as u32,
-                            y: view.image_y as u32,
-                            z: 0,
-                        },
-                        aspect: TextureAspect::All,
-                    },
-                    Extent3d {
-                        width: view.image_width as u32,
-                        height: view.image_height as u32,
-                        depth_or_array_layers: 1,
-                    },
-                );
-
-                queue.submit([uniforms_cb, encoder.finish()]);
-            }
-
-            spawn_completed.fetch_add(1, Ordering::Relaxed);
         }
     }
 }
