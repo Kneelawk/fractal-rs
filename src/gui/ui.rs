@@ -116,7 +116,8 @@ impl UIState {
 
     fn draw_fractal_viewers(&mut self, ctx: &UIRenderContext) {
         egui::CentralPanel::default().show(ctx.ctx, |ui| {
-            self.julia_viewer.render(ui);
+            let available_size = ui.available_size_before_wrap();
+            ui.add_sized(available_size, self.julia_viewer.widget());
         });
     }
 

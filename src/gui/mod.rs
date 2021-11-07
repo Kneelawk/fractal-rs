@@ -78,8 +78,6 @@ impl FlowModel for FractalRSGuiMain {
 
         info!("Setting up UI...");
 
-        let mut commands = vec![];
-
         // Setup Egui
         let platform = Platform::new(PlatformDescriptor {
             physical_width: window_size.width,
@@ -128,7 +126,7 @@ impl FlowModel for FractalRSGuiMain {
             instance_manager: InstanceManager::new(),
             keyboard_tracker: KeyboardTracker::new(),
             start_time: Instant::now(),
-            commands,
+            commands: vec![],
             ui,
         }
     }
