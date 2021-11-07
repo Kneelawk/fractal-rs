@@ -166,8 +166,8 @@ impl FlowModel for FractalRSGuiMain {
 
             if !self.instance_manager.running() {
                 let view = View::new_centered_uniform(
-                    INITIAL_FRACTAL_WIDTH as usize,
-                    INITIAL_FRACTAL_HEIGHT as usize,
+                    self.ui.fractal_width as usize,
+                    self.ui.fractal_height as usize,
                     3.0,
                 );
                 let views: Vec<_> = view.subdivide_rectangles(256, 256).collect();
@@ -212,8 +212,10 @@ impl FlowModel for FractalRSGuiMain {
         // Draw UI
         self.platform.begin_frame();
 
-        self.ui.draw(&UIRenderContext {
+        self.ui.draw(&mut UIRenderContext {
+            device: &self.device,
             ctx: &self.platform.context(),
+            render_pass: &mut self.render_pass,
             not_running: !self.instance_manager.running(),
             keys: &self.keyboard_tracker,
         });
