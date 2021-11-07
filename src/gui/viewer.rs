@@ -43,7 +43,7 @@ impl FractalViewer {
         let image_texture_view = Arc::new(image_texture_view);
 
         let texture_id =
-            render_pass.egui_texture_from_wgpu_texture(&device, &image_texture, FilterMode::Linear);
+            render_pass.egui_texture_from_wgpu_texture(&device, &image_texture, FilterMode::Nearest);
 
         FractalViewer {
             texture_id,
@@ -85,7 +85,7 @@ impl FractalViewer {
         render_pass.update_egui_texture_from_wgpu_texture(
             &device,
             &self.image_texture,
-            FilterMode::Linear,
+            FilterMode::Nearest,
             self.texture_id,
         )?;
 
@@ -101,6 +101,18 @@ impl FractalViewer {
         // handle move-drag events
         if response.dragged_by(PointerButton::Middle) {
             self.fractal_offset += response.drag_delta().into();
+        }
+
+        // handle scroll events, but only if we're being hovered over
+        if response.hovered() {
+            let scroll = ui.input().scroll_delta.y;
+            if scroll > 1.0 {
+                self.fractal_scale *= 1.1;
+                self.fractal_offset *= 1.1;
+            } else if scroll < -1.0 {
+                self.fractal_scale /= 1.1;
+                self.fractal_offset = self.fractal_offset / 1.1;
+            }
         }
 
         // render image
