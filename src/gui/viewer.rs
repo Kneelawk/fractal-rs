@@ -92,8 +92,11 @@ impl FractalViewer {
         Ok(())
     }
 
-    pub fn draw(&mut self, ui: &mut egui::Ui) -> Response {
-        let (rect, response) = ui.allocate_at_least(self.fractal_size, Sense::click_and_drag());
+    pub fn draw(&mut self, ui: &mut egui::Ui, opts: &FractalViewerDrawOptions) -> Response {
+        let desired_size = opts
+            .max_size_override
+            .map_or(self.fractal_size, |max| max.min(self.fractal_size));
+        let (rect, response) = ui.allocate_at_least(desired_size, Sense::click_and_drag());
 
         // handle move-drag events
         if response.dragged_by(PointerButton::Middle) {
@@ -129,7 +132,10 @@ impl FractalViewer {
     }
 
     pub fn widget(&mut self) -> FractalViewerWidget {
-        FractalViewerWidget { viewer: self }
+        FractalViewerWidget {
+            viewer: self,
+            opts: Default::default(),
+        }
     }
 }
 
@@ -137,12 +143,27 @@ impl FractalViewer {
 /// derivatives.
 pub struct FractalViewerWidget<'a> {
     viewer: &'a mut FractalViewer,
+    opts: FractalViewerDrawOptions,
+}
+
+impl<'a> FractalViewerWidget<'a> {
+    /// Set the maximum size of the fractal viewer widget.
+    pub fn max_size_override(mut self, max_size: impl Into<Vec2>) -> Self {
+        self.opts.max_size_override = Some(max_size.into());
+        self
+    }
 }
 
 impl<'a> Widget for FractalViewerWidget<'a> {
     fn ui(self, ui: &mut Ui) -> Response {
-        self.viewer.draw(ui)
+        self.viewer.draw(ui, &self.opts)
     }
+}
+
+/// Options passed to the FractalViewer's draw function.
+#[derive(Default)]
+pub struct FractalViewerDrawOptions {
+    pub max_size_override: Option<Vec2>,
 }
 
 #[derive(Debug, Error)]
