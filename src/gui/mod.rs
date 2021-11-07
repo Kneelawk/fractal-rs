@@ -11,10 +11,8 @@ use crate::{
     gui::{
         flow::{Flow, FlowModel, FlowModelInit, FlowSignal},
         keyboard::KeyboardTracker,
-        ui::{UIRenderContext, UIState},
-        viewer::FractalViewer,
+        ui::{UICreationContext, UIRenderContext, UIState},
     },
-    util::push_or_else,
 };
 use egui_wgpu_backend::{RenderPass, ScreenDescriptor};
 use egui_winit_platform::{Platform, PlatformDescriptor};
@@ -24,7 +22,7 @@ use std::{
     sync::Arc,
     time::{Duration, Instant},
 };
-use wgpu::{Color, CommandBuffer, CommandEncoderDescriptor, Device, LoadOp, Queue, TextureView};
+use wgpu::{Color, CommandBuffer, CommandEncoderDescriptor, Device, Queue, TextureView};
 use winit::{
     dpi::PhysicalSize,
     event::{Event, WindowEvent},
@@ -58,7 +56,6 @@ struct FractalRSGuiMain {
     scale_factor: f64,
     platform: Platform,
     render_pass: RenderPass,
-    viewer: FractalViewer,
     generator: GpuFractalGenerator,
     instance_manager: InstanceManager,
     keyboard_tracker: KeyboardTracker,
@@ -92,21 +89,15 @@ impl FlowModel for FractalRSGuiMain {
             style: Default::default(),
         });
 
-        let render_pass = RenderPass::new(&device, frame_format, 1);
+        let mut render_pass = RenderPass::new(&device, frame_format, 1);
 
-        // Set up the fractal viewer element
-        info!("Creating Fractal Viewer element...");
-        let (viewer, viewer_cb) = FractalViewer::new(
-            &device,
-            frame_format,
-            window_size.width,
-            window_size.height,
-            INITIAL_FRACTAL_WIDTH,
-            INITIAL_FRACTAL_HEIGHT,
-        )
-        .await
-        .expect("Error creating Fractal Viewer element");
-        commands.push(viewer_cb);
+        info!("Initializing UI State...");
+        let ui = UIState::new(&mut UICreationContext {
+            device: &device,
+            render_pass: &mut render_pass,
+            initial_fractal_width: INITIAL_FRACTAL_WIDTH,
+            initial_fractal_height: INITIAL_FRACTAL_HEIGHT,
+        });
 
         // Set up the fractal generator
         info!("Creating Fractal Generator...");
@@ -133,27 +124,18 @@ impl FlowModel for FractalRSGuiMain {
             scale_factor,
             platform,
             render_pass,
-            viewer,
             generator,
             instance_manager: InstanceManager::new(),
             keyboard_tracker: KeyboardTracker::new(),
             start_time: Instant::now(),
             commands,
-            ui: Default::default(),
+            ui,
         }
     }
 
     async fn event(&mut self, event: &WindowEvent<'_>) -> Option<FlowSignal> {
         if let WindowEvent::Resized(new_size) = event {
             self.window_size = *new_size;
-
-            push_or_else(
-                self.viewer
-                    .set_frame_size(&self.device, new_size.width, new_size.height)
-                    .await,
-                &mut self.commands,
-                |e| error!("Error setting frame size: {:?}", e),
-            );
         }
 
         if let WindowEvent::ScaleFactorChanged {
@@ -163,14 +145,6 @@ impl FlowModel for FractalRSGuiMain {
         {
             self.window_size = **new_inner_size;
             self.scale_factor = *scale_factor;
-
-            push_or_else(
-                self.viewer
-                    .set_frame_size(&self.device, new_inner_size.width, new_inner_size.height)
-                    .await,
-                &mut self.commands,
-                |e| error!("Error setting frame size: {:?}", e),
-            );
         }
 
         if let WindowEvent::KeyboardInput { input, .. } = event {
@@ -199,7 +173,14 @@ impl FlowModel for FractalRSGuiMain {
                     3.0,
                 );
                 let views: Vec<_> = view.subdivide_rectangles(256, 256).collect();
-                self.instance_manager.start(self.generator.start_generation_to_gpu(&views, self.viewer.get_texture(), self.viewer.get_texture_view())).expect("Attempted to start new fractal generator while one was already running! (This is a bug)");
+                self.instance_manager.start(
+                    self.generator.start_generation_to_gpu(
+                        &views,
+                        self.ui.julia_viewer.get_texture(),
+                        self.ui.julia_viewer.get_texture_view()
+                        )
+                    )
+                    .expect("Attempted to start new fractal generator while one was already running! (This is a bug)");
             }
         }
 
@@ -229,18 +210,6 @@ impl FlowModel for FractalRSGuiMain {
         // Setup platform for frame
         self.platform
             .update_time(self.start_time.elapsed().as_secs_f64());
-
-        // Draw fractal background
-        self.commands.push(self.viewer.render(
-            &self.device,
-            frame_view,
-            LoadOp::Clear(Color {
-                r: 0.1,
-                g: 0.1,
-                b: 0.1,
-                a: 1.0,
-            }),
-        ));
 
         // Draw UI
         self.platform.begin_frame();
@@ -286,7 +255,12 @@ impl FlowModel for FractalRSGuiMain {
                 frame_view,
                 &paint_jobs,
                 &screen_descriptor,
-                None,
+                Some(Color {
+                    r: 0.1,
+                    g: 0.1,
+                    b: 0.1,
+                    a: 1.0,
+                }),
             )
             .unwrap();
 

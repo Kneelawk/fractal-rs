@@ -1,12 +1,13 @@
-use crate::gui::keyboard::KeyboardTracker;
+use crate::gui::{keyboard::KeyboardTracker, viewer::FractalViewer};
 use egui::{CtxRef, ProgressBar};
+use egui_wgpu_backend::RenderPass;
 use std::borrow::Cow;
+use wgpu::Device;
 use winit::event::VirtualKeyCode;
 
 const DEFAULT_GENERATION_MESSAGE: &str = "Not Generating";
 
 /// Struct specifically devoted to UI rendering and state.
-#[derive(Clone)]
 pub struct UIState {
     // application flow controls
     pub close_requested: bool,
@@ -23,6 +24,21 @@ pub struct UIState {
     pub generate_fractal: bool,
     pub generation_fraction: f32,
     pub generation_message: Cow<'static, str>,
+
+    // fractal viewers
+    pub julia_viewer: FractalViewer,
+}
+
+/// Struct containing context passed when creating UIState.
+pub struct UICreationContext<'a> {
+    /// Device reference.
+    pub device: &'a Device,
+    /// WGPU Egui Render Pass reference for managing textures.
+    pub render_pass: &'a mut RenderPass,
+    /// Fractal image width at the time of UIState creation.
+    pub initial_fractal_width: u32,
+    /// Fractal image height at the time of UIState creation.
+    pub initial_fractal_height: u32,
 }
 
 /// Struct containing context passed to the UI render function.
@@ -35,8 +51,10 @@ pub struct UIRenderContext<'a> {
     pub keys: &'a KeyboardTracker,
 }
 
-impl Default for UIState {
-    fn default() -> Self {
+impl UIState {
+    /// Create a new UIState, making sure to initialize all required textures
+    /// and such.
+    pub fn new(ctx: &mut UICreationContext) -> UIState {
         UIState {
             close_requested: false,
             previous_fullscreen: false,
@@ -46,15 +64,20 @@ impl Default for UIState {
             generate_fractal: false,
             generation_fraction: 0.0,
             generation_message: Cow::Borrowed(DEFAULT_GENERATION_MESSAGE),
+            julia_viewer: FractalViewer::new(
+                ctx.device,
+                ctx.render_pass,
+                ctx.initial_fractal_width,
+                ctx.initial_fractal_height,
+            ),
         }
     }
-}
 
-impl UIState {
     /// Render the current UI state to the Egui context.
     pub fn draw(&mut self, ctx: &UIRenderContext) {
         self.handle_keyboard_shortcuts(ctx);
         self.draw_menubar(ctx);
+        self.draw_fractal_viewers(ctx);
         self.draw_generator_controls(ctx);
         self.draw_misc_windows(ctx);
     }
@@ -88,6 +111,12 @@ impl UIState {
                     ui.checkbox(&mut self.show_ui_settings, "UI Settings");
                 });
             });
+        });
+    }
+
+    fn draw_fractal_viewers(&mut self, ctx: &UIRenderContext) {
+        egui::CentralPanel::default().show(ctx.ctx, |ui| {
+            self.julia_viewer.render(ui);
         });
     }
 
