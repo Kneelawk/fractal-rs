@@ -100,17 +100,29 @@ impl FractalViewer {
             self.fractal_offset += response.drag_delta().into();
         }
 
-        // calculate image shape
-        let size = rect.size();
-        let img_size = self.fractal_size * self.fractal_scale;
-        let img_start = rect.min + (size - img_size) / 2.0 + self.fractal_offset;
-        let img_rect = Rect::from_min_size(img_start, img_size);
-
         // render image
         if ui.clip_rect().intersects(rect) {
+            let border = ui.visuals().widgets.noninteractive.bg_stroke;
+            let border_width = border.width;
+
+            // calculate image shape
+            let clip_rect = Rect::from_min_max(
+                rect.min + Vec2::splat(border_width),
+                rect.max - Vec2::splat(border_width),
+            );
+
+            let size = rect.size();
+            let img_size = self.fractal_size * self.fractal_scale;
+            let img_start = rect.min + (size - img_size) / 2.0 + self.fractal_offset;
+            let img_rect = Rect::from_min_size(img_start, img_size);
+
+            // draw outline
+            ui.painter().rect_stroke(rect, 0.0, border);
+
+            // draw image
             let mut mesh = Mesh::with_texture(self.texture_id);
             mesh.add_rect_with_uv(img_rect, IMAGE_UV_RECT, Color32::WHITE);
-            ui.painter_at(rect).add(Shape::Mesh(mesh));
+            ui.painter_at(clip_rect).add(Shape::Mesh(mesh));
         }
 
         response
