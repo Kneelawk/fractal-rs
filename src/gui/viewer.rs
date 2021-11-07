@@ -42,8 +42,11 @@ impl FractalViewer {
         let image_texture = Arc::new(image_texture);
         let image_texture_view = Arc::new(image_texture_view);
 
-        let texture_id =
-            render_pass.egui_texture_from_wgpu_texture(&device, &image_texture, FilterMode::Nearest);
+        let texture_id = render_pass.egui_texture_from_wgpu_texture(
+            &device,
+            &image_texture,
+            FilterMode::Nearest,
+        );
 
         FractalViewer {
             texture_id,
@@ -113,6 +116,16 @@ impl FractalViewer {
                 self.fractal_scale /= 1.1;
                 self.fractal_offset = self.fractal_offset / 1.1;
             }
+        }
+
+        // make sure the fractal offset doesn't have the fractal offscreen
+        let max_offset_x = self.fractal_size.x * self.fractal_scale / 2.0;
+        let max_offset_y = self.fractal_size.y * self.fractal_scale / 2.0;
+        if self.fractal_offset.x.abs() > max_offset_x {
+            self.fractal_offset.x = self.fractal_offset.x.clamp(-max_offset_x, max_offset_x);
+        }
+        if self.fractal_offset.y.abs() > max_offset_y {
+            self.fractal_offset.y = self.fractal_offset.y.clamp(-max_offset_y, max_offset_y);
         }
 
         // render image
