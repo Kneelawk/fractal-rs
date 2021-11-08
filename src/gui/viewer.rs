@@ -8,7 +8,9 @@ use egui::{
 };
 use egui_wgpu_backend::RenderPass;
 use std::sync::Arc;
-use wgpu::{Device, FilterMode, Texture, TextureFormat, TextureUsages, TextureView};
+use wgpu::{
+    Device, FilterMode, SamplerDescriptor, Texture, TextureFormat, TextureUsages, TextureView,
+};
 
 const IMAGE_UV_RECT: Rect = Rect::from_min_max(Pos2 { x: 0.0, y: 0.0 }, Pos2 { x: 1.0, y: 1.0 });
 
@@ -42,29 +44,16 @@ impl FractalViewer {
         let image_texture = Arc::new(image_texture);
         let image_texture_view = Arc::new(image_texture_view);
 
-        let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
-            label: Some("viewer image sampler"),
-            mag_filter: FilterMode::Nearest,
-            min_filter: FilterMode::Linear,
-            ..Default::default()
-        });
-
-        let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("viewer bind group"),
-            layout: render_pass.bind_group_layout(),
-            entries: &[
-                wgpu::BindGroupEntry {
-                    binding: 0,
-                    resource: wgpu::BindingResource::TextureView(&image_texture_view),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 1,
-                    resource: wgpu::BindingResource::Sampler(&sampler),
-                },
-            ],
-        });
-
-        let texture_id = render_pass.egui_texture_from_wgpu_bind_group(bind_group);
+        let texture_id = render_pass.egui_texture_from_wgpu_texture_with_sampler_options(
+            device,
+            &image_texture,
+            SamplerDescriptor {
+                label: Some("viewer image sampler"),
+                mag_filter: FilterMode::Nearest,
+                min_filter: FilterMode::Linear,
+                ..Default::default()
+            },
+        );
 
         FractalViewer {
             texture_id,
@@ -103,29 +92,17 @@ impl FractalViewer {
         self.image_texture_view = Arc::new(image_texture_view);
         self.fractal_size = Vec2::new(width as f32, height as f32);
 
-        let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
-            label: Some("viewer image sampler"),
-            mag_filter: FilterMode::Nearest,
-            min_filter: FilterMode::Linear,
-            ..Default::default()
-        });
-
-        let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("viewer bind group"),
-            layout: render_pass.bind_group_layout(),
-            entries: &[
-                wgpu::BindGroupEntry {
-                    binding: 0,
-                    resource: wgpu::BindingResource::TextureView(&self.image_texture_view),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 1,
-                    resource: wgpu::BindingResource::Sampler(&sampler),
-                },
-            ],
-        });
-
-        render_pass.update_egui_texture_from_wgpu_bind_group(bind_group, self.texture_id)?;
+        render_pass.update_egui_texture_from_wgpu_texture_with_sampler_options(
+            device,
+            &self.image_texture,
+            SamplerDescriptor {
+                label: Some("viewer image sampler"),
+                mag_filter: FilterMode::Nearest,
+                min_filter: FilterMode::Linear,
+                ..Default::default()
+            },
+            self.texture_id,
+        )?;
 
         Ok(())
     }

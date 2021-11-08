@@ -563,7 +563,7 @@ dependencies = [
 [[package]]
 name = "egui_wgpu_backend"
 version = "0.14.0"
-source = "git+https://github.com/Kneelawk/egui_wgpu_backend.git?branch=textureid-from-bindgroup#76b55f21d724d791280687d73aeef6078d3d99b0"
+source = "git+https://github.com/Kneelawk/egui_wgpu_backend.git?branch=textureid-with-sampler-options#611f4ad0a883e05a59d0d6c8130b71c463e540d7"
 dependencies = [
  "bytemuck",
  "epi",
