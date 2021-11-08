@@ -42,11 +42,29 @@ impl FractalViewer {
         let image_texture = Arc::new(image_texture);
         let image_texture_view = Arc::new(image_texture_view);
 
-        let texture_id = render_pass.egui_texture_from_wgpu_texture(
-            &device,
-            &image_texture,
-            FilterMode::Nearest,
-        );
+        let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
+            label: Some("viewer image sampler"),
+            mag_filter: FilterMode::Nearest,
+            min_filter: FilterMode::Linear,
+            ..Default::default()
+        });
+
+        let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("viewer bind group"),
+            layout: render_pass.bind_group_layout(),
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: wgpu::BindingResource::TextureView(&image_texture_view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: wgpu::BindingResource::Sampler(&sampler),
+                },
+            ],
+        });
+
+        let texture_id = render_pass.egui_texture_from_wgpu_bind_group(bind_group);
 
         FractalViewer {
             texture_id,
@@ -85,12 +103,29 @@ impl FractalViewer {
         self.image_texture_view = Arc::new(image_texture_view);
         self.fractal_size = Vec2::new(width as f32, height as f32);
 
-        render_pass.update_egui_texture_from_wgpu_texture(
-            &device,
-            &self.image_texture,
-            FilterMode::Nearest,
-            self.texture_id,
-        )?;
+        let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
+            label: Some("viewer image sampler"),
+            mag_filter: FilterMode::Nearest,
+            min_filter: FilterMode::Linear,
+            ..Default::default()
+        });
+
+        let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("viewer bind group"),
+            layout: render_pass.bind_group_layout(),
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: wgpu::BindingResource::TextureView(&self.image_texture_view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: wgpu::BindingResource::Sampler(&sampler),
+                },
+            ],
+        });
+
+        render_pass.update_egui_texture_from_wgpu_bind_group(bind_group, self.texture_id)?;
 
         Ok(())
     }

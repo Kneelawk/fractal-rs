@@ -563,8 +563,7 @@ dependencies = [
 [[package]]
 name = "egui_wgpu_backend"
 version = "0.14.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fe7d53df01ecac5951500cd5637b99c0334dad353fce9b203a9bf66b5f791a6b"
+source = "git+https://github.com/Kneelawk/egui_wgpu_backend.git?branch=textureid-from-bindgroup#76b55f21d724d791280687d73aeef6078d3d99b0"
 dependencies = [
  "bytemuck",
  "epi",

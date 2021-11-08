@@ -12,7 +12,7 @@ bytemuck = "^1.7.2"
 chrono = "^0.4.19"
 cgmath = "^0.18.0"
 egui = "^0.15.0"
-egui_wgpu_backend = "^0.14.0"
+egui_wgpu_backend = { git = "https://github.com/Kneelawk/egui_wgpu_backend.git", branch = "textureid-from-bindgroup" }
 egui_winit_platform = "^0.11.0"
 futures = "^0.3.12"
 #imgui = "^0.8.0"
