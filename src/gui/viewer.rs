@@ -2,6 +2,7 @@
 //! means both image managing and rendering.
 
 use crate::gpu::util::create_texture;
+use cgmath::Vector2;
 use egui::{
     paint::Mesh, Align2, Color32, PointerButton, Pos2, Rect, Response, Sense, Shape, TextStyle,
     TextureId, Ui, Vec2, Widget,
@@ -20,7 +21,8 @@ pub struct FractalViewer {
     texture_id: TextureId,
 
     // Dynamic Components
-    fractal_size: Vec2,
+    fractal_size_u: Vector2<u32>,
+    fractal_size_f: Vec2,
     fractal_offset: Vec2,
     fractal_scale: f32,
     image_texture: Arc<Texture>,
@@ -61,7 +63,8 @@ impl FractalViewer {
 
         FractalViewer {
             texture_id,
-            fractal_size: Vec2::new(fractal_width as f32, fractal_height as f32),
+            fractal_size_u: Vector2::new(fractal_width, fractal_height),
+            fractal_size_f: Vec2::new(fractal_width as f32, fractal_height as f32),
             fractal_offset: Vec2::new(0.0, 0.0),
             fractal_scale: 1.0,
             image_texture,
@@ -85,36 +88,41 @@ impl FractalViewer {
         width: u32,
         height: u32,
     ) -> Result<(), FractalViewerError> {
-        let old_fractal_size = self.fractal_size;
+        // only update everything if the fractal size has changed
+        if width != self.fractal_size_u.x || height != self.fractal_size_u.y {
+            let old_fractal_size = self.fractal_size_f;
 
-        let (image_texture, image_texture_view) = create_texture(
-            device,
-            width,
-            height,
-            TextureFormat::Rgba8UnormSrgb,
-            TextureUsages::COPY_DST | TextureUsages::TEXTURE_BINDING,
-        );
+            let (image_texture, image_texture_view) = create_texture(
+                device,
+                width,
+                height,
+                TextureFormat::Rgba8UnormSrgb,
+                TextureUsages::COPY_DST | TextureUsages::TEXTURE_BINDING,
+            );
 
-        self.image_texture = Arc::new(image_texture);
-        self.image_texture_view = Arc::new(image_texture_view);
-        self.fractal_size = Vec2::new(width as f32, height as f32);
+            self.image_texture = Arc::new(image_texture);
+            self.image_texture_view = Arc::new(image_texture_view);
+            self.fractal_size_f = Vec2::new(width as f32, height as f32);
 
-        render_pass.update_egui_texture_from_wgpu_texture_with_sampler_options(
-            device,
-            &self.image_texture,
-            SamplerDescriptor {
-                label: Some("viewer image sampler"),
-                mag_filter: FilterMode::Nearest,
-                min_filter: FilterMode::Linear,
-                ..Default::default()
-            },
-            self.texture_id,
-        )?;
+            render_pass.update_egui_texture_from_wgpu_texture_with_sampler_options(
+                device,
+                &self.image_texture,
+                SamplerDescriptor {
+                    label: Some("viewer image sampler"),
+                    mag_filter: FilterMode::Nearest,
+                    min_filter: FilterMode::Linear,
+                    ..Default::default()
+                },
+                self.texture_id,
+            )?;
 
-        // adjust selection pos when fractal size changes
-        if let Some(selection_pos) = &mut self.selection_pos {
-            selection_pos.x = (selection_pos.x * self.fractal_size.x / old_fractal_size.x).floor();
-            selection_pos.y = (selection_pos.y * self.fractal_size.y / old_fractal_size.y).floor();
+            // adjust selection pos when fractal size changes
+            if let Some(selection_pos) = &mut self.selection_pos {
+                selection_pos.x =
+                    (selection_pos.x * self.fractal_size_f.x / old_fractal_size.x).floor();
+                selection_pos.y =
+                    (selection_pos.y * self.fractal_size_f.y / old_fractal_size.y).floor();
+            }
         }
 
         Ok(())
@@ -123,7 +131,7 @@ impl FractalViewer {
     pub fn draw(&mut self, ui: &mut egui::Ui, opts: &FractalViewerDrawOptions) -> Response {
         let desired_size = opts
             .max_size_override
-            .map_or(self.fractal_size, |max| max.min(self.fractal_size));
+            .map_or(self.fractal_size_f, |max| max.min(self.fractal_size_f));
         let (rect, response) = ui.allocate_at_least(desired_size, Sense::click_and_drag());
 
         // handle move-drag events
@@ -144,8 +152,8 @@ impl FractalViewer {
         }
 
         // make sure the fractal offset doesn't have the fractal offscreen
-        let max_offset_x = self.fractal_size.x * self.fractal_scale / 2.0;
-        let max_offset_y = self.fractal_size.y * self.fractal_scale / 2.0;
+        let max_offset_x = self.fractal_size_f.x * self.fractal_scale / 2.0;
+        let max_offset_y = self.fractal_size_f.y * self.fractal_scale / 2.0;
         if self.fractal_offset.x.abs() > max_offset_x {
             self.fractal_offset.x = self.fractal_offset.x.clamp(-max_offset_x, max_offset_x);
         }
@@ -155,7 +163,7 @@ impl FractalViewer {
 
         // calculate image position and shape
         let size = rect.size();
-        let img_size = self.fractal_size * self.fractal_scale;
+        let img_size = self.fractal_size_f * self.fractal_scale;
         let img_start = rect.min + (size - img_size) / 2.0 + self.fractal_offset;
         let img_rect = Rect::from_min_size(img_start, img_size);
 
