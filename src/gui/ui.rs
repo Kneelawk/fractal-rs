@@ -1,4 +1,7 @@
-use crate::gui::{keyboard::KeyboardTracker, viewer::FractalViewer};
+use crate::{
+    gui::{keyboard::KeyboardTracker, viewer::FractalViewer},
+    util::result::ResultExt,
+};
 use egui::{CtxRef, DragValue, ProgressBar};
 use egui_wgpu_backend::RenderPass;
 use std::borrow::Cow;
@@ -187,7 +190,7 @@ impl UIState {
                 self.fractal_width,
                 self.fractal_height,
             )
-            .map_err(|e| error!("Error resizing fractal image: {:?}", e));
+            .on_err(|e| error!("Error resizing fractal image: {:?}", e));
     }
 
     fn draw_misc_windows(&mut self, ctx: &UIRenderContext) {

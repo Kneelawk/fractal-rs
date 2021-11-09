@@ -1,5 +1,7 @@
 //! util.rs - Random utility functions for the program.
 
+pub mod result;
+
 use futures::task::Context;
 use std::{future::Future, pin::Pin, task::Poll};
 use tokio::task::JoinHandle;

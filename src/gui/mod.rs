@@ -13,6 +13,7 @@ use crate::{
         keyboard::KeyboardTracker,
         ui::{UICreationContext, UIRenderContext, UIState},
     },
+    util::result::ResultExt,
 };
 use egui_wgpu_backend::{RenderPass, ScreenDescriptor};
 use egui_winit_platform::{Platform, PlatformDescriptor};
@@ -182,9 +183,9 @@ impl FlowModel for FractalRSGuiMain {
             }
         }
 
-        if let Err(e) = self.instance_manager.poll() {
-            error!("Error polling instance manager: {:?}", e);
-        }
+        self.instance_manager
+            .poll()
+            .on_err(|e| error!("Error polling instance manager: {:?}", e));
 
         let gen_progress = self.instance_manager.progress();
         self.ui.generation_fraction = gen_progress;
