@@ -3,8 +3,8 @@
 
 use crate::gpu::util::create_texture;
 use egui::{
-    paint::Mesh, Color32, PointerButton, Pos2, Rect, Response, Sense, Shape, TextureId, Ui, Vec2,
-    Widget,
+    paint::Mesh, Align2, Color32, PointerButton, Pos2, Rect, Response, Sense, Shape, TextStyle,
+    TextureId, Ui, Vec2, Widget,
 };
 use egui_wgpu_backend::RenderPass;
 use std::sync::Arc;
@@ -13,6 +13,7 @@ use wgpu::{
 };
 
 const IMAGE_UV_RECT: Rect = Rect::from_min_max(Pos2 { x: 0.0, y: 0.0 }, Pos2 { x: 1.0, y: 1.0 });
+const POSITION_SELECTION_COLOR: Color32 = Color32::WHITE;
 
 pub struct FractalViewer {
     // Static Components
@@ -24,6 +25,9 @@ pub struct FractalViewer {
     fractal_scale: f32,
     image_texture: Arc<Texture>,
     image_texture_view: Arc<TextureView>,
+
+    // Selection Components
+    selection_pos: Option<Vec2>,
 }
 
 impl FractalViewer {
@@ -62,6 +66,7 @@ impl FractalViewer {
             fractal_scale: 1.0,
             image_texture,
             image_texture_view,
+            selection_pos: None,
         }
     }
 
@@ -80,6 +85,8 @@ impl FractalViewer {
         width: u32,
         height: u32,
     ) -> Result<(), FractalViewerError> {
+        let old_fractal_size = self.fractal_size;
+
         let (image_texture, image_texture_view) = create_texture(
             device,
             width,
@@ -103,6 +110,12 @@ impl FractalViewer {
             },
             self.texture_id,
         )?;
+
+        // adjust selection pos when fractal size changes
+        if let Some(selection_pos) = &mut self.selection_pos {
+            selection_pos.x = (selection_pos.x * self.fractal_size.x / old_fractal_size.x).floor();
+            selection_pos.y = (selection_pos.y * self.fractal_size.y / old_fractal_size.y).floor();
+        }
 
         Ok(())
     }
@@ -140,29 +153,206 @@ impl FractalViewer {
             self.fractal_offset.y = self.fractal_offset.y.clamp(-max_offset_y, max_offset_y);
         }
 
+        // calculate image position and shape
+        let size = rect.size();
+        let img_size = self.fractal_size * self.fractal_scale;
+        let img_start = rect.min + (size - img_size) / 2.0 + self.fractal_offset;
+        let img_rect = Rect::from_min_size(img_start, img_size);
+
+        // handle click events
+        if response.clicked() {
+            if let Some(click) = response.interact_pointer_pos() {
+                self.selection_pos = Some(((click - img_start) / self.fractal_scale).floor());
+            }
+        }
+
         // render image
         if ui.clip_rect().intersects(rect) {
             let border = ui.visuals().widgets.noninteractive.bg_stroke;
             let border_width = border.width;
 
-            // calculate image shape
+            // calculate clip rect
             let clip_rect = Rect::from_min_max(
                 rect.min + Vec2::splat(border_width),
                 rect.max - Vec2::splat(border_width),
             );
 
-            let size = rect.size();
-            let img_size = self.fractal_size * self.fractal_scale;
-            let img_start = rect.min + (size - img_size) / 2.0 + self.fractal_offset;
-            let img_rect = Rect::from_min_size(img_start, img_size);
-
             // draw outline
             ui.painter().rect_stroke(rect, 0.0, border);
+
+            // get clipped painter
+            let clip_painter = ui.painter_at(clip_rect);
 
             // draw image
             let mut mesh = Mesh::with_texture(self.texture_id);
             mesh.add_rect_with_uv(img_rect, IMAGE_UV_RECT, Color32::WHITE);
-            ui.painter_at(clip_rect).add(Shape::Mesh(mesh));
+            clip_painter.add(Shape::Mesh(mesh));
+
+            // draw selection pos
+            if let Some(selection_vec) = self.selection_pos {
+                // calculate selection highlight position
+                let pixel_rect = Rect::from_min_size(
+                    img_start + selection_vec * self.fractal_scale,
+                    Vec2::splat(self.fractal_scale.max(1.0)),
+                );
+
+                if clip_rect.contains(pixel_rect.min) || clip_rect.contains(pixel_rect.max) {
+                    // selected pixel is on screen
+                    clip_painter.rect_filled(
+                        Rect::from_min_max(
+                            Pos2 {
+                                x: pixel_rect.min.x,
+                                y: clip_rect.min.y,
+                            },
+                            Pos2 {
+                                x: pixel_rect.max.x,
+                                y: pixel_rect.min.y,
+                            },
+                        ),
+                        0.0,
+                        POSITION_SELECTION_COLOR,
+                    );
+                    clip_painter.rect_filled(
+                        Rect::from_min_max(
+                            Pos2 {
+                                x: pixel_rect.min.x,
+                                y: pixel_rect.max.y,
+                            },
+                            Pos2 {
+                                x: pixel_rect.max.x,
+                                y: clip_rect.max.y,
+                            },
+                        ),
+                        0.0,
+                        POSITION_SELECTION_COLOR,
+                    );
+                    clip_painter.rect_filled(
+                        Rect::from_min_max(
+                            Pos2 {
+                                x: clip_rect.min.x,
+                                y: pixel_rect.min.y,
+                            },
+                            Pos2 {
+                                x: pixel_rect.min.x,
+                                y: pixel_rect.max.y,
+                            },
+                        ),
+                        0.0,
+                        POSITION_SELECTION_COLOR,
+                    );
+                    clip_painter.rect_filled(
+                        Rect::from_min_max(
+                            Pos2 {
+                                x: pixel_rect.max.x,
+                                y: pixel_rect.min.y,
+                            },
+                            Pos2 {
+                                x: clip_rect.max.x,
+                                y: pixel_rect.max.y,
+                            },
+                        ),
+                        0.0,
+                        POSITION_SELECTION_COLOR,
+                    );
+                    clip_painter.text(
+                        pixel_rect.right_top(),
+                        Align2::LEFT_BOTTOM,
+                        format!("({:.0}, {:.0})", selection_vec.x, selection_vec.y),
+                        TextStyle::Monospace,
+                        POSITION_SELECTION_COLOR,
+                    );
+                } else if clip_rect.x_range().contains(&pixel_rect.min.x)
+                    || clip_rect.x_range().contains(&pixel_rect.max.x)
+                {
+                    // vertical bar to selected pixel is on screen
+                    clip_painter.rect_filled(
+                        Rect::from_min_max(
+                            Pos2 {
+                                x: pixel_rect.min.x,
+                                y: clip_rect.min.y,
+                            },
+                            Pos2 {
+                                x: pixel_rect.max.x,
+                                y: clip_rect.max.y,
+                            },
+                        ),
+                        0.0,
+                        POSITION_SELECTION_COLOR,
+                    );
+
+                    // figure out where to draw the text
+                    if pixel_rect.max.y < clip_rect.min.y {
+                        // pixel is at top (min-y) of screen
+                        clip_painter.text(
+                            Pos2 {
+                                x: pixel_rect.max.x,
+                                y: clip_rect.min.y,
+                            },
+                            Align2::LEFT_TOP,
+                            format!("({:.0}, {:.0})", selection_vec.x, selection_vec.y),
+                            TextStyle::Monospace,
+                            POSITION_SELECTION_COLOR,
+                        );
+                    } else {
+                        // pixel is at bottom (max-y) of screen
+                        clip_painter.text(
+                            Pos2 {
+                                x: pixel_rect.max.x,
+                                y: clip_rect.max.y,
+                            },
+                            Align2::LEFT_BOTTOM,
+                            format!("({:.0}, {:.0})", selection_vec.x, selection_vec.y),
+                            TextStyle::Monospace,
+                            POSITION_SELECTION_COLOR,
+                        );
+                    }
+                } else if clip_rect.y_range().contains(&pixel_rect.min.y)
+                    || clip_rect.y_range().contains(&pixel_rect.max.y)
+                {
+                    // horizontal bar to selected pixel is on screen
+                    clip_painter.rect_filled(
+                        Rect::from_min_max(
+                            Pos2 {
+                                x: clip_rect.min.x,
+                                y: pixel_rect.min.y,
+                            },
+                            Pos2 {
+                                x: clip_rect.max.x,
+                                y: pixel_rect.max.y,
+                            },
+                        ),
+                        0.0,
+                        POSITION_SELECTION_COLOR,
+                    );
+
+                    // figure out where to draw the text
+                    if pixel_rect.max.x < clip_rect.min.x {
+                        // pixel is at left (min-x) of screen
+                        clip_painter.text(
+                            Pos2 {
+                                x: clip_rect.min.x,
+                                y: pixel_rect.min.y,
+                            },
+                            Align2::LEFT_BOTTOM,
+                            format!("({:.0}, {:.0})", selection_vec.x, selection_vec.y),
+                            TextStyle::Monospace,
+                            POSITION_SELECTION_COLOR,
+                        );
+                    } else {
+                        // pixel is at right (max-x) of screen
+                        clip_painter.text(
+                            Pos2 {
+                                x: clip_rect.max.x,
+                                y: pixel_rect.min.y,
+                            },
+                            Align2::RIGHT_BOTTOM,
+                            format!("({:.0}, {:.0})", selection_vec.x, selection_vec.y),
+                            TextStyle::Monospace,
+                            POSITION_SELECTION_COLOR,
+                        );
+                    }
+                }
+            }
         }
 
         response
