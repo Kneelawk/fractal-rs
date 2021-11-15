@@ -1,8 +1,7 @@
 //! viewer.rs - This file holds the systems for the fractal image viewer. This
 //! means both image managing and rendering.
 
-use crate::gpu::util::create_texture;
-use cgmath::Vector2;
+use crate::{generator::view::View, gpu::util::create_texture};
 use egui::{
     paint::Mesh, Align2, Color32, PointerButton, Pos2, Rect, Response, Sense, Shape, TextStyle,
     TextureId, Ui, Vec2, Widget,
@@ -21,7 +20,7 @@ pub struct FractalViewer {
     texture_id: TextureId,
 
     // Dynamic Components
-    fractal_size_u: Vector2<u32>,
+    fractal_view: View,
     fractal_size_f: Vec2,
     fractal_offset: Vec2,
     fractal_scale: f32,
@@ -33,16 +32,11 @@ pub struct FractalViewer {
 }
 
 impl FractalViewer {
-    pub fn new(
-        device: &Device,
-        render_pass: &mut RenderPass,
-        fractal_width: u32,
-        fractal_height: u32,
-    ) -> FractalViewer {
+    pub fn new(device: &Device, render_pass: &mut RenderPass, fractal_view: View) -> FractalViewer {
         let (image_texture, image_texture_view) = create_texture(
             device,
-            fractal_width,
-            fractal_height,
+            fractal_view.image_width as u32,
+            fractal_view.image_height as u32,
             TextureFormat::Rgba8UnormSrgb,
             TextureUsages::COPY_DST | TextureUsages::TEXTURE_BINDING,
         );
@@ -63,8 +57,11 @@ impl FractalViewer {
 
         FractalViewer {
             texture_id,
-            fractal_size_u: Vector2::new(fractal_width, fractal_height),
-            fractal_size_f: Vec2::new(fractal_width as f32, fractal_height as f32),
+            fractal_view,
+            fractal_size_f: Vec2::new(
+                fractal_view.image_width as f32,
+                fractal_view.image_height as f32,
+            ),
             fractal_offset: Vec2::new(0.0, 0.0),
             fractal_scale: 1.0,
             image_texture,
@@ -81,28 +78,35 @@ impl FractalViewer {
         self.image_texture_view.clone()
     }
 
-    pub fn set_fractal_size(
+    pub fn set_fractal_view(
         &mut self,
         device: &Device,
         render_pass: &mut RenderPass,
-        width: u32,
-        height: u32,
+        fractal_view: View,
     ) -> Result<(), FractalViewerError> {
+        let old_view = self.fractal_view;
+        self.fractal_view = fractal_view;
+
         // only update everything if the fractal size has changed
-        if width != self.fractal_size_u.x || height != self.fractal_size_u.y {
+        if fractal_view.image_width != old_view.image_width
+            || fractal_view.image_height != old_view.image_height
+        {
             let old_fractal_size = self.fractal_size_f;
 
             let (image_texture, image_texture_view) = create_texture(
                 device,
-                width,
-                height,
+                fractal_view.image_width as u32,
+                fractal_view.image_height as u32,
                 TextureFormat::Rgba8UnormSrgb,
                 TextureUsages::COPY_DST | TextureUsages::TEXTURE_BINDING,
             );
 
             self.image_texture = Arc::new(image_texture);
             self.image_texture_view = Arc::new(image_texture_view);
-            self.fractal_size_f = Vec2::new(width as f32, height as f32);
+            self.fractal_size_f = Vec2::new(
+                fractal_view.image_width as f32,
+                fractal_view.image_height as f32,
+            );
 
             render_pass.update_egui_texture_from_wgpu_texture_with_sampler_options(
                 device,

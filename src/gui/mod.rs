@@ -35,8 +35,10 @@ mod keyboard;
 mod ui;
 mod viewer;
 
-const INITIAL_FRACTAL_WIDTH: u32 = 1024;
-const INITIAL_FRACTAL_HEIGHT: u32 = 1024;
+const MAX_CHUNK_WIDTH: usize = 256;
+const MAX_CHUNK_HEIGHT: usize = 256;
+const INITIAL_FRACTAL_WIDTH: usize = 1024;
+const INITIAL_FRACTAL_HEIGHT: usize = 1024;
 
 /// Launches the application as a GUI application.
 pub fn start_gui_application() -> ! {
@@ -94,8 +96,11 @@ impl FlowModel for FractalRSGuiMain {
         let ui = UIState::new(&mut UICreationContext {
             device: &device,
             render_pass: &mut render_pass,
-            initial_fractal_width: INITIAL_FRACTAL_WIDTH,
-            initial_fractal_height: INITIAL_FRACTAL_HEIGHT,
+            initial_fractal_view: View::new_centered_uniform(
+                INITIAL_FRACTAL_WIDTH,
+                INITIAL_FRACTAL_HEIGHT,
+                3.0,
+            ),
         });
 
         // Set up the fractal generator
@@ -166,12 +171,11 @@ impl FlowModel for FractalRSGuiMain {
             self.ui.generate_fractal = false;
 
             if !self.instance_manager.running() {
-                let view = View::new_centered_uniform(
-                    self.ui.fractal_width as usize,
-                    self.ui.fractal_height as usize,
-                    3.0,
-                );
-                let views: Vec<_> = view.subdivide_rectangles(256, 256).collect();
+                let views: Vec<_> = self
+                    .ui
+                    .fractal_view
+                    .subdivide_rectangles(MAX_CHUNK_WIDTH, MAX_CHUNK_HEIGHT)
+                    .collect();
                 self.instance_manager.start(
                     self.generator.start_generation_to_gpu(
                         &views,

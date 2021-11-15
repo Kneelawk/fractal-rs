@@ -1,4 +1,5 @@
 use crate::{
+    generator::view::View,
     gui::{keyboard::KeyboardTracker, viewer::FractalViewer},
     util::result::ResultExt,
 };
@@ -27,10 +28,10 @@ pub struct UIState {
     pub generate_fractal: bool,
     pub generation_fraction: f32,
     pub generation_message: Cow<'static, str>,
-    pub edit_fractal_width: u32,
-    pub edit_fractal_height: u32,
-    pub fractal_width: u32,
-    pub fractal_height: u32,
+    pub edit_fractal_width: usize,
+    pub edit_fractal_height: usize,
+    pub edit_fractal_plane_width: f32,
+    pub fractal_view: View,
 
     // fractal viewers
     pub julia_viewer: FractalViewer,
@@ -42,10 +43,8 @@ pub struct UICreationContext<'a> {
     pub device: &'a Device,
     /// WGPU Egui Render Pass reference for managing textures.
     pub render_pass: &'a mut RenderPass,
-    /// Fractal image width at the time of UIState creation.
-    pub initial_fractal_width: u32,
-    /// Fractal image height at the time of UIState creation.
-    pub initial_fractal_height: u32,
+    /// Fractal view settings at the time of UI state creation.
+    pub initial_fractal_view: View,
 }
 
 /// Struct containing context passed to the UI render function.
@@ -75,16 +74,12 @@ impl UIState {
             generate_fractal: false,
             generation_fraction: 0.0,
             generation_message: Cow::Borrowed(DEFAULT_GENERATION_MESSAGE),
-            edit_fractal_width: ctx.initial_fractal_width,
-            edit_fractal_height: ctx.initial_fractal_height,
-            fractal_width: ctx.initial_fractal_width,
-            fractal_height: ctx.initial_fractal_height,
-            julia_viewer: FractalViewer::new(
-                ctx.device,
-                ctx.render_pass,
-                ctx.initial_fractal_width,
-                ctx.initial_fractal_height,
-            ),
+            edit_fractal_width: ctx.initial_fractal_view.image_width,
+            edit_fractal_height: ctx.initial_fractal_view.image_height,
+            edit_fractal_plane_width: ctx.initial_fractal_view.image_width as f32
+                * ctx.initial_fractal_view.image_scale_x,
+            fractal_view: ctx.initial_fractal_view,
+            julia_viewer: FractalViewer::new(ctx.device, ctx.render_pass, ctx.initial_fractal_view),
         }
     }
 
@@ -159,7 +154,7 @@ impl UIState {
                     ui.label("Image Width:");
                     ui.add(
                         DragValue::new(&mut self.edit_fractal_width)
-                            .speed(0.5)
+                            .speed(1.0)
                             .clamp_range(64..=4096),
                     );
                     ui.end_row();
@@ -169,6 +164,14 @@ impl UIState {
                         DragValue::new(&mut self.edit_fractal_height)
                             .speed(1.0)
                             .clamp_range(64..=4096),
+                    );
+                    ui.end_row();
+
+                    ui.label("Plane Width:");
+                    ui.add(
+                        DragValue::new(&mut self.edit_fractal_plane_width)
+                            .clamp_range(0.0..=10.0)
+                            .speed(0.03125),
                     );
                     ui.end_row();
                 });
@@ -181,15 +184,13 @@ impl UIState {
 
     fn apply_generator_settings(&mut self, ctx: &mut UIRenderContext) {
         // apply fractal size
-        self.fractal_width = self.edit_fractal_width;
-        self.fractal_height = self.edit_fractal_height;
+        self.fractal_view = View::new_centered_uniform(
+            self.edit_fractal_width,
+            self.edit_fractal_height,
+            self.edit_fractal_plane_width,
+        );
         self.julia_viewer
-            .set_fractal_size(
-                ctx.device,
-                ctx.render_pass,
-                self.fractal_width,
-                self.fractal_height,
-            )
+            .set_fractal_view(ctx.device, ctx.render_pass, self.fractal_view)
             .on_err(|e| error!("Error resizing fractal image: {:?}", e));
     }
 
