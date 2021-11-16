@@ -202,6 +202,12 @@ impl FractalViewer {
 
             // draw selection pos
             if let Some(selection_vec) = self.selection_pos {
+                // calculate the associated position on the complex plane
+                let complex_pos = self.fractal_view.get_local_plane_coordinates((
+                    selection_vec.x as usize,
+                    selection_vec.y as usize,
+                ));
+
                 // calculate selection highlight position
                 let pixel_rect = Rect::from_min_size(
                     img_start + selection_vec * self.fractal_scale,
@@ -273,6 +279,13 @@ impl FractalViewer {
                         TextStyle::Monospace,
                         POSITION_SELECTION_COLOR,
                     );
+                    clip_painter.text(
+                        pixel_rect.left_bottom(),
+                        Align2::RIGHT_TOP,
+                        format!("({} + {}i)", complex_pos.re, complex_pos.im),
+                        TextStyle::Monospace,
+                        POSITION_SELECTION_COLOR,
+                    );
                 } else if clip_rect.x_range().contains(&pixel_rect.min.x)
                     || clip_rect.x_range().contains(&pixel_rect.max.x)
                 {
@@ -305,6 +318,16 @@ impl FractalViewer {
                             TextStyle::Monospace,
                             POSITION_SELECTION_COLOR,
                         );
+                        clip_painter.text(
+                            Pos2 {
+                                x: pixel_rect.min.x,
+                                y: clip_rect.min.y,
+                            },
+                            Align2::RIGHT_TOP,
+                            format!("({} + {}i)", complex_pos.re, complex_pos.im),
+                            TextStyle::Monospace,
+                            POSITION_SELECTION_COLOR,
+                        );
                     } else {
                         // pixel is at bottom (max-y) of screen
                         clip_painter.text(
@@ -314,6 +337,16 @@ impl FractalViewer {
                             },
                             Align2::LEFT_BOTTOM,
                             format!("({:.0}, {:.0})", selection_vec.x, selection_vec.y),
+                            TextStyle::Monospace,
+                            POSITION_SELECTION_COLOR,
+                        );
+                        clip_painter.text(
+                            Pos2 {
+                                x: pixel_rect.min.x,
+                                y: clip_rect.max.y,
+                            },
+                            Align2::RIGHT_BOTTOM,
+                            format!("({} + {}i)", complex_pos.re, complex_pos.im),
                             TextStyle::Monospace,
                             POSITION_SELECTION_COLOR,
                         );
@@ -350,6 +383,16 @@ impl FractalViewer {
                             TextStyle::Monospace,
                             POSITION_SELECTION_COLOR,
                         );
+                        clip_painter.text(
+                            Pos2 {
+                                x: clip_rect.min.x,
+                                y: pixel_rect.max.y,
+                            },
+                            Align2::LEFT_TOP,
+                            format!("({} + {}i)", complex_pos.re, complex_pos.im),
+                            TextStyle::Monospace,
+                            POSITION_SELECTION_COLOR,
+                        );
                     } else {
                         // pixel is at right (max-x) of screen
                         clip_painter.text(
@@ -359,6 +402,16 @@ impl FractalViewer {
                             },
                             Align2::RIGHT_BOTTOM,
                             format!("({:.0}, {:.0})", selection_vec.x, selection_vec.y),
+                            TextStyle::Monospace,
+                            POSITION_SELECTION_COLOR,
+                        );
+                        clip_painter.text(
+                            Pos2 {
+                                x: clip_rect.max.x,
+                                y: pixel_rect.max.y,
+                            },
+                            Align2::RIGHT_TOP,
+                            format!("({} + {}i)", complex_pos.re, complex_pos.im),
                             TextStyle::Monospace,
                             POSITION_SELECTION_COLOR,
                         );
