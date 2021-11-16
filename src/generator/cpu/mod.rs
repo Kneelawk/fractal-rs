@@ -4,16 +4,22 @@ use crate::generator::{
 };
 use cgmath::Vector4;
 use futures::{
-    future::{ready, BoxFuture},
+    future::{ready, BoxFuture, Ready},
     FutureExt,
 };
 use rayon::{ThreadPool, ThreadPoolBuilder};
-use std::sync::{
-    atomic::{AtomicUsize, Ordering},
-    Arc,
+use std::{
+    num::NonZeroU32,
+    sync::{
+        atomic::{AtomicUsize, Ordering},
+        Arc,
+    },
 };
-use tokio::sync::mpsc::Sender;
-use wgpu::{Texture, TextureView};
+use tokio::sync::mpsc::{OwnedPermit, Sender};
+use wgpu::{
+    Device, Extent3d, ImageCopyTexture, ImageDataLayout, Origin3d, Queue, Texture, TextureAspect,
+    TextureView,
+};
 
 pub mod opts;
 
@@ -59,11 +65,22 @@ impl FractalGenerator for CpuFractalGenerator {
     fn start_generation_to_gpu(
         &self,
         views: &[View],
+        _device: Arc<Device>,
+        queue: Arc<Queue>,
         texture: Arc<Texture>,
-        texture_view: Arc<TextureView>,
+        _texture_view: Arc<TextureView>,
     ) -> BoxFuture<'static, anyhow::Result<Box<dyn FractalGeneratorInstance + Send + 'static>>>
     {
-        todo!("TODO: Implement CPU-generation to GPU")
+        let thread_pool = self.thread_pool.clone();
+        let views = views.to_vec();
+        let opts = self.opts.clone();
+        async move {
+            let sink = GpuPixelBlockSink { queue, texture };
+            let boxed: Box<dyn FractalGeneratorInstance + Send> =
+                Box::new(CpuFractalGeneratorInstance::start(thread_pool, views, sink, opts).await);
+            Ok(boxed)
+        }
+        .boxed()
     }
 }
 
@@ -73,10 +90,10 @@ struct CpuFractalGeneratorInstance {
 }
 
 impl CpuFractalGeneratorInstance {
-    async fn start(
+    async fn start<S: PixelBlockSink + Send + Sync + 'static>(
         thread_pool: Arc<ThreadPool>,
         views: Vec<View>,
-        sender: Sender<anyhow::Result<PixelBlock>>,
+        sink: S,
         opts: FractalOpts,
     ) -> CpuFractalGeneratorInstance {
         info!("Starting new CPU fractal generator...");
@@ -93,7 +110,7 @@ impl CpuFractalGeneratorInstance {
             for view in views {
                 let spawn_offsets = offsets.clone();
                 let spawn_completed = async_completed.clone();
-                let spawn_tx = sender.clone().reserve_owned().await.unwrap();
+                let spawn_tx: S::Reserved = sink.reserve().await.unwrap();
                 thread_pool.spawn(move || {
                     let mut image =
                         vec![0u8; view.image_width * view.image_height * BYTES_PER_PIXEL];
@@ -126,10 +143,10 @@ impl CpuFractalGeneratorInstance {
                     info!("Generated chunk at ({}, {})", view.image_x, view.image_y);
                     spawn_completed.fetch_add(1, Ordering::AcqRel);
 
-                    spawn_tx.send(Ok(PixelBlock {
+                    spawn_tx.accept(PixelBlock {
                         view,
                         image: image.into_boxed_slice(),
-                    }));
+                    });
                 });
             }
         });
@@ -160,4 +177,79 @@ impl FractalGeneratorInstance for CpuFractalGeneratorInstance {
 pub enum CpuGenError {
     #[error("Error building thread pool")]
     ThreadPoolBuildError(#[from] rayon::ThreadPoolBuildError),
+}
+
+trait PixelBlockSink {
+    type Reserved: ReservedPixelBlockSink + Send;
+    type Error: std::fmt::Debug;
+    type Future: std::future::Future<Output = Result<Self::Reserved, Self::Error>> + Send;
+
+    fn reserve(&self) -> Self::Future;
+}
+
+trait ReservedPixelBlockSink {
+    fn accept(self, pixel_block: PixelBlock);
+}
+
+impl PixelBlockSink for Sender<anyhow::Result<PixelBlock>> {
+    type Reserved = OwnedPermit<anyhow::Result<PixelBlock>>;
+    type Error = tokio::sync::mpsc::error::SendError<()>;
+    type Future = BoxFuture<'static, Result<Self::Reserved, Self::Error>>;
+
+    fn reserve(&self) -> Self::Future {
+        self.clone().reserve_owned().boxed()
+    }
+}
+
+impl ReservedPixelBlockSink for OwnedPermit<anyhow::Result<PixelBlock>> {
+    fn accept(self, pixel_block: PixelBlock) {
+        self.send(Ok(pixel_block));
+    }
+}
+
+#[derive(Clone)]
+struct GpuPixelBlockSink {
+    queue: Arc<Queue>,
+    texture: Arc<Texture>,
+}
+
+impl PixelBlockSink for GpuPixelBlockSink {
+    type Reserved = GpuPixelBlockSink;
+    type Error = ();
+    type Future = Ready<Result<GpuPixelBlockSink, ()>>;
+
+    fn reserve(&self) -> Self::Future {
+        ready(Ok(self.clone()))
+    }
+}
+
+impl ReservedPixelBlockSink for GpuPixelBlockSink {
+    fn accept(self, pixel_block: PixelBlock) {
+        self.queue.write_texture(
+            ImageCopyTexture {
+                texture: &self.texture,
+                mip_level: 0,
+                origin: Origin3d {
+                    x: pixel_block.view.image_x as u32,
+                    y: pixel_block.view.image_y as u32,
+                    z: 0,
+                },
+                aspect: TextureAspect::All,
+            },
+            &pixel_block.image,
+            ImageDataLayout {
+                offset: 0,
+                bytes_per_row: Some(
+                    NonZeroU32::new((pixel_block.view.image_width * BYTES_PER_PIXEL) as u32)
+                        .unwrap(),
+                ),
+                rows_per_image: None,
+            },
+            Extent3d {
+                width: pixel_block.view.image_width as u32,
+                height: pixel_block.view.image_height as u32,
+                depth_or_array_layers: 1,
+            },
+        );
+    }
 }

@@ -3,6 +3,7 @@
 use crate::{
     generator::{
         args::{Multisampling, Smoothing},
+        cpu::CpuFractalGenerator,
         gpu::GpuFractalGenerator,
         instance_manager::InstanceManager,
         view::View,
@@ -179,6 +180,8 @@ impl FlowModel for FractalRSGuiMain {
                 self.instance_manager.start(
                     self.generator.start_generation_to_gpu(
                         &views,
+                        self.device.clone(),
+                        self.queue.clone(),
                         self.ui.julia_viewer.get_texture(),
                         self.ui.julia_viewer.get_texture_view()
                         )

@@ -167,8 +167,10 @@ impl FractalGenerator for GpuFractalGenerator {
     fn start_generation_to_gpu(
         &self,
         views: &[View],
+        _device: Arc<Device>,
+        _queue: Arc<Queue>,
         texture: Arc<Texture>,
-        texture_view: Arc<TextureView>,
+        _texture_view: Arc<TextureView>,
     ) -> BoxFuture<'static, anyhow::Result<Box<dyn FractalGeneratorInstance + Send + 'static>>>
     {
         let opts = self.opts;
@@ -188,7 +190,6 @@ impl FractalGenerator for GpuFractalGenerator {
                     render_pipeline,
                     views,
                     texture,
-                    texture_view,
                 ));
             Ok(boxed)
         }
@@ -340,7 +341,6 @@ impl GpuFractalGeneratorInstance {
         render_pipeline: Arc<RenderPipeline>,
         views: Vec<View>,
         out_texture: Arc<Texture>,
-        out_texture_view: Arc<TextureView>,
     ) -> GpuFractalGeneratorInstance {
         let view_count = views.len();
         let completed = Arc::new(AtomicUsize::new(0));

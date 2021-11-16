@@ -101,7 +101,7 @@ impl Multisampling {
 
     pub fn offsets(&self) -> Vec<Vector2<f32>> {
         match self {
-            Multisampling::None => vec![Vector2 { x: 0.0, y: 0.0 }],
+            Multisampling::None => vec![Vector2 { x: 0.5, y: 0.5 }],
             Multisampling::FourPoints { offset } => build_four_points_offsets(*offset),
             Multisampling::Linear { axial_points } => build_linear_offsets(*axial_points),
         }

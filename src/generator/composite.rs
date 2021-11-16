@@ -6,7 +6,7 @@ use crate::generator::{view::View, FractalGenerator, FractalGeneratorInstance, P
 use futures::{future::BoxFuture, FutureExt};
 use std::sync::Arc;
 use tokio::sync::mpsc::Sender;
-use wgpu::{Texture, TextureView};
+use wgpu::{Device, Queue, Texture, TextureView};
 
 pub struct CompositeFractalGenerator {
     generators: Vec<Box<dyn FractalGenerator + Send + Sync>>,
@@ -42,6 +42,8 @@ impl FractalGenerator for CompositeFractalGenerator {
     fn start_generation_to_gpu(
         &self,
         views: &[View],
+        device: Arc<Device>,
+        queue: Arc<Queue>,
         texture: Arc<Texture>,
         texture_view: Arc<TextureView>,
     ) -> BoxFuture<'static, anyhow::Result<Box<dyn FractalGeneratorInstance + Send + 'static>>>
