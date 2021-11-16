@@ -31,6 +31,9 @@ pub struct UIState {
     pub edit_fractal_width: usize,
     pub edit_fractal_height: usize,
     pub edit_fractal_plane_width: f32,
+    pub edit_fractal_plane_centered: bool,
+    pub edit_fractal_plane_center_x: f32,
+    pub edit_fractal_plane_center_y: f32,
     pub fractal_view: View,
 
     // fractal viewers
@@ -65,6 +68,13 @@ impl UIState {
     /// Create a new UIState, making sure to initialize all required textures
     /// and such.
     pub fn new(ctx: &mut UICreationContext) -> UIState {
+        let plane_width =
+            ctx.initial_fractal_view.image_width as f32 * ctx.initial_fractal_view.image_scale_x;
+        let plane_height =
+            ctx.initial_fractal_view.image_height as f32 * ctx.initial_fractal_view.image_scale_y;
+        let center_x = ctx.initial_fractal_view.plane_start_x + plane_width / 2.0;
+        let center_y = ctx.initial_fractal_view.plane_start_y + plane_height / 2.0;
+
         UIState {
             close_requested: false,
             previous_fullscreen: false,
@@ -76,8 +86,10 @@ impl UIState {
             generation_message: Cow::Borrowed(DEFAULT_GENERATION_MESSAGE),
             edit_fractal_width: ctx.initial_fractal_view.image_width,
             edit_fractal_height: ctx.initial_fractal_view.image_height,
-            edit_fractal_plane_width: ctx.initial_fractal_view.image_width as f32
-                * ctx.initial_fractal_view.image_scale_x,
+            edit_fractal_plane_width: plane_width,
+            edit_fractal_plane_centered: center_x == 0.0 && center_y == 0.0,
+            edit_fractal_plane_center_x: center_x,
+            edit_fractal_plane_center_y: center_y,
             fractal_view: ctx.initial_fractal_view,
             julia_viewer: FractalViewer::new(ctx.device, ctx.render_pass, ctx.initial_fractal_view),
         }
@@ -174,6 +186,30 @@ impl UIState {
                             .speed(0.03125),
                     );
                     ui.end_row();
+
+                    ui.checkbox(
+                        &mut self.edit_fractal_plane_centered,
+                        "Centered at (0 + 0i)",
+                    );
+                    ui.end_row();
+
+                    ui.label("Plane Real Center:");
+                    ui.add_enabled(
+                        !self.edit_fractal_plane_centered,
+                        DragValue::new(&mut self.edit_fractal_plane_center_x)
+                            .clamp_range(-10.0..=10.0)
+                            .speed(0.0625),
+                    );
+                    ui.end_row();
+
+                    ui.label("Plane Imaginary Center:");
+                    ui.add_enabled(
+                        !self.edit_fractal_plane_centered,
+                        DragValue::new(&mut self.edit_fractal_plane_center_y)
+                            .clamp_range(-10.0..=10.0)
+                            .speed(0.0625),
+                    );
+                    ui.end_row();
                 });
             });
 
@@ -184,11 +220,21 @@ impl UIState {
 
     fn apply_generator_settings(&mut self, ctx: &mut UIRenderContext) {
         // apply fractal size
-        self.fractal_view = View::new_centered_uniform(
-            self.edit_fractal_width,
-            self.edit_fractal_height,
-            self.edit_fractal_plane_width,
-        );
+        self.fractal_view = if self.edit_fractal_plane_centered {
+            View::new_centered_uniform(
+                self.edit_fractal_width,
+                self.edit_fractal_height,
+                self.edit_fractal_plane_width,
+            )
+        } else {
+            View::new_uniform(
+                self.edit_fractal_width,
+                self.edit_fractal_height,
+                self.edit_fractal_plane_width,
+                self.edit_fractal_plane_center_x,
+                self.edit_fractal_plane_center_y,
+            )
+        };
         self.julia_viewer
             .set_fractal_view(ctx.device, ctx.render_pass, self.fractal_view)
             .on_err(|e| error!("Error resizing fractal image: {:?}", e));
