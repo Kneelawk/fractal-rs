@@ -3,7 +3,7 @@ use crate::{
     gui::{keyboard::KeyboardTracker, viewer::FractalViewer},
     util::result::ResultExt,
 };
-use egui::{CtxRef, DragValue, ProgressBar};
+use egui::{vec2, CtxRef, DragValue, ProgressBar};
 use egui_wgpu_backend::RenderPass;
 use std::borrow::Cow;
 use wgpu::Device;
@@ -22,6 +22,7 @@ pub struct UIState {
 
     // open windows
     pub show_generator_controls: bool,
+    pub show_viewer_controls: bool,
     pub show_ui_settings: bool,
 
     // generator controls
@@ -80,6 +81,7 @@ impl UIState {
             previous_fullscreen: false,
             request_fullscreen: false,
             show_generator_controls: true,
+            show_viewer_controls: true,
             show_ui_settings: false,
             generate_fractal: false,
             generation_fraction: 0.0,
@@ -101,6 +103,7 @@ impl UIState {
         self.draw_menubar(ctx);
         self.draw_fractal_viewers(ctx);
         self.draw_generator_controls(ctx);
+        self.draw_viewer_controls(ctx);
         self.draw_misc_windows(ctx);
     }
 
@@ -130,6 +133,7 @@ impl UIState {
                     ui.checkbox(&mut self.request_fullscreen, "Fullscreen");
                     ui.separator();
                     ui.checkbox(&mut self.show_generator_controls, "Generator Controls");
+                    ui.checkbox(&mut self.show_viewer_controls, "Viewer Controls");
                     ui.checkbox(&mut self.show_ui_settings, "UI Settings");
                 });
             });
@@ -238,6 +242,36 @@ impl UIState {
         self.julia_viewer
             .set_fractal_view(ctx.device, ctx.render_pass, self.fractal_view)
             .on_err(|e| error!("Error resizing fractal image: {:?}", e));
+    }
+
+    fn draw_viewer_controls(&mut self, ctx: &UIRenderContext) {
+        egui::Window::new("Viewer Controls")
+            .default_size([250.0, 500.0])
+            .open(&mut self.show_viewer_controls)
+            .show(&ctx.ctx, |ui| {
+                ui.label("Zoom & Center");
+                ui.horizontal(|ui| {
+                    if ui.button("Zoom 1:1").clicked() {
+                        self.julia_viewer.zoom_1_to_1();
+                    }
+                    if ui.button("Zoom Fit").clicked() {
+                        self.julia_viewer.zoom_fit();
+                    }
+                    if ui.button("Zoom Fill").clicked() {
+                        self.julia_viewer.zoom_fill();
+                    }
+                });
+                if ui.button("Center View").clicked() {
+                    self.julia_viewer.fractal_offset = vec2(0.0, 0.0);
+                }
+
+                ui.separator();
+
+                ui.label("Selection");
+                if ui.button("Deselect Position").clicked() {
+                    self.julia_viewer.selection_pos = None;
+                }
+            });
     }
 
     fn draw_misc_windows(&mut self, ctx: &UIRenderContext) {

@@ -22,13 +22,16 @@ pub struct FractalViewer {
     // Dynamic Components
     fractal_view: View,
     fractal_size_f: Vec2,
-    fractal_offset: Vec2,
-    fractal_scale: f32,
     image_texture: Arc<Texture>,
     image_texture_view: Arc<TextureView>,
+    previous_size: Option<Vec2>,
+
+    // View components
+    pub fractal_offset: Vec2,
+    pub fractal_scale: f32,
 
     // Selection Components
-    selection_pos: Option<Vec2>,
+    pub selection_pos: Option<Vec2>,
 }
 
 impl FractalViewer {
@@ -62,10 +65,11 @@ impl FractalViewer {
                 fractal_view.image_width as f32,
                 fractal_view.image_height as f32,
             ),
-            fractal_offset: Vec2::new(0.0, 0.0),
-            fractal_scale: 1.0,
             image_texture,
             image_texture_view,
+            previous_size: None,
+            fractal_offset: Vec2::new(0.0, 0.0),
+            fractal_scale: 1.0,
             selection_pos: None,
         }
     }
@@ -132,11 +136,37 @@ impl FractalViewer {
         Ok(())
     }
 
+    pub fn zoom_1_to_1(&mut self) {
+        let previous_scale = self.fractal_scale;
+        self.fractal_scale = 1.0;
+        self.fractal_offset *= self.fractal_scale / previous_scale;
+    }
+
+    pub fn zoom_fit(&mut self) {
+        if let Some(previous_size) = self.previous_size {
+            let previous_scale = self.fractal_scale;
+            self.fractal_scale = (previous_size.x / self.fractal_size_f.x)
+                .min(previous_size.y / self.fractal_size_f.y);
+            self.fractal_offset *= self.fractal_scale / previous_scale;
+        }
+    }
+
+    pub fn zoom_fill(&mut self) {
+        if let Some(previous_size) = self.previous_size {
+            let previous_scale = self.fractal_scale;
+            self.fractal_scale = (previous_size.x / self.fractal_size_f.x)
+                .max(previous_size.y / self.fractal_size_f.y);
+            self.fractal_offset *= self.fractal_scale / previous_scale;
+        }
+    }
+
     pub fn draw(&mut self, ui: &mut egui::Ui, opts: &FractalViewerDrawOptions) -> Response {
         let desired_size = opts
             .max_size_override
             .map_or(self.fractal_size_f, |max| max.min(self.fractal_size_f));
         let (rect, response) = ui.allocate_at_least(desired_size, Sense::click_and_drag());
+        let size = rect.size();
+        self.previous_size = Some(size);
 
         // handle move-drag events
         if response.dragged_by(PointerButton::Middle) {
@@ -166,7 +196,6 @@ impl FractalViewer {
         }
 
         // calculate image position and shape
-        let size = rect.size();
         let img_size = self.fractal_size_f * self.fractal_scale;
         let img_start = rect.min + (size - img_size) / 2.0 + self.fractal_offset;
         let img_rect = Rect::from_min_size(img_start, img_size);
