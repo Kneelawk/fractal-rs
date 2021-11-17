@@ -1,10 +1,9 @@
 use crate::{
     generator::{
         args::{Multisampling, Smoothing},
-        gpu::GpuFractalGeneratorFactory,
         manager::GeneratorManager,
         view::View,
-        FractalOpts,
+        FractalGeneratorFactory, FractalOpts,
     },
     gui::ui::{viewer::FractalViewer, UIRenderContext},
     util::result::ResultExt,
@@ -56,6 +55,8 @@ pub struct UIInstanceCreationContext<'a, S: ToString> {
     pub device: Arc<Device>,
     /// Queue reference.
     pub queue: Arc<Queue>,
+    /// The current fractal generator factory.
+    pub factory: Arc<dyn FractalGeneratorFactory + Send + Sync + 'static>,
     /// WGPU Egui Render Pass reference for managing textures.
     pub render_pass: &'a mut RenderPass,
     /// Fractal view settings at the time of UI state creation.
@@ -63,7 +64,7 @@ pub struct UIInstanceCreationContext<'a, S: ToString> {
 }
 
 impl UIInstance {
-    pub async fn new(ctx: UIInstanceCreationContext<'_, impl ToString>) -> UIInstance {
+    pub fn new(ctx: UIInstanceCreationContext<'_, impl ToString>) -> UIInstance {
         // obtain original values from view
         let plane_width =
             ctx.initial_fractal_view.image_width as f32 * ctx.initial_fractal_view.image_scale_x;
@@ -72,11 +73,7 @@ impl UIInstance {
         let center_x = ctx.initial_fractal_view.plane_start_x + plane_width / 2.0;
         let center_y = ctx.initial_fractal_view.plane_start_y + plane_height / 2.0;
 
-        // Set up the fractal generator factory
-        info!("Creating Fractal Generator Factory...");
-        let factory = GpuFractalGeneratorFactory::new(ctx.device.clone(), ctx.queue.clone());
-
-        let manager = GeneratorManager::new(Box::new(factory));
+        let manager = GeneratorManager::new(ctx.factory);
 
         let viewer = FractalViewer::new(&ctx.device, ctx.render_pass, ctx.initial_fractal_view);
 
@@ -99,6 +96,16 @@ impl UIInstance {
             fractal_view: ctx.initial_fractal_view,
             viewer,
         }
+    }
+
+    /// Sets this `UIInstance`'s [`FractalGeneratorFactory`].
+    ///
+    /// [`FractalGeneratorFactory`]: crate::generator::FractalGeneratorFactory
+    pub fn set_factory(
+        &mut self,
+        factory: Arc<dyn FractalGeneratorFactory + Send + Sync + 'static>,
+    ) {
+        self.manager.set_factory(factory);
     }
 
     pub fn update(&mut self) {

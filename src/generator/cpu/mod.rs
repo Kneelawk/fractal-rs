@@ -27,6 +27,12 @@ pub struct CpuFractalGeneratorFactory {
     thread_count: usize,
 }
 
+impl CpuFractalGeneratorFactory {
+    pub fn new(thread_count: usize) -> CpuFractalGeneratorFactory {
+        CpuFractalGeneratorFactory { thread_count }
+    }
+}
+
 impl FractalGeneratorFactory for CpuFractalGeneratorFactory {
     fn create_generator(
         &self,

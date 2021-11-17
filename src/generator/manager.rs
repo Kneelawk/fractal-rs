@@ -1,4 +1,5 @@
-//! This module contains the [`GeneratorManager`] and everything associated with it.
+//! This module contains the [`GeneratorManager`] and everything associated with
+//! it.
 #![allow(dead_code)]
 
 use crate::{
@@ -14,7 +15,7 @@ use wgpu::{Device, Queue, Texture, TextureView};
 
 /// Handles the gritty details of polling generator & instance futures.
 pub struct GeneratorManager {
-    factory: Box<dyn FractalGeneratorFactory + Send + 'static>,
+    factory: Arc<dyn FractalGeneratorFactory + Send + Sync + 'static>,
     generator_future: Option<(
         StartArgs,
         JoinHandle<anyhow::Result<Box<dyn FractalGenerator + Send + 'static>>>,
@@ -31,7 +32,9 @@ pub struct GeneratorManager {
 
 impl GeneratorManager {
     /// Creates a new InstanceManager without any managed instance.
-    pub fn new(factory: Box<dyn FractalGeneratorFactory + Send + 'static>) -> GeneratorManager {
+    pub fn new(
+        factory: Arc<dyn FractalGeneratorFactory + Send + Sync + 'static>,
+    ) -> GeneratorManager {
         GeneratorManager {
             factory,
             generator_future: None,
@@ -52,6 +55,17 @@ impl GeneratorManager {
     /// generation progress.
     pub fn progress(&self) -> f32 {
         self.progress
+    }
+
+    /// Sets this `GeneratorManager`'s [`FractalGeneratorFactory`].
+    ///
+    /// [`FractalGeneratorFactory`]: crate::generator::FractalGeneratorFactory
+    pub fn set_factory(
+        &mut self,
+        factory: Arc<dyn FractalGeneratorFactory + Send + Sync + 'static>,
+    ) {
+        self.factory = factory;
+        self.current_generator = None;
     }
 
     /// Starts this `InstanceManager` managing an instance if it is not already

@@ -88,8 +88,7 @@ impl FlowModel for FractalRSGuiMain {
                 INITIAL_FRACTAL_HEIGHT,
                 3.0,
             ),
-        })
-        .await;
+        });
 
         FractalRSGuiMain {
             device,
