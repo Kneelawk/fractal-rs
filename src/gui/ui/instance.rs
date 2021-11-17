@@ -28,23 +28,23 @@ pub struct UIInstance {
     manager: GeneratorManager,
 
     // open windows
-    pub show_generator_controls: bool,
-    pub show_viewer_controls: bool,
+    show_generator_controls: bool,
+    show_viewer_controls: bool,
 
     // generator controls
-    pub generate_fractal: bool,
-    pub generation_fraction: f32,
-    pub generation_message: Cow<'static, str>,
-    pub edit_fractal_width: usize,
-    pub edit_fractal_height: usize,
-    pub edit_fractal_plane_width: f32,
-    pub edit_fractal_plane_centered: bool,
-    pub edit_fractal_plane_center_x: f32,
-    pub edit_fractal_plane_center_y: f32,
-    pub fractal_view: View,
+    generate_fractal: bool,
+    generation_fraction: f32,
+    generation_message: Cow<'static, str>,
+    edit_fractal_width: usize,
+    edit_fractal_height: usize,
+    edit_fractal_plane_width: f32,
+    edit_fractal_plane_centered: bool,
+    edit_fractal_plane_center_x: f32,
+    edit_fractal_plane_center_y: f32,
+    fractal_view: View,
 
     // fractal viewers
-    pub viewer: FractalViewer,
+    viewer: FractalViewer,
 }
 
 /// Struct holding all the information needed when creating a new UIInstance.
@@ -246,7 +246,12 @@ impl UIInstance {
         }
     }
 
-    fn apply_generator_settings(&mut self, ctx: &mut UIRenderContext) {
+    pub fn fetch_fractal_view(&mut self) -> View {
+        self.update_fractal_view();
+        self.fractal_view
+    }
+
+    fn update_fractal_view(&mut self) {
         // apply fractal size
         self.fractal_view = if self.edit_fractal_plane_centered {
             View::new_centered_uniform(
@@ -263,6 +268,11 @@ impl UIInstance {
                 self.edit_fractal_plane_center_y,
             )
         };
+    }
+
+    fn apply_generator_settings(&mut self, ctx: &mut UIRenderContext) {
+        self.update_fractal_view();
+
         self.viewer
             .set_fractal_view(&self.device, ctx.render_pass, self.fractal_view)
             .on_err(|e| error!("Error resizing fractal image: {:?}", e));

@@ -11,7 +11,7 @@ use crate::{
         ui::instance::{UIInstance, UIInstanceCreationContext},
     },
 };
-use egui::{CtxRef, Layout};
+use egui::{CtxRef, Layout, ScrollArea};
 use egui_wgpu_backend::RenderPass;
 use std::sync::Arc;
 use wgpu::{Device, Queue};
@@ -40,10 +40,13 @@ pub struct FractalRSUI {
 
     // generator stuff
     factory: Arc<dyn FractalGeneratorFactory + Send + Sync + 'static>,
+    initial_fractal_view: View,
 
     // instances
     instances: Vec<UIInstance>,
     current_instance: usize,
+    new_instance_requested: bool,
+    instance_name_index: u32,
 }
 
 /// Struct containing context passed when creating UIState.
@@ -98,8 +101,11 @@ impl FractalRSUI {
             current_generator_type: GeneratorType::GPU,
             new_generator_type: GeneratorType::GPU,
             factory: factory.clone(),
+            initial_fractal_view: ctx.initial_fractal_view,
             instances: vec![first_instance],
             current_instance: 0,
+            new_instance_requested: false,
+            instance_name_index: 2,
         }
     }
 
@@ -141,6 +147,8 @@ impl FractalRSUI {
         }
         self.draw_settings_window(ctx);
         self.draw_misc_windows(ctx);
+
+        self.handle_new_instance(ctx);
     }
 
     fn handle_keyboard_shortcuts(&mut self, ctx: &UIRenderContext) {
@@ -161,6 +169,12 @@ impl FractalRSUI {
         egui::TopBottomPanel::top("Menu Bar").show(ctx.ctx, |ui| {
             egui::menu::bar(ui, |ui| {
                 egui::menu::menu(ui, "File", |ui| {
+                    if ui.button("New").clicked() {
+                        self.new_instance_requested = true;
+                    }
+
+                    ui.separator();
+
                     if ui.button("Quit").clicked() {
                         self.close_requested = true;
                     }
@@ -191,12 +205,11 @@ impl FractalRSUI {
                     }
                 });
                 ui.with_layout(Layout::left_to_right(), |ui| {
-                    for (index, instance) in self.instances.iter().enumerate() {
-                        let res = ui.button(&instance.name);
-                        if res.clicked() {
-                            self.current_instance = index;
+                    ScrollArea::horizontal().show(ui, |ui| {
+                        for (index, instance) in self.instances.iter().enumerate() {
+                            ui.selectable_value(&mut self.current_instance, index, &instance.name);
                         }
-                    }
+                    });
                 });
             });
         });
@@ -226,6 +239,35 @@ impl FractalRSUI {
                     ctx.ctx.settings_ui(ui);
                 });
             });
+    }
+
+    fn handle_new_instance(&mut self, ctx: &mut UIRenderContext) {
+        if self.new_instance_requested {
+            self.new_instance_requested = false;
+
+            // get options from currently open instance if any
+            let initial_fractal_view = if let Some(instance) = self.open_instance() {
+                instance.fetch_fractal_view()
+            } else {
+                self.initial_fractal_view
+            };
+
+            // When a new instance is creates, we add it to the end of the tabs and select
+            // it.
+            let new_instance = UIInstance::new(UIInstanceCreationContext {
+                name: format!("Fractal {}", self.instance_name_index),
+                device: self.device.clone(),
+                queue: self.queue.clone(),
+                factory: self.factory.clone(),
+                render_pass: ctx.render_pass,
+                initial_fractal_view,
+            });
+
+            self.instance_name_index += 1;
+
+            self.current_instance = self.instances.len();
+            self.instances.push(new_instance);
+        }
     }
 
     fn open_instance(&mut self) -> Option<&mut UIInstance> {
