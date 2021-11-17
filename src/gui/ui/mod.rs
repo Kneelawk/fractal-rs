@@ -1,6 +1,8 @@
+mod viewer;
+
 use crate::{
     generator::view::View,
-    gui::{keyboard::KeyboardTracker, viewer::FractalViewer},
+    gui::{keyboard::KeyboardTracker, ui::viewer::FractalViewer},
     util::result::ResultExt,
 };
 use egui::{vec2, CtxRef, DragValue, ProgressBar};

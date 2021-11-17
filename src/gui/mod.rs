@@ -34,7 +34,6 @@ use winit::{
 mod flow;
 mod keyboard;
 mod ui;
-mod viewer;
 
 const MAX_CHUNK_WIDTH: usize = 256;
 const MAX_CHUNK_HEIGHT: usize = 256;
