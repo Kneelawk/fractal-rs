@@ -1,9 +1,35 @@
+//! This module contains the structures and modules required for fractal
+//! generation.
+//!
+//! Fractal generation is broken up into 3 phases:
+//! 1. The first phase of fractal generation involves simply making sure
+//!    everything has the right resources. This means establishing network
+//!    connections, making sure access is given to the GPU, and such. This is
+//!    when a [`FractalGeneratorFactory`] is constructed.
+//! 2. The second phase of fractal generation involves making sure everything is
+//!    ready to generate fractals. This is where most fractal options
+//!    ([`FractalOpts`]) are specified. This involves compiling shaders and
+//!    other setup that must be done when options are changed but not when
+//!    creating a fractal with a different [`View`] (image size, scale, center,
+//!    etc.). This is when [`FractalGeneratorFactory::create_generator()`]
+//!    should be called to create a new [`FractalGenerator`].
+//! 3. The third phase of fractal generation is when the generation actually
+//!    starts. This is where the [`View`] is specified. This phase is started by
+//!    calling either [`FractalGenerator::start_generation_to_cpu()`] to
+//!    generate the fractal into a series of CPU-side blocks of memory
+//!    ([`PixelBlock`]s), or [`FractalGenerator::start_generation_to_gpu()`] to
+//!    generate the fractal into a GPU-side texture. These methods return a
+//!    [`FractalGeneratorInstance`] which represents a running instance of a
+//!    fractal generator, which can be used to track the progress of generation.
+//!
+//! [`View`]: view::View
+
 pub mod args;
 pub mod color;
 pub mod composite;
 pub mod cpu;
 pub mod gpu;
-pub mod instance_manager;
+pub mod manager;
 pub mod row_stitcher;
 pub mod util;
 pub mod view;
@@ -21,7 +47,7 @@ use wgpu::{Device, Queue, Texture, TextureView};
 pub const BYTES_PER_PIXEL: usize = size_of::<u32>();
 
 /// Represents a set of options passed to a fractal generator at initialization.
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, PartialEq)]
 pub struct FractalOpts {
     pub mandelbrot: bool,
     pub iterations: u32,
@@ -37,10 +63,30 @@ pub struct PixelBlock {
     pub image: Box<[u8]>,
 }
 
+/// Structs implementing this trait can be used to create [`FractalGenerator`]s.
+///
+/// Structs implementing this trait generally describe the general structure of
+/// a fractal generator, independent of any information about the fractal being
+/// generated. Is the generator run on the CPU or GPU, over a network, or some
+/// combination?
+pub trait FractalGeneratorFactory {
+    /// Creates a fractal generator for the given fractal options. These specify
+    /// things like the type of fractal, the smoothing, and the multisampling.
+    /// This usually involves slightly expensive operations like shader
+    /// compilation, so it is a good idea to avoid this unless fractal options
+    /// have changed.
+    fn create_generator(
+        &self,
+        opts: FractalOpts,
+    ) -> BoxFuture<'static, anyhow::Result<Box<dyn FractalGenerator + Send + 'static>>>;
+}
+
 /// Structs implementing this trait can be used to generate fractals.
 ///
-/// Note: all these methods return futures because they may require
+/// Note that all these methods return futures because they may require
 /// communication over a network.
+/// Also note that these futures have a `'static` lifetime, meaning they can be
+/// held and polled separately from the `FractalGenerator` itself.
 pub trait FractalGenerator {
     /// Gets the recommended minimum number of views that should be submitted to
     /// this generator together as a single batch in order to operate

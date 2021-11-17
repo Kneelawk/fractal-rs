@@ -1,10 +1,10 @@
 use crate::{
     generator::{
         args::{Multisampling, Smoothing},
-        gpu::GpuFractalGenerator,
-        instance_manager::InstanceManager,
+        gpu::GpuFractalGeneratorFactory,
+        manager::GeneratorManager,
         view::View,
-        FractalGenerator, FractalOpts,
+        FractalOpts,
     },
     gui::ui::{viewer::FractalViewer, UIRenderContext},
     util::result::ResultExt,
@@ -26,8 +26,7 @@ pub struct UIInstance {
     pub name: String,
     device: Arc<Device>,
     queue: Arc<Queue>,
-    generator: GpuFractalGenerator,
-    instance_manager: InstanceManager,
+    manager: GeneratorManager,
 
     // open windows
     pub show_generator_controls: bool,
@@ -46,7 +45,7 @@ pub struct UIInstance {
     pub fractal_view: View,
 
     // fractal viewers
-    pub julia_viewer: FractalViewer,
+    pub viewer: FractalViewer,
 }
 
 /// Struct holding all the information needed when creating a new UIInstance.
@@ -73,22 +72,11 @@ impl UIInstance {
         let center_x = ctx.initial_fractal_view.plane_start_x + plane_width / 2.0;
         let center_y = ctx.initial_fractal_view.plane_start_y + plane_height / 2.0;
 
-        // Set up the fractal generator
-        info!("Creating Fractal Generator...");
-        let opts = FractalOpts {
-            mandelbrot: false,
-            iterations: 200,
-            smoothing: Smoothing::from_logarithmic_distance(4.0, 2.0),
-            multisampling: Multisampling::Linear { axial_points: 16 },
-            c: Complex32 {
-                re: 0.16611,
-                im: 0.59419,
-            },
-        };
+        // Set up the fractal generator factory
+        info!("Creating Fractal Generator Factory...");
+        let factory = GpuFractalGeneratorFactory::new(ctx.device.clone(), ctx.queue.clone());
 
-        let generator = GpuFractalGenerator::new(opts, ctx.device.clone(), ctx.queue.clone())
-            .await
-            .expect("Error creating Fractal Generator");
+        let manager = GeneratorManager::new(Box::new(factory));
 
         let viewer = FractalViewer::new(&ctx.device, ctx.render_pass, ctx.initial_fractal_view);
 
@@ -96,8 +84,7 @@ impl UIInstance {
             name: ctx.name.to_string(),
             device: ctx.device,
             queue: ctx.queue,
-            generator,
-            instance_manager: InstanceManager::new(),
+            manager,
             show_generator_controls: true,
             show_viewer_controls: true,
             generate_fractal: false,
@@ -110,7 +97,7 @@ impl UIInstance {
             edit_fractal_plane_center_x: center_x,
             edit_fractal_plane_center_y: center_y,
             fractal_view: ctx.initial_fractal_view,
-            julia_viewer: viewer,
+            viewer,
         }
     }
 
@@ -118,29 +105,37 @@ impl UIInstance {
         if self.generate_fractal {
             self.generate_fractal = false;
 
-            if !self.instance_manager.running() {
+            if !self.manager.running() {
+                let opts = FractalOpts {
+                    mandelbrot: false,
+                    iterations: 200,
+                    smoothing: Smoothing::from_logarithmic_distance(4.0, 2.0),
+                    multisampling: Multisampling::Linear { axial_points: 16 },
+                    c: Complex32 {
+                        re: 0.16611,
+                        im: 0.59419,
+                    },
+                };
                 let views: Vec<_> = self
                     .fractal_view
                     .subdivide_rectangles(MAX_CHUNK_WIDTH, MAX_CHUNK_HEIGHT)
                     .collect();
-                self.instance_manager.start(
-                    self.generator.start_generation_to_gpu(
-                        &views,
-                        self.device.clone(),
-                        self.queue.clone(),
-                        self.julia_viewer.get_texture(),
-                        self.julia_viewer.get_texture_view()
-                    )
-                )
-                    .expect("Attempted to start new fractal generator while one was already running! (This is a bug)");
+                self.manager.start_to_gpu(
+                    opts,
+                    &views,
+                    self.device.clone(),
+                    self.queue.clone(),
+                    self.viewer.get_texture(),
+                    self.viewer.get_texture_view()
+                ).expect("Attempted to start new fractal generator while one was already running! (This is a bug)");
             }
         }
 
-        self.instance_manager
+        self.manager
             .poll()
             .on_err(|e| error!("Error polling instance manager: {:?}", e));
 
-        let gen_progress = self.instance_manager.progress();
+        let gen_progress = self.manager.progress();
         self.generation_fraction = gen_progress;
         self.generation_message = Cow::Owned(format!("{:.1}%", gen_progress * 100.0));
     }
@@ -161,7 +156,7 @@ impl UIInstance {
             let available_size = ui.available_size_before_wrap();
             ui.add_sized(
                 available_size,
-                self.julia_viewer.widget().max_size_override(available_size),
+                self.viewer.widget().max_size_override(available_size),
             );
         });
     }
@@ -171,7 +166,7 @@ impl UIInstance {
             .default_size([250.0, 500.0])
             .open(&mut self.show_generator_controls)
             .show(ctx.ctx, |ui| {
-                ui.add_enabled_ui(!self.instance_manager.running(), |ui| {
+                ui.add_enabled_ui(!self.manager.running(), |ui| {
                     if ui.button("Generate!").clicked() {
                         self.generate_fractal = true;
                     }
@@ -255,7 +250,7 @@ impl UIInstance {
                 self.edit_fractal_plane_center_y,
             )
         };
-        self.julia_viewer
+        self.viewer
             .set_fractal_view(&self.device, ctx.render_pass, self.fractal_view)
             .on_err(|e| error!("Error resizing fractal image: {:?}", e));
     }
@@ -268,24 +263,24 @@ impl UIInstance {
                 ui.label("Zoom & Center");
                 ui.horizontal(|ui| {
                     if ui.button("Zoom 1:1").clicked() {
-                        self.julia_viewer.zoom_1_to_1();
+                        self.viewer.zoom_1_to_1();
                     }
                     if ui.button("Zoom Fit").clicked() {
-                        self.julia_viewer.zoom_fit();
+                        self.viewer.zoom_fit();
                     }
                     if ui.button("Zoom Fill").clicked() {
-                        self.julia_viewer.zoom_fill();
+                        self.viewer.zoom_fill();
                     }
                 });
                 if ui.button("Center View").clicked() {
-                    self.julia_viewer.fractal_offset = vec2(0.0, 0.0);
+                    self.viewer.fractal_offset = vec2(0.0, 0.0);
                 }
 
                 ui.separator();
 
                 ui.label("Selection");
                 if ui.button("Deselect Position").clicked() {
-                    self.julia_viewer.selection_pos = None;
+                    self.viewer.selection_pos = None;
                 }
             });
     }

@@ -1,6 +1,6 @@
 use crate::generator::{
     color::RGBA8Color, cpu::opts::CpuFractalOpts, view::View, FractalGenerator,
-    FractalGeneratorInstance, FractalOpts, PixelBlock, BYTES_PER_PIXEL,
+    FractalGeneratorFactory, FractalGeneratorInstance, FractalOpts, PixelBlock, BYTES_PER_PIXEL,
 };
 use cgmath::Vector4;
 use futures::{
@@ -22,6 +22,26 @@ use wgpu::{
 };
 
 pub mod opts;
+
+pub struct CpuFractalGeneratorFactory {
+    thread_count: usize,
+}
+
+impl FractalGeneratorFactory for CpuFractalGeneratorFactory {
+    fn create_generator(
+        &self,
+        opts: FractalOpts,
+    ) -> BoxFuture<'static, anyhow::Result<Box<dyn FractalGenerator + Send + 'static>>> {
+        ready(match CpuFractalGenerator::new(opts, self.thread_count) {
+            Ok(gen) => {
+                let boxed: Box<dyn FractalGenerator + Send> = Box::new(gen);
+                Ok(boxed)
+            },
+            Err(e) => Err(e.into()),
+        })
+        .boxed()
+    }
+}
 
 pub struct CpuFractalGenerator {
     opts: FractalOpts,

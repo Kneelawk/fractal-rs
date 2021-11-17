@@ -12,7 +12,7 @@ static ref SMOOTHING_REGEX: Regex = RegexBuilder::new(r"^logarithmic(distance)? 
 
 /// Represents an operation for smoothing an integer iteration count into a
 /// floating point value.
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, PartialOrd, PartialEq)]
 pub enum Smoothing {
     None,
     LogarithmicDistance {
@@ -72,7 +72,7 @@ impl From<ParseFloatError> for ParseSmoothingError {
 
 /// Represents an image multisampling function.
 #[allow(dead_code)]
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, PartialOrd, PartialEq)]
 pub enum Multisampling {
     None,
     /// Samples the fractal at four points within the pixel. Each point is
