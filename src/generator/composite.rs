@@ -32,8 +32,8 @@ impl FractalGenerator for CompositeFractalGenerator {
 
     fn start_generation_to_cpu(
         &self,
-        views: &[View],
-        sender: Sender<anyhow::Result<PixelBlock>>,
+        _views: &[View],
+        _sender: Sender<anyhow::Result<PixelBlock>>,
     ) -> BoxFuture<'static, anyhow::Result<Box<dyn FractalGeneratorInstance + Send + 'static>>>
     {
         unimplemented!()
@@ -41,11 +41,11 @@ impl FractalGenerator for CompositeFractalGenerator {
 
     fn start_generation_to_gpu(
         &self,
-        views: &[View],
-        device: Arc<Device>,
-        queue: Arc<Queue>,
-        texture: Arc<Texture>,
-        texture_view: Arc<TextureView>,
+        _views: &[View],
+        _device: Arc<Device>,
+        _queue: Arc<Queue>,
+        _texture: Arc<Texture>,
+        _texture_view: Arc<TextureView>,
     ) -> BoxFuture<'static, anyhow::Result<Box<dyn FractalGeneratorInstance + Send + 'static>>>
     {
         unimplemented!()

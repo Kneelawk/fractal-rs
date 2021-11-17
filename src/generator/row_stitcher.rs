@@ -1,3 +1,6 @@
+//! This module contains the [`RowStitcher`] and associated things.
+#![allow(dead_code)]
+
 use std::{
     collections::HashMap,
     hash::{Hash, Hasher},

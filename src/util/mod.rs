@@ -6,6 +6,7 @@ use futures::task::Context;
 use std::{future::Future, pin::Pin, task::Poll};
 use tokio::task::JoinHandle;
 
+#[allow(dead_code)]
 pub fn push_or_else<T, E, F: FnOnce(E)>(res: Result<T, E>, vec: &mut Vec<T>, or_else: F) {
     match res {
         Ok(val) => vec.push(val),
