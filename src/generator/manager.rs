@@ -28,6 +28,7 @@ pub struct GeneratorManager {
     progress_future: Option<JoinHandle<anyhow::Result<f32>>>,
     running_future: Option<JoinHandle<anyhow::Result<bool>>>,
     progress: f32,
+    canceled: bool,
 }
 
 impl GeneratorManager {
@@ -43,6 +44,7 @@ impl GeneratorManager {
             progress_future: None,
             running_future: None,
             progress: 0.0,
+            canceled: false,
         }
     }
 
@@ -68,6 +70,11 @@ impl GeneratorManager {
         self.current_generator = None;
     }
 
+    /// Cancels any running fractal generator associated with this manager.
+    pub fn cancel(&mut self) {
+        self.canceled = true;
+    }
+
     /// Starts this `InstanceManager` managing an instance if it is not already
     /// doing so. This `start` variant starts the generator generating to the
     /// CPU, calling [`start_generation_to_cpu`].
@@ -90,6 +97,8 @@ impl GeneratorManager {
         if self.running() {
             return Err(StartError::AlreadyRunning { opts });
         }
+
+        self.canceled = false;
 
         // check to see if we need to create a new generator
         if self.current_generator.is_none() || self.current_generator.as_ref().unwrap().0 != opts {
@@ -138,6 +147,8 @@ impl GeneratorManager {
         if self.running() {
             return Err(StartError::AlreadyRunning { opts });
         }
+
+        self.canceled = false;
 
         // check to see if we need to create a new generator
         if self.current_generator.is_none() || self.current_generator.as_ref().unwrap().0 != opts {
@@ -190,9 +201,11 @@ impl GeneratorManager {
                         views,
                         sender,
                     } => {
-                        self.current_instance = RunningState::Starting(tokio::spawn(
-                            generator.start_generation_to_cpu(&views, sender),
-                        ));
+                        if !self.canceled {
+                            self.current_instance = RunningState::Starting(tokio::spawn(
+                                generator.start_generation_to_cpu(&views, sender),
+                            ));
+                        }
 
                         opts
                     },
@@ -204,15 +217,17 @@ impl GeneratorManager {
                         texture,
                         texture_view,
                     } => {
-                        self.current_instance = RunningState::Starting(tokio::spawn(
-                            generator.start_generation_to_gpu(
-                                &views,
-                                device,
-                                queue,
-                                texture,
-                                texture_view,
-                            ),
-                        ));
+                        if !self.canceled {
+                            self.current_instance = RunningState::Starting(tokio::spawn(
+                                generator.start_generation_to_gpu(
+                                    &views,
+                                    device,
+                                    queue,
+                                    texture,
+                                    texture_view,
+                                ),
+                            ));
+                        }
 
                         opts
                     },
@@ -231,6 +246,16 @@ impl GeneratorManager {
         // reset values
         if let RunningState::Starting(_) = &self.current_instance {
             self.progress = 0.0;
+        }
+
+        // check if we're canceled
+        if let RunningState::Running(instance) = &self.current_instance {
+            if self.canceled {
+                instance.cancel();
+                // This is the last place `canceled` would have an effect, so it's safe to
+                // revert it here.
+                self.canceled = false;
+            }
         }
 
         // poll the running future optional

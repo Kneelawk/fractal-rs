@@ -179,6 +179,12 @@ impl UIInstance {
                     }
                 });
 
+                ui.add_enabled_ui(self.manager.running(), |ui| {
+                    if ui.button("Cancel Generation").clicked() {
+                        self.manager.cancel();
+                    }
+                });
+
                 ui.add(ProgressBar::new(self.generation_fraction).text(&self.generation_message));
 
                 ui.separator();

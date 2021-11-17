@@ -11,7 +11,7 @@ use rayon::{ThreadPool, ThreadPoolBuilder};
 use std::{
     num::NonZeroU32,
     sync::{
-        atomic::{AtomicUsize, Ordering},
+        atomic::{AtomicBool, AtomicUsize, Ordering},
         Arc,
     },
 };
@@ -113,6 +113,7 @@ impl FractalGenerator for CpuFractalGenerator {
 struct CpuFractalGeneratorInstance {
     view_count: usize,
     completed: Arc<AtomicUsize>,
+    canceled: Arc<AtomicBool>,
 }
 
 impl CpuFractalGeneratorInstance {
@@ -125,7 +126,9 @@ impl CpuFractalGeneratorInstance {
         info!("Starting new CPU fractal generator...");
         let view_count = views.len();
         let completed = Arc::new(AtomicUsize::new(0));
+        let canceled = Arc::new(AtomicBool::new(false));
         let async_completed = completed.clone();
+        let async_canceled = canceled.clone();
 
         let sample_count = opts.multisampling.sample_count();
         let sample_count_f32 = sample_count as f32;
@@ -134,8 +137,14 @@ impl CpuFractalGeneratorInstance {
 
         tokio::spawn(async move {
             for view in views {
+                if async_canceled.load(Ordering::Acquire) {
+                    info!("Received cancel signal.");
+                    return;
+                }
+
                 let spawn_offsets = offsets.clone();
                 let spawn_completed = async_completed.clone();
+                let spawn_canceled = async_canceled.clone();
                 let spawn_tx: S::Reserved = sink.reserve().await.unwrap();
                 thread_pool.spawn(move || {
                     let mut image =
@@ -143,6 +152,11 @@ impl CpuFractalGeneratorInstance {
 
                     for y in 0..view.image_height {
                         for x in 0..view.image_width {
+                            if spawn_canceled.load(Ordering::Acquire) {
+                                info!("Received cancel signal.");
+                                return;
+                            }
+
                             let index = (x + y * view.image_width) * BYTES_PER_PIXEL;
 
                             let mut color = Vector4 {
@@ -182,11 +196,16 @@ impl CpuFractalGeneratorInstance {
         CpuFractalGeneratorInstance {
             view_count,
             completed,
+            canceled,
         }
     }
 }
 
 impl FractalGeneratorInstance for CpuFractalGeneratorInstance {
+    fn cancel(&self) {
+        self.canceled.store(true, Ordering::Release);
+    }
+
     fn progress(&self) -> BoxFuture<'static, anyhow::Result<f32>> {
         ready(Ok(
             self.completed.load(Ordering::Acquire) as f32 / self.view_count as f32
@@ -195,7 +214,9 @@ impl FractalGeneratorInstance for CpuFractalGeneratorInstance {
     }
 
     fn running(&self) -> BoxFuture<'static, anyhow::Result<bool>> {
-        ready(Ok(self.completed.load(Ordering::Acquire) < self.view_count)).boxed()
+        ready(Ok(self.completed.load(Ordering::Acquire) < self.view_count
+            && !self.canceled.load(Ordering::Acquire)))
+        .boxed()
     }
 }
 

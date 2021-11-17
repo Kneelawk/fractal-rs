@@ -115,6 +115,9 @@ pub trait FractalGenerator {
 
 /// Represents a running fractal generator.
 pub trait FractalGeneratorInstance {
+    /// Cancels this generator instance.
+    fn cancel(&self);
+
     /// Gets this generator instance's current progress.
     fn progress(&self) -> BoxFuture<'static, anyhow::Result<f32>>;
 

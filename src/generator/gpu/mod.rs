@@ -22,7 +22,7 @@ use std::{
     collections::HashMap,
     num::{NonZeroU32, NonZeroU64},
     sync::{
-        atomic::{AtomicUsize, Ordering},
+        atomic::{AtomicBool, AtomicUsize, Ordering},
         Arc,
     },
 };
@@ -250,6 +250,7 @@ impl FractalGenerator for GpuFractalGenerator {
 struct GpuFractalGeneratorInstance {
     view_count: usize,
     completed: Arc<AtomicUsize>,
+    canceled: Arc<AtomicBool>,
 }
 
 impl GpuFractalGeneratorInstance {
@@ -264,7 +265,9 @@ impl GpuFractalGeneratorInstance {
     ) -> GpuFractalGeneratorInstance {
         let view_count = views.len();
         let completed = Arc::new(AtomicUsize::new(0));
+        let canceled = Arc::new(AtomicBool::new(false));
         let spawn_completed = completed.clone();
+        let spawn_canceled = canceled.clone();
 
         let (mut uniforms_buffer, uniform_bind_group) =
             setup_uniforms(&device, &uniform_bind_group_layout);
@@ -275,6 +278,11 @@ impl GpuFractalGeneratorInstance {
             let mut buffers = HashMap::new();
 
             for view in views {
+                if spawn_canceled.load(Ordering::Acquire) {
+                    info!("Received cancel signal.");
+                    return;
+                }
+
                 let (texture_width, texture_height, texture, texture_view, buffer) =
                     find_texture_buffer_for_view(&device, &mut buffers, view);
 
@@ -361,7 +369,7 @@ impl GpuFractalGeneratorInstance {
                 );
                 buffer.unmap();
 
-                spawn_completed.fetch_add(1, Ordering::Relaxed);
+                spawn_completed.fetch_add(1, Ordering::AcqRel);
 
                 info!(
                     "Sending pixel block for ({}, {})...",
@@ -380,6 +388,7 @@ impl GpuFractalGeneratorInstance {
         GpuFractalGeneratorInstance {
             view_count,
             completed,
+            canceled,
         }
     }
 
@@ -394,7 +403,9 @@ impl GpuFractalGeneratorInstance {
     ) -> GpuFractalGeneratorInstance {
         let view_count = views.len();
         let completed = Arc::new(AtomicUsize::new(0));
+        let canceled = Arc::new(AtomicBool::new(false));
         let spawn_completed = completed.clone();
+        let spawn_canceled = canceled.clone();
 
         let (mut uniforms_buffer, uniform_bind_group) =
             setup_uniforms(&device, &uniform_bind_group_layout);
@@ -404,6 +415,11 @@ impl GpuFractalGeneratorInstance {
         tokio::spawn(async move {
             let mut buffers = HashMap::new();
             for view in views {
+                if spawn_canceled.load(Ordering::Acquire) {
+                    info!("Received cancel signal.");
+                    return;
+                }
+
                 let (texture, texture_view) = find_texture_for_view(&device, &mut buffers, view);
 
                 let uniforms_cb = write_uniforms(&device, &mut uniforms_buffer, view).await;
@@ -451,13 +467,14 @@ impl GpuFractalGeneratorInstance {
                     queue.submit([uniforms_cb, encoder.finish()]);
                 }
 
-                spawn_completed.fetch_add(1, Ordering::Relaxed);
+                spawn_completed.fetch_add(1, Ordering::AcqRel);
             }
         });
 
         GpuFractalGeneratorInstance {
             view_count,
             completed,
+            canceled,
         }
     }
 }
@@ -609,14 +626,20 @@ fn encode_render_pass(
 }
 
 impl FractalGeneratorInstance for GpuFractalGeneratorInstance {
+    fn cancel(&self) {
+        self.canceled.store(true, Ordering::Release);
+    }
+
     fn progress(&self) -> BoxFuture<'static, anyhow::Result<f32>> {
         ready(Ok(
-            self.completed.load(Ordering::Relaxed) as f32 / self.view_count as f32
+            self.completed.load(Ordering::Acquire) as f32 / self.view_count as f32
         ))
         .boxed()
     }
 
     fn running(&self) -> BoxFuture<'static, anyhow::Result<bool>> {
-        ready(Ok(self.completed.load(Ordering::Relaxed) < self.view_count)).boxed()
+        ready(Ok(self.completed.load(Ordering::Acquire) < self.view_count
+            && !self.canceled.load(Ordering::Acquire)))
+        .boxed()
     }
 }
