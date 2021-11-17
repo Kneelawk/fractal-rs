@@ -1,26 +1,16 @@
 //! gui/mod.rs - This is where the GUI-based core application logic happens.
 
 use crate::{
-    generator::{
-        args::{Multisampling, Smoothing},
-        cpu::CpuFractalGenerator,
-        gpu::GpuFractalGenerator,
-        instance_manager::InstanceManager,
-        view::View,
-        FractalGenerator, FractalOpts,
-    },
+    generator::view::View,
     gui::{
         flow::{Flow, FlowModel, FlowModelInit, FlowSignal},
         keyboard::KeyboardTracker,
-        ui::{UICreationContext, UIRenderContext, UIState},
+        ui::{FractalRSUI, UICreationContext, UIRenderContext},
     },
-    util::result::ResultExt,
 };
 use egui_wgpu_backend::{RenderPass, ScreenDescriptor};
 use egui_winit_platform::{Platform, PlatformDescriptor};
-use num_complex::Complex32;
 use std::{
-    borrow::Cow,
     sync::Arc,
     time::{Duration, Instant},
 };
@@ -35,8 +25,6 @@ mod flow;
 mod keyboard;
 mod ui;
 
-const MAX_CHUNK_WIDTH: usize = 256;
-const MAX_CHUNK_HEIGHT: usize = 256;
 const INITIAL_FRACTAL_WIDTH: usize = 1024;
 const INITIAL_FRACTAL_HEIGHT: usize = 1024;
 
@@ -59,14 +47,12 @@ struct FractalRSGuiMain {
     scale_factor: f64,
     platform: Platform,
     render_pass: RenderPass,
-    generator: GpuFractalGenerator,
-    instance_manager: InstanceManager,
     keyboard_tracker: KeyboardTracker,
     start_time: Instant,
 
     // running state
     commands: Vec<CommandBuffer>,
-    ui: UIState,
+    ui: FractalRSUI,
 }
 
 #[async_trait]
@@ -93,32 +79,17 @@ impl FlowModel for FractalRSGuiMain {
         let mut render_pass = RenderPass::new(&device, frame_format, 1);
 
         info!("Initializing UI State...");
-        let ui = UIState::new(&mut UICreationContext {
-            device: &device,
+        let ui = FractalRSUI::new(UICreationContext {
+            device: device.clone(),
+            queue: queue.clone(),
             render_pass: &mut render_pass,
             initial_fractal_view: View::new_centered_uniform(
                 INITIAL_FRACTAL_WIDTH,
                 INITIAL_FRACTAL_HEIGHT,
                 3.0,
             ),
-        });
-
-        // Set up the fractal generator
-        info!("Creating Fractal Generator...");
-        let opts = FractalOpts {
-            mandelbrot: false,
-            iterations: 200,
-            smoothing: Smoothing::from_logarithmic_distance(4.0, 2.0),
-            multisampling: Multisampling::Linear { axial_points: 16 },
-            c: Complex32 {
-                re: 0.16611,
-                im: 0.59419,
-            },
-        };
-
-        let generator = GpuFractalGenerator::new(opts, device.clone(), queue.clone())
-            .await
-            .expect("Error creating Fractal Generator");
+        })
+        .await;
 
         FractalRSGuiMain {
             device,
@@ -128,8 +99,6 @@ impl FlowModel for FractalRSGuiMain {
             scale_factor,
             platform,
             render_pass,
-            generator,
-            instance_manager: InstanceManager::new(),
             keyboard_tracker: KeyboardTracker::new(),
             start_time: Instant::now(),
             commands: vec![],
@@ -167,35 +136,7 @@ impl FlowModel for FractalRSGuiMain {
     }
 
     async fn update(&mut self, _update_delta: Duration) -> Option<FlowSignal> {
-        if self.ui.generate_fractal {
-            self.ui.generate_fractal = false;
-
-            if !self.instance_manager.running() {
-                let views: Vec<_> = self
-                    .ui
-                    .fractal_view
-                    .subdivide_rectangles(MAX_CHUNK_WIDTH, MAX_CHUNK_HEIGHT)
-                    .collect();
-                self.instance_manager.start(
-                    self.generator.start_generation_to_gpu(
-                        &views,
-                        self.device.clone(),
-                        self.queue.clone(),
-                        self.ui.julia_viewer.get_texture(),
-                        self.ui.julia_viewer.get_texture_view()
-                        )
-                    )
-                    .expect("Attempted to start new fractal generator while one was already running! (This is a bug)");
-            }
-        }
-
-        self.instance_manager
-            .poll()
-            .on_err(|e| error!("Error polling instance manager: {:?}", e));
-
-        let gen_progress = self.instance_manager.progress();
-        self.ui.generation_fraction = gen_progress;
-        self.ui.generation_message = Cow::Owned(format!("{:.1}%", gen_progress * 100.0));
+        self.ui.update();
 
         if self.ui.close_requested {
             Some(FlowSignal::Exit)
@@ -220,10 +161,8 @@ impl FlowModel for FractalRSGuiMain {
         self.platform.begin_frame();
 
         self.ui.draw(&mut UIRenderContext {
-            device: &self.device,
             ctx: &self.platform.context(),
             render_pass: &mut self.render_pass,
-            not_running: !self.instance_manager.running(),
             keys: &self.keyboard_tracker,
         });
 
