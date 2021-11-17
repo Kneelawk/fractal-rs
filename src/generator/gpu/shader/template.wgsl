@@ -28,11 +28,6 @@ struct Uniforms {
 
 let offset: vec2<f32> = vec2<f32>(-0.5, -0.5);
 
-var indexable: array<vec2<f32>,6u> = array<vec2<f32>,6u>(
-    vec2<f32>(1.0, 1.0), vec2<f32>(-1.0, -1.0), vec2<f32>(1.0, -1.0),
-    vec2<f32>(1.0, 1.0), vec2<f32>(-1.0, 1.0), vec2<f32>(-1.0, -1.0)
-);
-
 //
 // Template Constants
 //
@@ -44,7 +39,7 @@ let t_c_real: f32 = 0.0;
 let t_c_imag: f32 = 0.0;
 
 // This constant is designed to have its value replaced.
-let t_iterations: u32 = 0u32;
+let t_iterations: u32 = 0u;
 
 // This constant is designed to have its value replaced.
 let t_mandelbrot: bool = false;
@@ -53,7 +48,7 @@ let t_mandelbrot: bool = false;
 let t_radius_squared: f32 = 0.0;
 
 // This constant is designed to have its value replaced.
-let t_sample_count: u32 = 1u32;
+let t_sample_count: u32 = 1u;
 
 //
 // Uniforms
@@ -68,6 +63,11 @@ var<uniform> uniforms: Uniforms;
 
 [[stage(vertex)]]
 fn vert_main([[builtin(vertex_index)]] vert_index: u32) -> FragmentData {
+    var indexable: array<vec2<f32>,6u> = array<vec2<f32>,6u>(
+        vec2<f32>(1.0, 1.0), vec2<f32>(-1.0, -1.0), vec2<f32>(1.0, -1.0),
+        vec2<f32>(1.0, 1.0), vec2<f32>(-1.0, 1.0), vec2<f32>(-1.0, -1.0)
+    );
+
     var data: FragmentData;
     let xy = indexable[vert_index];
     data.position = vec4<f32>(xy, 0.0, 1.0);
@@ -221,8 +221,8 @@ fn gen_pixel(pixel_location: vec2<f32>) -> vec4<f32> {
     }
 
     var z_prev: vec2<f32> = z;
-    var n: u32 = 0u32;
-    for (; n < t_iterations; n = n + 1u32) {
+    var n: u32 = 0u;
+    for (; n < t_iterations; n = n + 1u) {
         if (length_sqr(z) > t_radius_squared) {
             break;
         }
@@ -251,7 +251,7 @@ fn frag_main(data: FragmentData) -> [[location(0)]] vec4<f32> {
 
     var color = vec4<f32>(0.0, 0.0, 0.0, 0.0);
 
-    for (var i = 0u32; i < t_sample_count; i = i + 1u32) {
+    for (var i = 0u; i < t_sample_count; i = i + 1u) {
         color = color + gen_pixel(data.position.xy + sample_offsets[i]) / sample_count_f32;
     }
 

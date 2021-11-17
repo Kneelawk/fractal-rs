@@ -1,13 +1,17 @@
-use crate::generator::{
+use crate::{
+    generator::{
+        gpu::{
+            shader::load_shaders,
+            uniforms::{GpuView, Uniforms},
+        },
+        util::{copy_region, smallest_multiple_containing},
+        view::View,
+        FractalGenerator, FractalGeneratorInstance, FractalOpts, PixelBlock, BYTES_PER_PIXEL,
+    },
     gpu::{
         buffer::{BufferWrapper, Encodable},
-        shader::load_shaders,
-        uniforms::{GpuView, Uniforms},
         util::{create_texture, create_texture_buffer},
     },
-    util::{copy_region, smallest_multiple_containing},
-    view::View,
-    FractalGenerator, FractalGeneratorInstance, FractalOpts, PixelBlock, BYTES_PER_PIXEL,
 };
 use futures::{
     future::{ready, BoxFuture},
@@ -23,26 +27,25 @@ use std::{
 };
 use tokio::sync::mpsc::Sender;
 use wgpu::{
-    BindGroupDescriptor, BindGroupEntry, BindGroupLayout, BindGroupLayoutDescriptor,
-    BindGroupLayoutEntry, BindingResource, BindingType, BlendState, BufferAddress, BufferBinding,
-    BufferBindingType, BufferUsages, Color, ColorTargetState, ColorWrites, CommandEncoderDescriptor,
-    Device, Extent3d, Face, FragmentState, FrontFace, ImageCopyBuffer, ImageCopyTexture,
-    ImageDataLayout, LoadOp, MapMode, MultisampleState, Operations, Origin3d,
-    PipelineLayoutDescriptor, PolygonMode, PrimitiveState, PrimitiveTopology, Queue,
-    RenderPassColorAttachment, RenderPassDescriptor, RenderPipeline, RenderPipelineDescriptor,
-    ShaderModuleDescriptor, ShaderStages, TextureFormat, VertexState,
+    BindGroup, BindGroupDescriptor, BindGroupEntry, BindGroupLayout, BindGroupLayoutDescriptor,
+    BindGroupLayoutEntry, BindingResource, BindingType, BlendState, Buffer, BufferAddress,
+    BufferBinding, BufferBindingType, BufferUsages, Color, ColorTargetState, ColorWrites,
+    CommandBuffer, CommandEncoder, CommandEncoderDescriptor, Device, Extent3d, Face, FragmentState,
+    FrontFace, ImageCopyBuffer, ImageCopyTexture, ImageDataLayout, LoadOp, MapMode,
+    MultisampleState, Operations, Origin3d, PipelineLayoutDescriptor, PolygonMode, PrimitiveState,
+    PrimitiveTopology, Queue, RenderPassColorAttachment, RenderPassDescriptor, RenderPipeline,
+    RenderPipelineDescriptor, ShaderModuleDescriptor, ShaderStages, Texture, TextureAspect,
+    TextureFormat, TextureUsages, TextureView, VertexState,
 };
 
-mod buffer;
 mod shader;
 mod uniforms;
-mod util;
 
 pub struct GpuFractalGenerator {
     opts: FractalOpts,
     device: Arc<Device>,
     queue: Arc<Queue>,
-    uniform_bind_group_layout: BindGroupLayout,
+    uniform_bind_group_layout: Arc<BindGroupLayout>,
     render_pipeline: Arc<RenderPipeline>,
 }
 
@@ -61,7 +64,7 @@ impl GpuFractalGenerator {
 
         info!("Creating uniform bind group layout...");
         let uniform_bind_group_layout =
-            device.create_bind_group_layout(&BindGroupLayoutDescriptor {
+            Arc::new(device.create_bind_group_layout(&BindGroupLayoutDescriptor {
                 label: Some("Uniform Bind Group Layout"),
                 entries: &[BindGroupLayoutEntry {
                     binding: 0,
@@ -73,7 +76,7 @@ impl GpuFractalGenerator {
                     },
                     count: None,
                 }],
-            });
+            }));
 
         info!("Creating render pipeline...");
         let render_pipeline_layout = device.create_pipeline_layout(&PipelineLayoutDescriptor {
@@ -127,26 +130,66 @@ impl GpuFractalGenerator {
 }
 
 impl FractalGenerator for GpuFractalGenerator {
-    fn min_views_hint(&self) -> BoxFuture<anyhow::Result<usize>> {
+    fn min_views_hint(&self) -> BoxFuture<'static, anyhow::Result<usize>> {
         ready(Ok(1)).boxed()
     }
 
-    fn start_generation(
+    fn start_generation_to_cpu(
         &self,
         views: &[View],
         sender: Sender<anyhow::Result<PixelBlock>>,
-    ) -> BoxFuture<anyhow::Result<Box<dyn FractalGeneratorInstance>>> {
+    ) -> BoxFuture<'static, anyhow::Result<Box<dyn FractalGeneratorInstance + Send + 'static>>>
+    {
+        // This future must be 'static so we need to copy everything or use Arcs.
+        let opts = self.opts;
+        let device = self.device.clone();
+        let queue = self.queue.clone();
+        let uniform_bind_group_layout = self.uniform_bind_group_layout.clone();
+        let render_pipeline = self.render_pipeline.clone();
         let views = views.to_vec();
+
         async move {
-            let boxed: Box<dyn FractalGeneratorInstance> =
-                Box::new(GpuFractalGeneratorInstance::start(
-                    self.opts,
-                    self.device.clone(),
-                    self.queue.clone(),
-                    &self.uniform_bind_group_layout,
-                    self.render_pipeline.clone(),
+            let boxed: Box<dyn FractalGeneratorInstance + Send> =
+                Box::new(GpuFractalGeneratorInstance::start_to_cpu(
+                    opts,
+                    device,
+                    queue,
+                    uniform_bind_group_layout,
+                    render_pipeline,
                     views,
                     sender,
+                ));
+            Ok(boxed)
+        }
+        .boxed()
+    }
+
+    fn start_generation_to_gpu(
+        &self,
+        views: &[View],
+        _device: Arc<Device>,
+        _queue: Arc<Queue>,
+        texture: Arc<Texture>,
+        _texture_view: Arc<TextureView>,
+    ) -> BoxFuture<'static, anyhow::Result<Box<dyn FractalGeneratorInstance + Send + 'static>>>
+    {
+        let opts = self.opts;
+        let device = self.device.clone();
+        let queue = self.queue.clone();
+        let uniform_bind_group_layout = self.uniform_bind_group_layout.clone();
+        let render_pipeline = self.render_pipeline.clone();
+        let views = views.to_vec();
+
+        async move {
+            let boxed: Box<dyn FractalGeneratorInstance + Send> =
+                Box::new(GpuFractalGeneratorInstance::start_to_gpu(
+                    opts,
+                    device,
+                    queue,
+                    uniform_bind_group_layout,
+                    render_pipeline,
+                    views,
+                    texture,
                 ));
             Ok(boxed)
         }
@@ -160,11 +203,11 @@ struct GpuFractalGeneratorInstance {
 }
 
 impl GpuFractalGeneratorInstance {
-    fn start(
+    fn start_to_cpu(
         _opts: FractalOpts,
         device: Arc<Device>,
         queue: Arc<Queue>,
-        uniform_bind_group_layout: &BindGroupLayout,
+        uniform_bind_group_layout: Arc<BindGroupLayout>,
         render_pipeline: Arc<RenderPipeline>,
         views: Vec<View>,
         sender: Sender<anyhow::Result<PixelBlock>>,
@@ -173,25 +216,8 @@ impl GpuFractalGeneratorInstance {
         let completed = Arc::new(AtomicUsize::new(0));
         let spawn_completed = completed.clone();
 
-        info!("Creating uniform buffer...");
-        let mut uniforms_buffer = BufferWrapper::<Uniforms>::new(
-            &device,
-            Uniforms::size() as BufferAddress,
-            BufferUsages::UNIFORM,
-        );
-
-        let uniform_bind_group = device.create_bind_group(&BindGroupDescriptor {
-            label: Some("Uniform Bind Group"),
-            layout: uniform_bind_group_layout,
-            entries: &[BindGroupEntry {
-                binding: 0,
-                resource: BindingResource::Buffer(BufferBinding {
-                    buffer: uniforms_buffer.buffer(),
-                    offset: 0,
-                    size: None,
-                }),
-            }],
-        });
+        let (mut uniforms_buffer, uniform_bind_group) =
+            setup_uniforms(&device, &uniform_bind_group_layout);
 
         info!("Spawning gpu manager task...");
 
@@ -199,39 +225,10 @@ impl GpuFractalGeneratorInstance {
             let mut buffers = HashMap::new();
 
             for view in views {
-                let texture_size = (
-                    smallest_multiple_containing::<usize>(view.image_width, 64),
-                    smallest_multiple_containing::<usize>(view.image_height, 64),
-                );
-                let texture_width = texture_size.0 as u32;
-                let texture_height = texture_size.1 as u32;
-                let (texture, texture_view, buffer) =
-                    buffers.entry(texture_size).or_insert_with(|| {
-                        let width = texture_size.0 as u32;
-                        let height = texture_size.1 as u32;
-                        info!(
-                            "Creating new framebuffer with dimensions ({}x{})...",
-                            width, height
-                        );
-                        let (texture, texture_view) =
-                            create_texture(&device, width as u32, height as u32);
-                        let buffer = create_texture_buffer(&device, width as u32, height as u32);
-                        (texture, texture_view, buffer)
-                    });
+                let (texture_width, texture_height, texture, texture_view, buffer) =
+                    find_texture_buffer_for_view(&device, &mut buffers, view);
 
-                info!(
-                    "Writing uniforms for ({}, {})...",
-                    view.image_x, view.image_y
-                );
-                let cb = uniforms_buffer
-                    .replace_all(
-                        &device,
-                        &[Uniforms {
-                            view: GpuView::from_view(view),
-                        }],
-                    )
-                    .await
-                    .unwrap();
+                let uniforms_cb = write_uniforms(&device, &mut uniforms_buffer, view).await;
 
                 {
                     info!(
@@ -242,36 +239,19 @@ impl GpuFractalGeneratorInstance {
                         label: Some("Render Command Encoder"),
                     });
 
-                    {
-                        let mut render_pass = encoder.begin_render_pass(&RenderPassDescriptor {
-                            label: Some("Render Pass"),
-                            color_attachments: &[RenderPassColorAttachment {
-                                view: texture_view,
-                                resolve_target: None,
-                                ops: Operations {
-                                    load: LoadOp::Clear(Color {
-                                        r: 0.0,
-                                        g: 0.0,
-                                        b: 0.0,
-                                        a: 1.0,
-                                    }),
-                                    store: true,
-                                },
-                            }],
-                            depth_stencil_attachment: None,
-                        });
-
-                        render_pass.set_pipeline(&render_pipeline);
-                        render_pass.set_bind_group(0, &uniform_bind_group, &[]);
-                        render_pass.draw(0..6, 0..1);
-                    }
+                    encode_render_pass(
+                        &render_pipeline,
+                        &uniform_bind_group,
+                        texture_view,
+                        &mut encoder,
+                    );
 
                     encoder.copy_texture_to_buffer(
                         ImageCopyTexture {
                             texture,
                             mip_level: 0,
                             origin: Origin3d::ZERO,
-                            aspect: Default::default()
+                            aspect: Default::default(),
                         },
                         ImageCopyBuffer {
                             buffer,
@@ -295,7 +275,7 @@ impl GpuFractalGeneratorInstance {
                         "Submitting command buffers for ({}, {})...",
                         view.image_x, view.image_y
                     );
-                    queue.submit([cb, encoder.finish()]);
+                    queue.submit([uniforms_cb, encoder.finish()]);
                 }
 
                 let mut image_data =
@@ -352,17 +332,241 @@ impl GpuFractalGeneratorInstance {
             completed,
         }
     }
+
+    fn start_to_gpu(
+        _opts: FractalOpts,
+        device: Arc<Device>,
+        queue: Arc<Queue>,
+        uniform_bind_group_layout: Arc<BindGroupLayout>,
+        render_pipeline: Arc<RenderPipeline>,
+        views: Vec<View>,
+        out_texture: Arc<Texture>,
+    ) -> GpuFractalGeneratorInstance {
+        let view_count = views.len();
+        let completed = Arc::new(AtomicUsize::new(0));
+        let spawn_completed = completed.clone();
+
+        let (mut uniforms_buffer, uniform_bind_group) =
+            setup_uniforms(&device, &uniform_bind_group_layout);
+
+        info!("Spawning gpu manager task...");
+
+        tokio::spawn(async move {
+            let mut buffers = HashMap::new();
+            for view in views {
+                let (texture, texture_view) = find_texture_for_view(&device, &mut buffers, view);
+
+                let uniforms_cb = write_uniforms(&device, &mut uniforms_buffer, view).await;
+
+                {
+                    info!(
+                        "Encoding render command buffer for ({}, {})...",
+                        view.image_x, view.image_y
+                    );
+                    let mut encoder = device.create_command_encoder(&CommandEncoderDescriptor {
+                        label: Some("Render Command Encoder"),
+                    });
+
+                    encode_render_pass(
+                        &render_pipeline,
+                        &uniform_bind_group,
+                        texture_view,
+                        &mut encoder,
+                    );
+
+                    encoder.copy_texture_to_texture(
+                        ImageCopyTexture {
+                            texture,
+                            mip_level: 0,
+                            origin: Origin3d::ZERO,
+                            aspect: TextureAspect::All,
+                        },
+                        ImageCopyTexture {
+                            texture: &out_texture,
+                            mip_level: 0,
+                            origin: Origin3d {
+                                x: view.image_x as u32,
+                                y: view.image_y as u32,
+                                z: 0,
+                            },
+                            aspect: TextureAspect::All,
+                        },
+                        Extent3d {
+                            width: view.image_width as u32,
+                            height: view.image_height as u32,
+                            depth_or_array_layers: 1,
+                        },
+                    );
+
+                    queue.submit([uniforms_cb, encoder.finish()]);
+                }
+
+                spawn_completed.fetch_add(1, Ordering::Relaxed);
+            }
+        });
+
+        GpuFractalGeneratorInstance {
+            view_count,
+            completed,
+        }
+    }
+}
+
+fn setup_uniforms(
+    device: &Device,
+    uniform_bind_group_layout: &BindGroupLayout,
+) -> (BufferWrapper<Uniforms>, BindGroup) {
+    info!("Creating uniform buffer...");
+    let uniforms_buffer = BufferWrapper::<Uniforms>::new(
+        device,
+        Uniforms::size() as BufferAddress,
+        BufferUsages::UNIFORM,
+    );
+
+    let uniform_bind_group = device.create_bind_group(&BindGroupDescriptor {
+        label: Some("Uniform Bind Group"),
+        layout: uniform_bind_group_layout,
+        entries: &[BindGroupEntry {
+            binding: 0,
+            resource: BindingResource::Buffer(BufferBinding {
+                buffer: uniforms_buffer.buffer(),
+                offset: 0,
+                size: None,
+            }),
+        }],
+    });
+    (uniforms_buffer, uniform_bind_group)
+}
+
+fn find_texture_buffer_for_view<'a>(
+    device: &Device,
+    buffers: &'a mut HashMap<(usize, usize), (Texture, TextureView, Buffer)>,
+    view: View,
+) -> (
+    u32,
+    u32,
+    &'a mut Texture,
+    &'a mut TextureView,
+    &'a mut Buffer,
+) {
+    let texture_size = (
+        smallest_multiple_containing::<usize>(view.image_width, 64),
+        smallest_multiple_containing::<usize>(view.image_height, 64),
+    );
+    let texture_width = texture_size.0 as u32;
+    let texture_height = texture_size.1 as u32;
+    let (texture, texture_view, buffer) = buffers.entry(texture_size).or_insert_with(|| {
+        let width = texture_size.0 as u32;
+        let height = texture_size.1 as u32;
+        info!(
+            "Creating new framebuffer with dimensions ({}x{})...",
+            width, height
+        );
+        let (texture, texture_view) = create_texture(
+            device,
+            width as u32,
+            height as u32,
+            TextureFormat::Rgba8Unorm,
+            TextureUsages::COPY_SRC | TextureUsages::RENDER_ATTACHMENT,
+        );
+        let buffer = create_texture_buffer(
+            device,
+            width as u32,
+            height as u32,
+            BufferUsages::COPY_DST | BufferUsages::MAP_READ,
+        );
+        (texture, texture_view, buffer)
+    });
+    (texture_width, texture_height, texture, texture_view, buffer)
+}
+
+fn find_texture_for_view<'a>(
+    device: &Device,
+    buffers: &'a mut HashMap<(usize, usize), (Texture, TextureView)>,
+    view: View,
+) -> (&'a mut Texture, &'a mut TextureView) {
+    let texture_size = (
+        smallest_multiple_containing::<usize>(view.image_width, 64),
+        smallest_multiple_containing::<usize>(view.image_height, 64),
+    );
+    let (texture, texture_view) = buffers.entry(texture_size).or_insert_with(|| {
+        let width = texture_size.0 as u32;
+        let height = texture_size.1 as u32;
+        info!(
+            "Creating new framebuffer with dimensions ({}x{})...",
+            width, height
+        );
+        let (texture, texture_view) = create_texture(
+            device,
+            width as u32,
+            height as u32,
+            TextureFormat::Rgba8Unorm,
+            TextureUsages::COPY_SRC | TextureUsages::RENDER_ATTACHMENT,
+        );
+        (texture, texture_view)
+    });
+    (texture, texture_view)
+}
+
+async fn write_uniforms(
+    device: &Device,
+    uniforms_buffer: &mut BufferWrapper<Uniforms>,
+    view: View,
+) -> CommandBuffer {
+    info!(
+        "Writing uniforms for ({}, {})...",
+        view.image_x, view.image_y
+    );
+    let cb = uniforms_buffer
+        .replace_all(
+            device,
+            &[Uniforms {
+                view: GpuView::from_view(view),
+            }],
+        )
+        .await
+        .unwrap();
+    cb
+}
+
+fn encode_render_pass(
+    render_pipeline: &RenderPipeline,
+    uniform_bind_group: &BindGroup,
+    texture_view: &TextureView,
+    encoder: &mut CommandEncoder,
+) {
+    let mut render_pass = encoder.begin_render_pass(&RenderPassDescriptor {
+        label: Some("Render Pass"),
+        color_attachments: &[RenderPassColorAttachment {
+            view: texture_view,
+            resolve_target: None,
+            ops: Operations {
+                load: LoadOp::Clear(Color {
+                    r: 0.0,
+                    g: 0.0,
+                    b: 0.0,
+                    a: 1.0,
+                }),
+                store: true,
+            },
+        }],
+        depth_stencil_attachment: None,
+    });
+
+    render_pass.set_pipeline(render_pipeline);
+    render_pass.set_bind_group(0, uniform_bind_group, &[]);
+    render_pass.draw(0..6, 0..1);
 }
 
 impl FractalGeneratorInstance for GpuFractalGeneratorInstance {
-    fn progress(&self) -> BoxFuture<anyhow::Result<f32>> {
+    fn progress(&self) -> BoxFuture<'static, anyhow::Result<f32>> {
         ready(Ok(
             self.completed.load(Ordering::Relaxed) as f32 / self.view_count as f32
         ))
         .boxed()
     }
 
-    fn running(&self) -> BoxFuture<anyhow::Result<bool>> {
+    fn running(&self) -> BoxFuture<'static, anyhow::Result<bool>> {
         ready(Ok(self.completed.load(Ordering::Relaxed) < self.view_count)).boxed()
     }
 }

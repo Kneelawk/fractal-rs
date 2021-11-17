@@ -1,14 +1,16 @@
+use std::collections::HashMap;
+
+use naga::{
+    Arena, ArraySize, BinaryOperator, Block, Constant, ConstantInner, Expression, Function, Handle,
+    MathFunction, Module, ScalarKind, ScalarValue, Span, Statement, TypeInner, VectorSize,
+};
+
 use crate::generator::{
     args::{Multisampling, Smoothing, DEFAULT_RADIUS_SQUARED},
     gpu::shader::ShaderError,
     util::FloatKey,
     FractalOpts,
 };
-use naga::{
-    Arena, ArraySize, BinaryOperator, Block, Constant, ConstantInner, Expression, Function, Handle,
-    MathFunction, Module, ScalarKind, ScalarValue, Span, Statement, TypeInner, VectorSize,
-};
-use std::collections::HashMap;
 
 const C_REAL_NAME: &str = "t_c_real";
 const C_IMAG_NAME: &str = "t_c_imag";
@@ -132,13 +134,13 @@ impl Smoothing {
 
         let iterations_handle = function
             .expressions
-            .append(Expression::FunctionArgument(0), Span::Unknown);
+            .append(Expression::FunctionArgument(0), Span::default());
         let z_curr_handle = function
             .expressions
-            .append(Expression::FunctionArgument(1), Span::Unknown);
+            .append(Expression::FunctionArgument(1), Span::default());
         let z_prev_handle = function
             .expressions
-            .append(Expression::FunctionArgument(2), Span::Unknown);
+            .append(Expression::FunctionArgument(2), Span::default());
 
         match self {
             Smoothing::None => {
@@ -149,19 +151,19 @@ impl Smoothing {
                         kind: ScalarKind::Float,
                         convert: Some(4),
                     },
-                    Span::Unknown,
+                    Span::default(),
                 );
                 let cast_handle_range = function.expressions.range_from(cast_handle_start);
 
                 function
                     .body
-                    .extend(Some((Statement::Emit(cast_handle_range), Span::Unknown)));
+                    .extend(Some((Statement::Emit(cast_handle_range), Span::default())));
 
                 function.body.extend(Some((
                     Statement::Return {
                         value: Some(cast_handle),
                     },
-                    Span::Unknown,
+                    Span::default(),
                 )));
             },
             Smoothing::LogarithmicDistance {
@@ -172,10 +174,10 @@ impl Smoothing {
 
                 let divisor_handle = function
                     .expressions
-                    .append(Expression::Constant(divisor_constant), Span::Unknown);
+                    .append(Expression::Constant(divisor_constant), Span::default());
                 let addend_handle = function
                     .expressions
-                    .append(Expression::Constant(addend_constant), Span::Unknown);
+                    .append(Expression::Constant(addend_constant), Span::default());
 
                 let range_start = function.expressions.len();
                 let cast_handle = function.expressions.append(
@@ -184,7 +186,7 @@ impl Smoothing {
                         kind: ScalarKind::Float,
                         convert: Some(4),
                     },
-                    Span::Unknown,
+                    Span::default(),
                 );
                 let length_handle = function.expressions.append(
                     Expression::Math {
@@ -192,8 +194,9 @@ impl Smoothing {
                         arg: z_curr_handle,
                         arg1: Some(z_curr_handle),
                         arg2: None,
+                        arg3: None,
                     },
-                    Span::Unknown,
+                    Span::default(),
                 );
                 let log0_handle = function.expressions.append(
                     Expression::Math {
@@ -201,8 +204,9 @@ impl Smoothing {
                         arg: length_handle,
                         arg1: None,
                         arg2: None,
+                        arg3: None,
                     },
-                    Span::Unknown,
+                    Span::default(),
                 );
                 let log1_handle = function.expressions.append(
                     Expression::Math {
@@ -210,8 +214,9 @@ impl Smoothing {
                         arg: log0_handle,
                         arg1: None,
                         arg2: None,
+                        arg3: None,
                     },
-                    Span::Unknown,
+                    Span::default(),
                 );
                 let divide_handle = function.expressions.append(
                     Expression::Binary {
@@ -219,7 +224,7 @@ impl Smoothing {
                         left: log1_handle,
                         right: divisor_handle,
                     },
-                    Span::Unknown,
+                    Span::default(),
                 );
                 let subtract_handle = function.expressions.append(
                     Expression::Binary {
@@ -227,7 +232,7 @@ impl Smoothing {
                         left: cast_handle,
                         right: divide_handle,
                     },
-                    Span::Unknown,
+                    Span::default(),
                 );
                 let add_handle = function.expressions.append(
                     Expression::Binary {
@@ -235,24 +240,24 @@ impl Smoothing {
                         left: subtract_handle,
                         right: addend_handle,
                     },
-                    Span::Unknown,
+                    Span::default(),
                 );
                 let range = function.expressions.range_from(range_start);
 
                 function
                     .body
-                    .extend(Some((Statement::Emit(range), Span::Unknown)));
+                    .extend(Some((Statement::Emit(range), Span::default())));
                 function.body.extend(Some((
                     Statement::Return {
                         value: Some(add_handle),
                     },
-                    Span::Unknown,
+                    Span::default(),
                 )));
             },
             Smoothing::LinearIntersection => {
                 let linear_intersection_call_handle = function.expressions.append(
                     Expression::CallResult(linear_intersection_handle),
-                    Span::Unknown,
+                    Span::default(),
                 );
 
                 function.body.extend(Some((
@@ -261,13 +266,13 @@ impl Smoothing {
                         arguments: vec![iterations_handle, z_curr_handle, z_prev_handle],
                         result: Some(linear_intersection_call_handle),
                     },
-                    Span::Unknown,
+                    Span::default(),
                 )));
                 function.body.extend(Some((
                     Statement::Return {
                         value: Some(linear_intersection_call_handle),
                     },
-                    Span::Unknown,
+                    Span::default(),
                 )));
             },
         }
@@ -306,7 +311,8 @@ impl Multisampling {
         let sample_count_handle = find_constant(&module.constants, SAMPLE_COUNT_NAME)?;
         let vec2_f32_type_handle = module
             .types
-            .fetch_if(|t| {
+            .iter()
+            .find(|(_handle, t)| {
                 t.inner
                     == TypeInner::Vector {
                         size: VectorSize::Bi,
@@ -314,10 +320,12 @@ impl Multisampling {
                         width: 4,
                     }
             })
-            .ok_or_else(|| ShaderError::MissingTemplateType("vec2<f32>".to_string()))?;
+            .ok_or_else(|| ShaderError::MissingTemplateType("vec2<f32>".to_string()))?
+            .0;
         let sample_count_type_handle = module
             .types
-            .fetch_if(|t| {
+            .iter()
+            .find(|(_handle, t)| {
                 t.inner
                     == TypeInner::Array {
                         base: vec2_f32_type_handle,
@@ -327,7 +335,8 @@ impl Multisampling {
             })
             .ok_or_else(|| {
                 ShaderError::MissingTemplateType("array<vec2<f32>, t_sample_count>".to_string())
-            })?;
+            })?
+            .0;
 
         let handle = find_function_handle(&module.functions, SAMPLE_OFFSETS_NAME)?;
 
@@ -349,7 +358,7 @@ impl Multisampling {
                     x_key,
                     function.expressions.append(
                         Expression::Constant(get_float_constant(&mut module.constants, offset.x)),
-                        Span::Unknown,
+                        Span::default(),
                     ),
                 );
             }
@@ -359,7 +368,7 @@ impl Multisampling {
                     y_key,
                     function.expressions.append(
                         Expression::Constant(get_float_constant(&mut module.constants, offset.y)),
-                        Span::Unknown,
+                        Span::default(),
                     ),
                 );
             }
@@ -375,7 +384,7 @@ impl Multisampling {
                     ty: vec2_f32_type_handle,
                     components: vec![constants[&x_key], constants[&y_key]],
                 },
-                Span::Unknown,
+                Span::default(),
             ));
         }
 
@@ -384,18 +393,18 @@ impl Multisampling {
                 ty: sample_count_type_handle,
                 components: vec_handles,
             },
-            Span::Unknown,
+            Span::default(),
         );
         let compose_range = function.expressions.range_from(compose_start);
 
         function
             .body
-            .push(Statement::Emit(compose_range), Span::Unknown);
+            .push(Statement::Emit(compose_range), Span::default());
         function.body.push(
             Statement::Return {
                 value: Some(final_handle),
             },
-            Span::Unknown,
+            Span::default(),
         );
 
         Ok(())
@@ -424,7 +433,7 @@ fn get_float_constant(constants: &mut Arena<Constant>, value: f32) -> Handle<Con
                 value: ScalarValue::Float(value as f64),
             },
         },
-        Span::Unknown,
+        Span::default(),
     )
 }
 

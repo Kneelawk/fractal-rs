@@ -53,20 +53,20 @@ pub fn copy_region(
 pub fn build_four_points_offsets(offset: f32) -> Vec<Vector2<f32>> {
     vec![
         Vector2 {
-            x: -offset,
-            y: -offset,
+            x: 0.5 - offset,
+            y: 0.5 - offset,
         },
         Vector2 {
-            x: offset,
-            y: -offset,
+            x: 0.5 + offset,
+            y: 0.5 - offset,
         },
         Vector2 {
-            x: -offset,
-            y: offset,
+            x: 0.5 - offset,
+            y: 0.5 + offset,
         },
         Vector2 {
-            x: offset,
-            y: offset,
+            x: 0.5 + offset,
+            y: 0.5 + offset,
         },
     ]
 }
@@ -81,8 +81,8 @@ pub fn build_linear_offsets(axial_points: u32) -> Vec<Vector2<f32>> {
     for y in 0..axial_points {
         for x in 0..axial_points {
             vec.push(Vector2 {
-                x: x as f32 * offset + initial_offset - 0.5,
-                y: y as f32 * offset + initial_offset - 0.5,
+                x: x as f32 * offset + initial_offset,
+                y: y as f32 * offset + initial_offset,
             })
         }
     }

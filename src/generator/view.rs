@@ -94,16 +94,26 @@ impl View {
 
     /// Gets the coordinates on the complex plane for a given local pixel
     /// coordinate.
+    ///
+    /// This method places the complex coordinate directly in the middle of the
+    /// pixel instead of at the corner.
     pub fn get_local_plane_coordinates(&self, (x, y): (usize, usize)) -> Complex<f32> {
+        // Note the `+ 0.5`. This means that a pixel's value is at its center instead of
+        // its corner.
         Complex::<f32>::new(
-            x as f32 * self.image_scale_x + self.plane_start_x,
-            y as f32 * self.image_scale_y + self.plane_start_y,
+            (x as f32 + 0.5) * self.image_scale_x + self.plane_start_x,
+            (y as f32 + 0.5) * self.image_scale_y + self.plane_start_y,
         )
     }
 
     /// Gets the coordinates on the complex plane for a given local subpixel
     /// pixel coordinate.
+    ///
+    /// This method assumes that subpixel coordinates range from 0.0 to 1.0 with
+    /// 0.5 being in the middle.
     pub fn get_local_subpixel_plane_coordinates(&self, (x, y): (f32, f32)) -> Complex<f32> {
+        // Note that there is no `+ 0.5` here because that is handled by what ever is
+        // supplying the sub-pixel coordinates.
         Complex::<f32>::new(
             x * self.image_scale_x + self.plane_start_x,
             y * self.image_scale_y + self.plane_start_y,
@@ -423,7 +433,7 @@ impl ExactSizeIterator for SubViewIter {}
 
 #[cfg(test)]
 mod tests {
-    use crate::generator::view::View;
+    use crate::generator::view::{ConstrainedValue, View};
 
     #[test]
     fn is_directly_after_divided_height() {
@@ -725,5 +735,133 @@ mod tests {
                 plane_start_y: 4.0,
             })
         );
+    }
+
+    /// This tests converting pixels to complex coordinates and back.
+    #[test]
+    fn coordinate_conversion_pixel() {
+        let view = View::new_centered_uniform(256, 256, 3.0);
+
+        let coord = (23, 52);
+
+        let complex = view.get_local_plane_coordinates(coord);
+
+        let new_coord = view.get_local_pixel_coordinates(complex);
+
+        match new_coord {
+            (ConstrainedValue::WithinConstraint(x), ConstrainedValue::WithinConstraint(y)) => {
+                assert_eq!((x, y), coord);
+            },
+            (x, y) => {
+                panic!("X or Y is outside bounds! X: {:?}, Y: {:?}", x, y);
+            },
+        }
+    }
+
+    /// This tests converting sub-pixels to complex coordinates and back into
+    /// normal pixels to make sure they fall within the same region.
+    #[test]
+    fn coordinate_conversion_subpixel() {
+        use crate::generator::util::build_linear_offsets;
+
+        let view = View::new_centered_uniform(256, 256, 3.0);
+
+        for pixel_y in 0usize..256 {
+            for pixel_x in 0usize..256 {
+                let offsets = build_linear_offsets(16);
+
+                for offset in offsets {
+                    let subpixel_x = offset.x + pixel_x as f32;
+                    let subpixel_y = offset.y + pixel_y as f32;
+
+                    let complex =
+                        view.get_local_subpixel_plane_coordinates((subpixel_x, subpixel_y));
+
+                    let new_coord = view.get_local_pixel_coordinates(complex);
+
+                    match new_coord {
+                        (
+                            ConstrainedValue::WithinConstraint(x),
+                            ConstrainedValue::WithinConstraint(y),
+                        ) => {
+                            assert_eq!(
+                                (x, y),
+                                (pixel_x, pixel_y),
+                                "Input X: {}, Output X: {}, Input Y: {}, Output Y: {}",
+                                subpixel_x,
+                                x,
+                                subpixel_y,
+                                y
+                            );
+                        },
+                        (x, y) => {
+                            panic!("X or Y is outside bounds! Input X: {}, Output X: {:?}, Input Y: {}, Output Y: {:?}", subpixel_x, x, subpixel_y, y);
+                        },
+                    }
+                }
+            }
+        }
+    }
+
+    /// This test makes sure sub-pixels that are less than bounds are
+    /// represented that way.
+    #[test]
+    fn coordinate_conversion_below_bounds() {
+        use crate::generator::util::build_linear_offsets;
+
+        let view = View::new_centered_uniform(256, 256, 3.0);
+
+        let offsets = build_linear_offsets(16);
+
+        for offset in offsets {
+            let complex =
+                view.get_local_subpixel_plane_coordinates((offset.x - 1.0, offset.y - 1.0));
+
+            let new_coord = view.get_local_pixel_coordinates(complex);
+
+            assert_eq!(
+                new_coord,
+                (
+                    ConstrainedValue::LessThanConstraint,
+                    ConstrainedValue::LessThanConstraint
+                ),
+                "Input X: {}, Output X: {:?}, Input Y: {}, Output Y: {:?}",
+                offset.x - 1.0,
+                new_coord.0,
+                offset.y - 1.0,
+                new_coord.1
+            );
+        }
+    }
+
+    /// This test makes sure sub-pixels that are greater than bounds are
+    /// represented that way.
+    #[test]
+    fn coordinate_conversion_above_bounds() {
+        use crate::generator::util::build_linear_offsets;
+
+        let view = View::new_centered_uniform(256, 256, 3.0);
+
+        let offsets = build_linear_offsets(16);
+
+        for offset in offsets {
+            let complex =
+                view.get_local_subpixel_plane_coordinates((offset.x + 256.0, offset.y + 256.0));
+
+            let new_coord = view.get_local_pixel_coordinates(complex);
+
+            assert_eq!(
+                new_coord,
+                (
+                    ConstrainedValue::GreaterThanConstraint,
+                    ConstrainedValue::GreaterThanConstraint
+                ),
+                "Input X: {}, Output X: {:?}, Input Y: {}, Output Y: {:?}",
+                offset.x + 256.0,
+                new_coord.0,
+                offset.y + 256.0,
+                new_coord.1
+            );
+        }
     }
 }
