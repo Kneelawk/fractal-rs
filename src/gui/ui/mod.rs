@@ -139,9 +139,6 @@ impl FractalRSUI {
                 ui.add_enabled_ui(!self.instances.is_empty(), |ui| {
                     if ui.button("X").clicked() {
                         if self.current_instance < self.instances.len() {
-                            if self.current_instance < 0 {
-                                self.current_instance = 0;
-                            }
                             self.instances.remove(self.current_instance);
                             if self.current_instance > 0 {
                                 self.current_instance -= 1;
@@ -164,7 +161,7 @@ impl FractalRSUI {
     }
 
     fn draw_empty_content(&mut self, ctx: &UIRenderContext) {
-        egui::CentralPanel::default().show(ctx.ctx, |ui| {});
+        egui::CentralPanel::default().show(ctx.ctx, |_ui| {});
     }
 
     fn draw_misc_windows(&mut self, ctx: &UIRenderContext) {
@@ -183,9 +180,6 @@ impl FractalRSUI {
         } else {
             if self.current_instance >= self.instances.len() {
                 self.current_instance = self.instances.len() - 1;
-            }
-            if self.current_instance < 0 {
-                self.current_instance = 0;
             }
 
             self.instances.get_mut(self.current_instance)
