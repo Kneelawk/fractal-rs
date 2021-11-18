@@ -195,7 +195,7 @@ impl UIInstance {
                     ui.add(
                         DragValue::new(&mut self.edit_fractal_width)
                             .speed(1.0)
-                            .clamp_range(64..=4096),
+                            .clamp_range(2..=8192),
                     );
                     ui.end_row();
 
@@ -203,7 +203,7 @@ impl UIInstance {
                     ui.add(
                         DragValue::new(&mut self.edit_fractal_height)
                             .speed(1.0)
-                            .clamp_range(64..=4096),
+                            .clamp_range(2..=8192),
                     );
                     ui.end_row();
 
