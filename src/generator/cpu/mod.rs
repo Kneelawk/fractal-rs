@@ -1,13 +1,23 @@
-use crate::generator::{
-    color::RGBA8Color, cpu::opts::CpuFractalOpts, view::View, FractalGenerator,
-    FractalGeneratorFactory, FractalGeneratorInstance, FractalOpts, PixelBlock, BYTES_PER_PIXEL,
+use crate::{
+    generator::{
+        color::RGBA8Color, cpu::opts::CpuFractalOpts, view::View, FractalGenerator,
+        FractalGeneratorFactory, FractalGeneratorInstance, FractalOpts, PixelBlock,
+        BYTES_PER_PIXEL,
+    },
+    util::result::ResultExt,
 };
 use cgmath::Vector4;
+use chrono::{DateTime, Utc};
+use chrono_humanize::{Accuracy, HumanTime, Tense};
 use futures::{
-    future::{ready, BoxFuture, Ready},
+    future::{ready, BoxFuture},
     FutureExt,
 };
-use rayon::{ThreadPool, ThreadPoolBuilder};
+use rayon::{
+    iter::{IndexedParallelIterator, ParallelIterator},
+    slice::ParallelSliceMut,
+    ThreadPool, ThreadPoolBuilder,
+};
 use std::{
     num::NonZeroU32,
     sync::{
@@ -15,7 +25,7 @@ use std::{
         Arc,
     },
 };
-use tokio::sync::mpsc::{OwnedPermit, Sender};
+use tokio::{sync::mpsc::Sender, task};
 use wgpu::{
     Device, Extent3d, ImageCopyTexture, ImageDataLayout, Origin3d, Queue, Texture, TextureAspect,
     TextureView,
@@ -136,58 +146,86 @@ impl CpuFractalGeneratorInstance {
         let offsets = Arc::new(opts.multisampling.offsets());
 
         tokio::spawn(async move {
+            let start_time = Utc::now();
+
             for view in views {
                 if async_canceled.load(Ordering::Acquire) {
                     info!("Received cancel signal.");
                     return;
                 }
 
+                let spawn_thread_pool = thread_pool.clone();
                 let spawn_offsets = offsets.clone();
                 let spawn_completed = async_completed.clone();
                 let spawn_canceled = async_canceled.clone();
-                let spawn_tx: S::Reserved = sink.reserve().await.unwrap();
-                thread_pool.spawn(move || {
+
+                let res = task::spawn_blocking(move || {
                     let mut image =
                         vec![0u8; view.image_width * view.image_height * BYTES_PER_PIXEL];
 
-                    for y in 0..view.image_height {
-                        for x in 0..view.image_width {
-                            if spawn_canceled.load(Ordering::Acquire) {
-                                info!("Received cancel signal.");
-                                return;
-                            }
+                    let res = spawn_thread_pool.install(|| {
+                        image
+                            .par_chunks_exact_mut(BYTES_PER_PIXEL)
+                            .enumerate()
+                            .try_for_each(|(index, pixel)| {
+                                let x = index % view.image_width;
+                                let y = index / view.image_width;
 
-                            let index = (x + y * view.image_width) * BYTES_PER_PIXEL;
+                                if spawn_canceled.load(Ordering::Acquire) {
+                                    info!("Received cancel signal.");
+                                    return Err(());
+                                }
 
-                            let mut color = Vector4 {
-                                x: 0.0,
-                                y: 0.0,
-                                z: 0.0,
-                                w: 0.0,
-                            };
+                                let mut color = Vector4 {
+                                    x: 0.0,
+                                    y: 0.0,
+                                    z: 0.0,
+                                    w: 0.0,
+                                };
 
-                            for i in 0..sample_count {
-                                let offset = spawn_offsets[i];
-                                color +=
-                                    opts.gen_pixel(view, x as f32 + offset.x, y as f32 + offset.y)
-                                        / sample_count_f32;
-                            }
+                                for i in 0..sample_count {
+                                    let offset = spawn_offsets[i];
+                                    color += opts.gen_pixel(
+                                        view,
+                                        x as f32 + offset.x,
+                                        y as f32 + offset.y,
+                                    ) / sample_count_f32;
+                                }
 
-                            let color: RGBA8Color = color.into();
-                            let color: [u8; 4] = color.into();
+                                let color: RGBA8Color = color.into();
+                                let color: [u8; 4] = color.into();
 
-                            image[index..index + BYTES_PER_PIXEL].copy_from_slice(&color);
-                        }
+                                pixel.copy_from_slice(&color);
+
+                                Ok(())
+                            })
+                    });
+
+                    if res.is_err() {
+                        return None;
                     }
 
                     info!("Generated chunk at ({}, {})", view.image_x, view.image_y);
-                    spawn_completed.fetch_add(1, Ordering::AcqRel);
+                    let completed = spawn_completed.fetch_add(1, Ordering::AcqRel) + 1;
 
-                    spawn_tx.accept(PixelBlock {
-                        view,
-                        image: image.into_boxed_slice(),
+                    if completed == view_count {
+                        display_duration(start_time);
+                    }
+
+                    Some(image.into_boxed_slice())
+                })
+                .await
+                .on_err(|e| warn!("JoinError in CPU generator: {:?}", e))
+                .flatten();
+
+                if let Some(image) = res {
+                    sink.accept(PixelBlock { view, image }).await.on_err(|e| {
+                        warn!(
+                            "Error while submitting pixel block in CPU generator: {:?}",
+                            e
+                        )
                     });
-                });
+                }
             }
         });
 
@@ -199,6 +237,16 @@ impl CpuFractalGeneratorInstance {
             canceled,
         }
     }
+}
+
+fn display_duration(start_time: DateTime<Utc>) {
+    let end_time = Utc::now();
+    let duration = end_time - start_time;
+
+    info!(
+        "Completed in: {}",
+        HumanTime::from(duration).to_text_en(Accuracy::Precise, Tense::Present)
+    );
 }
 
 impl FractalGeneratorInstance for CpuFractalGeneratorInstance {
@@ -227,30 +275,16 @@ pub enum CpuGenError {
 }
 
 trait PixelBlockSink {
-    type Reserved: ReservedPixelBlockSink + Send;
     type Error: std::fmt::Debug;
-    type Future: std::future::Future<Output = Result<Self::Reserved, Self::Error>> + Send;
 
-    fn reserve(&self) -> Self::Future;
-}
-
-trait ReservedPixelBlockSink {
-    fn accept(self, pixel_block: PixelBlock);
+    fn accept(&self, pixel_block: PixelBlock) -> BoxFuture<'_, Result<(), Self::Error>>;
 }
 
 impl PixelBlockSink for Sender<anyhow::Result<PixelBlock>> {
-    type Reserved = OwnedPermit<anyhow::Result<PixelBlock>>;
-    type Error = tokio::sync::mpsc::error::SendError<()>;
-    type Future = BoxFuture<'static, Result<Self::Reserved, Self::Error>>;
+    type Error = tokio::sync::mpsc::error::SendError<anyhow::Result<PixelBlock>>;
 
-    fn reserve(&self) -> Self::Future {
-        self.clone().reserve_owned().boxed()
-    }
-}
-
-impl ReservedPixelBlockSink for OwnedPermit<anyhow::Result<PixelBlock>> {
-    fn accept(self, pixel_block: PixelBlock) {
-        self.send(Ok(pixel_block));
+    fn accept(&self, pixel_block: PixelBlock) -> BoxFuture<'_, Result<(), Self::Error>> {
+        self.send(Ok(pixel_block)).boxed()
     }
 }
 
@@ -261,17 +295,9 @@ struct GpuPixelBlockSink {
 }
 
 impl PixelBlockSink for GpuPixelBlockSink {
-    type Reserved = GpuPixelBlockSink;
     type Error = ();
-    type Future = Ready<Result<GpuPixelBlockSink, ()>>;
 
-    fn reserve(&self) -> Self::Future {
-        ready(Ok(self.clone()))
-    }
-}
-
-impl ReservedPixelBlockSink for GpuPixelBlockSink {
-    fn accept(self, pixel_block: PixelBlock) {
+    fn accept(&self, pixel_block: PixelBlock) -> BoxFuture<'_, Result<(), Self::Error>> {
         self.queue.write_texture(
             ImageCopyTexture {
                 texture: &self.texture,
@@ -298,5 +324,7 @@ impl ReservedPixelBlockSink for GpuPixelBlockSink {
                 depth_or_array_layers: 1,
             },
         );
+
+        ready(Ok(())).boxed()
     }
 }

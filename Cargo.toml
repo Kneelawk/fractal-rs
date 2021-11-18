@@ -10,6 +10,7 @@ anyhow = "^1.0.43"
 async-trait = "^0.1.51"
 bytemuck = "^1.7.2"
 chrono = "^0.4.19"
+chrono-humanize = "^0.2.1"
 cgmath = "^0.18.0"
 egui = "^0.15.0"
 egui_wgpu_backend = { git = "https://github.com/Kneelawk/egui_wgpu_backend.git", branch = "textureid-with-sampler-options" }

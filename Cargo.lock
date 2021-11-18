@@ -231,6 +231,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "chrono-humanize"
+version = "0.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2eddc119501d583fd930cb92144e605f44e0252c38dd89d9247fffa1993375cb"
+dependencies = [
+ "chrono",
+]
+
+[[package]]
 name = "cocoa"
 version = "0.24.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -644,6 +653,7 @@ dependencies = [
  "bytemuck",
  "cgmath",
  "chrono",
+ "chrono-humanize",
  "egui",
  "egui_wgpu_backend",
  "egui_winit_platform",
