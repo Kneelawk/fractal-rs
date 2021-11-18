@@ -2,6 +2,8 @@
 
 pub mod result;
 
+use chrono::{DateTime, Utc};
+use chrono_humanize::{Accuracy, HumanTime, Tense};
 use futures::task::Context;
 use std::{future::Future, pin::Pin, task::Poll};
 use tokio::task::JoinHandle;
@@ -12,6 +14,16 @@ pub fn push_or_else<T, E, F: FnOnce(E)>(res: Result<T, E>, vec: &mut Vec<T>, or_
         Ok(val) => vec.push(val),
         Err(err) => or_else(err),
     }
+}
+
+pub fn display_duration(start_time: DateTime<Utc>) {
+    let end_time = Utc::now();
+    let duration = end_time - start_time;
+
+    info!(
+        "Completed in: {}",
+        HumanTime::from(duration).to_text_en(Accuracy::Precise, Tense::Present)
+    );
 }
 
 pub fn poll_unpin<R, F: Future<Output = R> + Unpin>(future: &mut F) -> Poll<R> {

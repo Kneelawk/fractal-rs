@@ -4,11 +4,10 @@ use crate::{
         FractalGeneratorFactory, FractalGeneratorInstance, FractalOpts, PixelBlock,
         BYTES_PER_PIXEL,
     },
-    util::result::ResultExt,
+    util::{display_duration, result::ResultExt},
 };
 use cgmath::Vector4;
-use chrono::{DateTime, Utc};
-use chrono_humanize::{Accuracy, HumanTime, Tense};
+use chrono::Utc;
 use futures::{
     future::{ready, BoxFuture},
     FutureExt,
@@ -237,16 +236,6 @@ impl CpuFractalGeneratorInstance {
             canceled,
         }
     }
-}
-
-fn display_duration(start_time: DateTime<Utc>) {
-    let end_time = Utc::now();
-    let duration = end_time - start_time;
-
-    info!(
-        "Completed in: {}",
-        HumanTime::from(duration).to_text_en(Accuracy::Precise, Tense::Present)
-    );
 }
 
 impl FractalGeneratorInstance for CpuFractalGeneratorInstance {

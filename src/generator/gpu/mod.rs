@@ -13,7 +13,9 @@ use crate::{
         buffer::{BufferWrapper, Encodable},
         util::{create_texture, create_texture_buffer},
     },
+    util::display_duration,
 };
+use chrono::Utc;
 use futures::{
     future::{ready, BoxFuture},
     FutureExt,
@@ -263,6 +265,7 @@ impl GpuFractalGeneratorInstance {
         views: Vec<View>,
         sender: Sender<anyhow::Result<PixelBlock>>,
     ) -> GpuFractalGeneratorInstance {
+        let start_time = Utc::now();
         let view_count = views.len();
         let completed = Arc::new(AtomicUsize::new(0));
         let canceled = Arc::new(AtomicBool::new(false));
@@ -369,7 +372,11 @@ impl GpuFractalGeneratorInstance {
                 );
                 buffer.unmap();
 
-                spawn_completed.fetch_add(1, Ordering::AcqRel);
+                let completed = spawn_completed.fetch_add(1, Ordering::AcqRel) + 1;
+
+                if completed == view_count {
+                    display_duration(start_time);
+                }
 
                 info!(
                     "Sending pixel block for ({}, {})...",
@@ -401,6 +408,7 @@ impl GpuFractalGeneratorInstance {
         views: Vec<View>,
         out_texture: Arc<Texture>,
     ) -> GpuFractalGeneratorInstance {
+        let start_time = Utc::now();
         let view_count = views.len();
         let completed = Arc::new(AtomicUsize::new(0));
         let canceled = Arc::new(AtomicBool::new(false));
@@ -467,7 +475,11 @@ impl GpuFractalGeneratorInstance {
                     queue.submit([uniforms_cb, encoder.finish()]);
                 }
 
-                spawn_completed.fetch_add(1, Ordering::AcqRel);
+                let completed = spawn_completed.fetch_add(1, Ordering::AcqRel) + 1;
+
+                if completed == view_count {
+                    display_duration(start_time);
+                }
             }
         });
 
