@@ -227,7 +227,7 @@ impl FractalRSUI {
 
     fn draw_settings_window(&mut self, ctx: &UIRenderContext) {
         egui::Window::new("App Settings")
-            .default_size([250.0, 500.0])
+            .default_size([340.0, 500.0])
             .open(&mut self.show_app_settings)
             .show(ctx.ctx, |ui| {
                 ui.label("Generator Type:");

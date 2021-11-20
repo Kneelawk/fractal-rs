@@ -170,14 +170,10 @@ impl UIInstance {
 
     fn draw_generator_controls(&mut self, ctx: &mut UIRenderContext) {
         egui::Window::new("Generator Controls")
-            .default_size([250.0, 500.0])
+            .default_size([340.0, 500.0])
             .open(&mut self.show_generator_controls)
             .show(ctx.ctx, |ui| {
-                ui.add_enabled_ui(!self.manager.running(), |ui| {
-                    if ui.button("Generate!").clicked() {
-                        self.generate_fractal = true;
-                    }
-                });
+                ui.add(ProgressBar::new(self.generation_fraction).text(&self.generation_message));
 
                 ui.add_enabled_ui(self.manager.running(), |ui| {
                     if ui.button("Cancel Generation").clicked() {
@@ -185,60 +181,85 @@ impl UIInstance {
                     }
                 });
 
-                ui.add(ProgressBar::new(self.generation_fraction).text(&self.generation_message));
+                ui.separator();
+
+                egui::CollapsingHeader::new("Generate to Viewer")
+                    .default_open(true)
+                    .show(ui, |ui| {
+                        ui.add_enabled_ui(!self.manager.running(), |ui| {
+                            if ui.button("Generate!").clicked() {
+                                self.generate_fractal = true;
+                            }
+
+                            egui::Grid::new("generate_to_viewer.image_settings.grid").show(
+                                ui,
+                                |ui| {
+                                    ui.label("Image Width:");
+                                    ui.add(
+                                        DragValue::new(&mut self.edit_fractal_width)
+                                            .speed(1.0)
+                                            .clamp_range(2..=8192),
+                                    );
+                                    ui.end_row();
+
+                                    ui.label("Image Height:");
+                                    ui.add(
+                                        DragValue::new(&mut self.edit_fractal_height)
+                                            .speed(1.0)
+                                            .clamp_range(2..=8192),
+                                    );
+                                    ui.end_row();
+                                },
+                            );
+                        });
+                    });
+
+                egui::CollapsingHeader::new("Generate to Exported Image")
+                    .default_open(false)
+                    .show(ui, |ui| {
+                        ui.label("TODO");
+                    });
 
                 ui.separator();
 
                 // actual generator settings
-                egui::Grid::new("generator settings").show(ui, |ui| {
-                    ui.label("Image Width:");
-                    ui.add(
-                        DragValue::new(&mut self.edit_fractal_width)
-                            .speed(1.0)
-                            .clamp_range(2..=8192),
-                    );
-                    ui.end_row();
+                egui::CollapsingHeader::new("Complex Plane Settings")
+                    .default_open(true)
+                    .show(ui, |ui| {
+                        egui::Grid::new("generator settings").show(ui, |ui| {
+                            ui.label("Plane Width:");
+                            ui.add(
+                                DragValue::new(&mut self.edit_fractal_plane_width)
+                                    .clamp_range(0.0..=10.0)
+                                    .speed(0.03125),
+                            );
+                            ui.end_row();
 
-                    ui.label("Image Height:");
-                    ui.add(
-                        DragValue::new(&mut self.edit_fractal_height)
-                            .speed(1.0)
-                            .clamp_range(2..=8192),
-                    );
-                    ui.end_row();
+                            ui.checkbox(
+                                &mut self.edit_fractal_plane_centered,
+                                "Centered at (0 + 0i)",
+                            );
+                            ui.end_row();
 
-                    ui.label("Plane Width:");
-                    ui.add(
-                        DragValue::new(&mut self.edit_fractal_plane_width)
-                            .clamp_range(0.0..=10.0)
-                            .speed(0.03125),
-                    );
-                    ui.end_row();
+                            ui.label("Plane Real Center:");
+                            ui.add_enabled(
+                                !self.edit_fractal_plane_centered,
+                                DragValue::new(&mut self.edit_fractal_plane_center_x)
+                                    .clamp_range(-10.0..=10.0)
+                                    .speed(0.0625),
+                            );
+                            ui.end_row();
 
-                    ui.checkbox(
-                        &mut self.edit_fractal_plane_centered,
-                        "Centered at (0 + 0i)",
-                    );
-                    ui.end_row();
-
-                    ui.label("Plane Real Center:");
-                    ui.add_enabled(
-                        !self.edit_fractal_plane_centered,
-                        DragValue::new(&mut self.edit_fractal_plane_center_x)
-                            .clamp_range(-10.0..=10.0)
-                            .speed(0.0625),
-                    );
-                    ui.end_row();
-
-                    ui.label("Plane Imaginary Center:");
-                    ui.add_enabled(
-                        !self.edit_fractal_plane_centered,
-                        DragValue::new(&mut self.edit_fractal_plane_center_y)
-                            .clamp_range(-10.0..=10.0)
-                            .speed(0.0625),
-                    );
-                    ui.end_row();
-                });
+                            ui.label("Plane Imaginary Center:");
+                            ui.add_enabled(
+                                !self.edit_fractal_plane_centered,
+                                DragValue::new(&mut self.edit_fractal_plane_center_y)
+                                    .clamp_range(-10.0..=10.0)
+                                    .speed(0.0625),
+                            );
+                            ui.end_row();
+                        });
+                    });
             });
 
         if self.generate_fractal {
@@ -280,7 +301,7 @@ impl UIInstance {
 
     fn draw_viewer_controls(&mut self, ctx: &UIRenderContext) {
         egui::Window::new("Viewer Controls")
-            .default_size([250.0, 500.0])
+            .default_size([340.0, 500.0])
             .open(&mut self.show_viewer_controls)
             .show(&ctx.ctx, |ui| {
                 ui.label("Zoom & Center");
