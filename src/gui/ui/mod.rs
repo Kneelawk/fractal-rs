@@ -3,12 +3,11 @@ mod viewer;
 
 use crate::{
     generator::{
-        cpu::CpuFractalGeneratorFactory, gpu::GpuFractalGeneratorFactory, view::View,
-        FractalGeneratorFactory,
+        cpu::CpuFractalGeneratorFactory, gpu::GpuFractalGeneratorFactory, FractalGeneratorFactory,
     },
     gui::{
         keyboard::KeyboardTracker,
-        ui::instance::{UIInstance, UIInstanceCreationContext},
+        ui::instance::{UIInstance, UIInstanceCreationContext, UIInstanceInitialSettings},
     },
 };
 use egui::{CtxRef, Layout, ScrollArea};
@@ -40,7 +39,6 @@ pub struct FractalRSUI {
 
     // generator stuff
     factory: Arc<dyn FractalGeneratorFactory + Send + Sync + 'static>,
-    initial_fractal_view: View,
 
     // instances
     instances: Vec<UIInstance>,
@@ -57,8 +55,6 @@ pub struct UICreationContext<'a> {
     pub queue: Arc<Queue>,
     /// WGPU Egui Render Pass reference for managing textures.
     pub render_pass: &'a mut RenderPass,
-    /// Fractal view settings at the time of UI state creation.
-    pub initial_fractal_view: View,
 }
 
 /// Struct containing context passed to the UI render function.
@@ -87,7 +83,7 @@ impl FractalRSUI {
             queue: ctx.queue.clone(),
             factory: factory.clone(),
             render_pass: ctx.render_pass,
-            initial_fractal_view: ctx.initial_fractal_view,
+            initial_settings: Default::default(),
         });
 
         FractalRSUI {
@@ -101,7 +97,6 @@ impl FractalRSUI {
             current_generator_type: GeneratorType::GPU,
             new_generator_type: GeneratorType::GPU,
             factory: factory.clone(),
-            initial_fractal_view: ctx.initial_fractal_view,
             instances: vec![first_instance],
             current_instance: 0,
             new_instance_requested: false,
@@ -252,10 +247,10 @@ impl FractalRSUI {
             self.new_instance_requested = false;
 
             // get options from currently open instance if any
-            let initial_fractal_view = if let Some(instance) = self.open_instance() {
-                instance.fetch_fractal_view()
+            let initial_settings = if let Some(instance) = self.open_instance() {
+                UIInstanceInitialSettings::from_instance(instance)
             } else {
-                self.initial_fractal_view
+                Default::default()
             };
 
             // When a new instance is creates, we add it to the end of the tabs and select
@@ -266,7 +261,7 @@ impl FractalRSUI {
                 queue: self.queue.clone(),
                 factory: self.factory.clone(),
                 render_pass: ctx.render_pass,
-                initial_fractal_view,
+                initial_settings,
             });
 
             self.instance_name_index += 1;

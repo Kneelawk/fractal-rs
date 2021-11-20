@@ -1,12 +1,9 @@
 //! gui/mod.rs - This is where the GUI-based core application logic happens.
 
-use crate::{
-    generator::view::View,
-    gui::{
-        flow::{Flow, FlowModel, FlowModelInit, FlowSignal},
-        keyboard::KeyboardTracker,
-        ui::{FractalRSUI, UICreationContext, UIRenderContext},
-    },
+use crate::gui::{
+    flow::{Flow, FlowModel, FlowModelInit, FlowSignal},
+    keyboard::KeyboardTracker,
+    ui::{FractalRSUI, UICreationContext, UIRenderContext},
 };
 use egui_wgpu_backend::{RenderPass, ScreenDescriptor};
 use egui_winit_platform::{Platform, PlatformDescriptor};
@@ -24,9 +21,6 @@ use winit::{
 mod flow;
 mod keyboard;
 mod ui;
-
-const INITIAL_FRACTAL_WIDTH: usize = 1024;
-const INITIAL_FRACTAL_HEIGHT: usize = 1024;
 
 /// Launches the application as a GUI application.
 pub fn start_gui_application() -> ! {
@@ -83,11 +77,6 @@ impl FlowModel for FractalRSGuiMain {
             device: device.clone(),
             queue: queue.clone(),
             render_pass: &mut render_pass,
-            initial_fractal_view: View::new_centered_uniform(
-                INITIAL_FRACTAL_WIDTH,
-                INITIAL_FRACTAL_HEIGHT,
-                3.0,
-            ),
         });
 
         FractalRSGuiMain {

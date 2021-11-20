@@ -35,13 +35,21 @@ pub struct UIInstance {
     generate_fractal: bool,
     generation_fraction: f32,
     generation_message: Cow<'static, str>,
+
+    // image controls
     edit_fractal_width: usize,
     edit_fractal_height: usize,
+
+    // complex plane controls
     edit_fractal_plane_width: f32,
     edit_fractal_plane_centered: bool,
     edit_fractal_plane_center_x: f32,
     edit_fractal_plane_center_y: f32,
-    fractal_view: View,
+
+    // mandelbrot & julia/fatou set controls
+    mandelbrot: bool,
+    c: Complex32,
+    iterations: u32,
 
     // fractal viewers
     viewer: FractalViewer,
@@ -59,23 +67,60 @@ pub struct UIInstanceCreationContext<'a, S: ToString> {
     pub factory: Arc<dyn FractalGeneratorFactory + Send + Sync + 'static>,
     /// WGPU Egui Render Pass reference for managing textures.
     pub render_pass: &'a mut RenderPass,
+    /// UIInstance initial settings.
+    pub initial_settings: UIInstanceInitialSettings,
+}
+
+pub struct UIInstanceInitialSettings {
     /// Fractal view settings at the time of UI state creation.
-    pub initial_fractal_view: View,
+    pub view: View,
+    /// Whether this instance should start off as a mandelbrot set or as a
+    /// julia/fatou set.
+    pub mandelbrot: bool,
+    /// Complex value added to `z` on every iteration of the complex function.
+    pub c: Complex32,
+    /// The number of times the complex iterative function should be run on `z`.
+    pub iterations: u32,
+}
+
+impl Default for UIInstanceInitialSettings {
+    fn default() -> Self {
+        Self {
+            view: View::new_centered_uniform(1024, 1024, 3.0),
+            mandelbrot: true,
+            c: Complex32 {
+                re: 0.16611,
+                im: 0.59419,
+            },
+            iterations: 200,
+        }
+    }
+}
+
+impl UIInstanceInitialSettings {
+    pub fn from_instance(instance: &UIInstance) -> Self {
+        Self {
+            view: instance.fractal_view(),
+            mandelbrot: instance.mandelbrot,
+            c: instance.c,
+            iterations: instance.iterations,
+        }
+    }
 }
 
 impl UIInstance {
     pub fn new(ctx: UIInstanceCreationContext<'_, impl ToString>) -> UIInstance {
         // obtain original values from view
         let plane_width =
-            ctx.initial_fractal_view.image_width as f32 * ctx.initial_fractal_view.image_scale_x;
+            ctx.initial_settings.view.image_width as f32 * ctx.initial_settings.view.image_scale_x;
         let plane_height =
-            ctx.initial_fractal_view.image_height as f32 * ctx.initial_fractal_view.image_scale_y;
-        let center_x = ctx.initial_fractal_view.plane_start_x + plane_width / 2.0;
-        let center_y = ctx.initial_fractal_view.plane_start_y + plane_height / 2.0;
+            ctx.initial_settings.view.image_height as f32 * ctx.initial_settings.view.image_scale_y;
+        let center_x = ctx.initial_settings.view.plane_start_x + plane_width / 2.0;
+        let center_y = ctx.initial_settings.view.plane_start_y + plane_height / 2.0;
 
         let manager = GeneratorManager::new(ctx.factory);
 
-        let viewer = FractalViewer::new(&ctx.device, ctx.render_pass, ctx.initial_fractal_view);
+        let viewer = FractalViewer::new(&ctx.device, ctx.render_pass, ctx.initial_settings.view);
 
         UIInstance {
             name: ctx.name.to_string(),
@@ -87,13 +132,15 @@ impl UIInstance {
             generate_fractal: false,
             generation_fraction: 0.0,
             generation_message: Cow::Borrowed(DEFAULT_GENERATION_MESSAGE),
-            edit_fractal_width: ctx.initial_fractal_view.image_width,
-            edit_fractal_height: ctx.initial_fractal_view.image_height,
+            edit_fractal_width: ctx.initial_settings.view.image_width,
+            edit_fractal_height: ctx.initial_settings.view.image_height,
             edit_fractal_plane_width: plane_width,
             edit_fractal_plane_centered: center_x == 0.0 && center_y == 0.0,
             edit_fractal_plane_center_x: center_x,
             edit_fractal_plane_center_y: center_y,
-            fractal_view: ctx.initial_fractal_view,
+            mandelbrot: ctx.initial_settings.mandelbrot,
+            c: ctx.initial_settings.c,
+            iterations: ctx.initial_settings.iterations,
             viewer,
         }
     }
@@ -113,20 +160,23 @@ impl UIInstance {
             self.generate_fractal = false;
 
             if !self.manager.running() {
+                let view = self.fractal_view();
+
+                // construct the FractalOpts from UI settings
                 let opts = FractalOpts {
-                    mandelbrot: false,
-                    iterations: 200,
+                    mandelbrot: self.mandelbrot,
+                    iterations: self.iterations,
                     smoothing: Smoothing::from_logarithmic_distance(4.0, 2.0),
                     multisampling: Multisampling::Linear { axial_points: 16 },
-                    c: Complex32 {
-                        re: 0.16611,
-                        im: 0.59419,
-                    },
+                    c: self.c,
                 };
-                let views: Vec<_> = self
-                    .fractal_view
+
+                // subdivide the view
+                let views: Vec<_> = view
                     .subdivide_rectangles(MAX_CHUNK_WIDTH, MAX_CHUNK_HEIGHT)
                     .collect();
+
+                // start the generator
                 self.manager.start_to_gpu(
                     opts,
                     &views,
@@ -156,6 +206,10 @@ impl UIInstance {
         self.draw_fractal_viewers(ctx);
         self.draw_generator_controls(ctx);
         self.draw_viewer_controls(ctx);
+
+        if self.generate_fractal {
+            self.apply_view_settings(ctx);
+        }
     }
 
     fn draw_fractal_viewers(&mut self, ctx: &UIRenderContext) {
@@ -226,7 +280,7 @@ impl UIInstance {
                 egui::CollapsingHeader::new("Complex Plane Settings")
                     .default_open(true)
                     .show(ui, |ui| {
-                        egui::Grid::new("generator settings").show(ui, |ui| {
+                        egui::Grid::new("complex_plane_settings.grid").show(ui, |ui| {
                             ui.label("Plane Width:");
                             ui.add(
                                 DragValue::new(&mut self.edit_fractal_plane_width)
@@ -246,7 +300,7 @@ impl UIInstance {
                                 !self.edit_fractal_plane_centered,
                                 DragValue::new(&mut self.edit_fractal_plane_center_x)
                                     .clamp_range(-10.0..=10.0)
-                                    .speed(0.0625),
+                                    .speed(0.03125),
                             );
                             ui.end_row();
 
@@ -255,26 +309,48 @@ impl UIInstance {
                                 !self.edit_fractal_plane_centered,
                                 DragValue::new(&mut self.edit_fractal_plane_center_y)
                                     .clamp_range(-10.0..=10.0)
-                                    .speed(0.0625),
+                                    .speed(0.03125),
                             );
                             ui.end_row();
                         });
                     });
+
+                egui::CollapsingHeader::new("Fractal Options")
+                    .default_open(true)
+                    .show(ui, |ui| {
+                        egui::Grid::new("fractal_options.grid").show(ui, |ui| {
+                            ui.label("Fractal Type:");
+                            ui.end_row();
+                            ui.selectable_value(&mut self.mandelbrot, true, "Mandelbrot Set");
+                            ui.selectable_value(&mut self.mandelbrot, false, "Julia/Fatou Set");
+                            ui.end_row();
+
+                            ui.label("C-real:");
+                            ui.add(
+                                DragValue::new(&mut self.c.re)
+                                    .clamp_range(-10.0..=10.0)
+                                    .speed(0.0001),
+                            );
+                            ui.end_row();
+
+                            ui.label("C-imaginary:");
+                            ui.add(
+                                DragValue::new(&mut self.c.im)
+                                    .clamp_range(-10.0..=10.0)
+                                    .speed(0.0001),
+                            );
+                            ui.end_row();
+
+                            ui.label("Iterations:");
+                            ui.add(DragValue::new(&mut self.iterations).clamp_range(1..=1000));
+                            ui.end_row();
+                        });
+                    });
             });
-
-        if self.generate_fractal {
-            self.apply_generator_settings(ctx);
-        }
     }
 
-    pub fn fetch_fractal_view(&mut self) -> View {
-        self.update_fractal_view();
-        self.fractal_view
-    }
-
-    fn update_fractal_view(&mut self) {
-        // apply fractal size
-        self.fractal_view = if self.edit_fractal_plane_centered {
+    pub fn fractal_view(&self) -> View {
+        if self.edit_fractal_plane_centered {
             View::new_centered_uniform(
                 self.edit_fractal_width,
                 self.edit_fractal_height,
@@ -288,14 +364,12 @@ impl UIInstance {
                 self.edit_fractal_plane_center_x,
                 self.edit_fractal_plane_center_y,
             )
-        };
+        }
     }
 
-    fn apply_generator_settings(&mut self, ctx: &mut UIRenderContext) {
-        self.update_fractal_view();
-
+    fn apply_view_settings(&mut self, ctx: &mut UIRenderContext) {
         self.viewer
-            .set_fractal_view(&self.device, ctx.render_pass, self.fractal_view)
+            .set_fractal_view(&self.device, ctx.render_pass, self.fractal_view())
             .on_err(|e| error!("Error resizing fractal image: {:?}", e));
     }
 
