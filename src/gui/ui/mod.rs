@@ -163,6 +163,12 @@ impl FractalRSUI {
         if keys.was_pressed(VirtualKeyCode::F11) {
             self.request_fullscreen = !self.request_fullscreen;
         }
+
+        // I've found that I often end up trying to use ESC to leave fullscreen, so I
+        // think I'll add that as a shortcut.
+        if keys.was_pressed(VirtualKeyCode::Escape) {
+            self.request_fullscreen = false;
+        }
     }
 
     fn draw_top_bar(&mut self, ctx: &UIRenderContext) {
