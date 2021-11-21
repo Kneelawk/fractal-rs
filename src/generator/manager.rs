@@ -10,11 +10,12 @@ use crate::{
     util::{poll_join_result, poll_optional, RunningState},
 };
 use std::{fmt::Debug, sync::Arc};
-use tokio::{sync::mpsc::Sender, task::JoinHandle};
+use tokio::{runtime::Handle, sync::mpsc::Sender, task::JoinHandle};
 use wgpu::{Device, Queue, Texture, TextureView};
 
 /// Handles the gritty details of polling generator & instance futures.
 pub struct GeneratorManager {
+    handle: Handle,
     factory: Arc<dyn FractalGeneratorFactory + Send + Sync + 'static>,
     generator_future: Option<(
         StartArgs,
@@ -34,9 +35,11 @@ pub struct GeneratorManager {
 impl GeneratorManager {
     /// Creates a new InstanceManager without any managed instance.
     pub fn new(
+        handle: Handle,
         factory: Arc<dyn FractalGeneratorFactory + Send + Sync + 'static>,
     ) -> GeneratorManager {
         GeneratorManager {
+            handle,
             factory,
             generator_future: None,
             current_generator: None,
@@ -110,13 +113,15 @@ impl GeneratorManager {
             });
         } else {
             // we can start the generator now
-            self.current_instance = RunningState::Starting(tokio::spawn(
-                self.current_generator
-                    .as_ref()
-                    .unwrap()
-                    .1
-                    .start_generation_to_cpu(views, sender),
-            ));
+            self.current_instance = RunningState::Starting(
+                self.handle.spawn(
+                    self.current_generator
+                        .as_ref()
+                        .unwrap()
+                        .1
+                        .start_generation_to_cpu(views, sender),
+                ),
+            );
         }
 
         Ok(())
@@ -163,13 +168,15 @@ impl GeneratorManager {
             });
         } else {
             // we can start the generator now
-            self.current_instance = RunningState::Starting(tokio::spawn(
-                self.current_generator
-                    .as_ref()
-                    .unwrap()
-                    .1
-                    .start_generation_to_gpu(views, device, queue, texture, texture_view),
-            ));
+            self.current_instance = RunningState::Starting(
+                self.handle.spawn(
+                    self.current_generator
+                        .as_ref()
+                        .unwrap()
+                        .1
+                        .start_generation_to_gpu(views, device, queue, texture, texture_view),
+                ),
+            );
         }
 
         Ok(())
@@ -182,14 +189,15 @@ impl GeneratorManager {
         };
 
         info!("Creating new Fractal Generator...");
-        self.generator_future = Some((args, tokio::spawn(self.factory.create_generator(opts))));
+        self.generator_future =
+            Some((args, self.handle.spawn(self.factory.create_generator(opts))));
     }
 
     /// Polls the instance and futures currently being managed by this
     /// InstanceManager.
     pub fn poll(&mut self) -> anyhow::Result<()> {
         if let Some((args, mut future)) = self.generator_future.take() {
-            if let Some(future_res) = poll_join_result(&mut future) {
+            if let Some(future_res) = poll_join_result(&self.handle, &mut future) {
                 let generator = future_res?;
 
                 // We're starting here because if `generator_future` is
@@ -202,9 +210,10 @@ impl GeneratorManager {
                         sender,
                     } => {
                         if !self.canceled {
-                            self.current_instance = RunningState::Starting(tokio::spawn(
-                                generator.start_generation_to_cpu(&views, sender),
-                            ));
+                            self.current_instance = RunningState::Starting(
+                                self.handle
+                                    .spawn(generator.start_generation_to_cpu(&views, sender)),
+                            );
                         }
 
                         opts
@@ -218,7 +227,7 @@ impl GeneratorManager {
                         texture_view,
                     } => {
                         if !self.canceled {
-                            self.current_instance = RunningState::Starting(tokio::spawn(
+                            self.current_instance = RunningState::Starting(self.handle.spawn(
                                 generator.start_generation_to_gpu(
                                     &views,
                                     device,
@@ -241,7 +250,7 @@ impl GeneratorManager {
         }
 
         // poll the RunningState of the instance
-        self.current_instance.poll_starting()?;
+        self.current_instance.poll_starting(&self.handle)?;
 
         // reset values
         if let RunningState::Starting(_) = &self.current_instance {
@@ -259,18 +268,18 @@ impl GeneratorManager {
         }
 
         // poll the running future optional
-        let running = poll_optional(&mut self.running_future, || {
+        let running = poll_optional(&self.handle, &mut self.running_future, || {
             if let RunningState::Running(instance) = &self.current_instance {
-                Some(tokio::spawn(instance.running()))
+                Some(self.handle.spawn(instance.running()))
             } else {
                 None
             }
         });
 
         // poll the progress future optional
-        let progress = poll_optional(&mut self.progress_future, || {
+        let progress = poll_optional(&self.handle, &mut self.progress_future, || {
             if let RunningState::Running(instance) = &self.current_instance {
-                Some(tokio::spawn(instance.progress()))
+                Some(self.handle.spawn(instance.progress()))
             } else {
                 None
             }

@@ -8,7 +8,7 @@ use std::{
     },
     time::{Duration, SystemTime},
 };
-use tokio::{runtime, task};
+use tokio::{runtime, runtime::Handle, time::sleep};
 use wgpu::{
     Backends, Device, DeviceDescriptor, Instance, Maintain, PowerPreference, PresentMode, Queue,
     RequestAdapterOptions, RequestDeviceError, SurfaceConfiguration, SurfaceError, TextureFormat,
@@ -31,6 +31,7 @@ pub enum FlowSignal {
 
 /// Contains data to be used when initializing the FlowModel.
 pub struct FlowModelInit {
+    pub handle: Handle,
     pub device: Arc<Device>,
     pub queue: Arc<Queue>,
     pub window: Arc<Window>,
@@ -42,19 +43,18 @@ pub struct FlowModelInit {
 /// Represents an application's data, allowing the application to receive
 /// lifecycle events. This version of `Flow` and `FlowModel` are designed to
 /// support an asynchronous application.
-#[async_trait]
 pub trait FlowModel: Sized {
-    async fn init(init: FlowModelInit) -> Self;
+    fn init(init: FlowModelInit) -> Self;
 
-    async fn event(&mut self, _event: &WindowEvent<'_>) -> Option<FlowSignal>;
+    fn event(&mut self, _event: &WindowEvent<'_>) -> Option<FlowSignal>;
 
-    async fn all_events(&mut self, _event: &Event<FlowSignal>) {}
+    fn all_events(&mut self, _event: &Event<FlowSignal>) {}
 
-    async fn update(&mut self, _update_delta: Duration) -> Option<FlowSignal>;
+    fn update(&mut self, _update_delta: Duration) -> Option<FlowSignal>;
 
-    async fn render(&mut self, _frame_view: &TextureView, _render_delta: Duration);
+    fn render(&mut self, _frame_view: &TextureView, _render_delta: Duration);
 
-    async fn shutdown(self);
+    fn shutdown(self);
 }
 
 /// Used to manage an application's control flow as well as integration with the
@@ -109,7 +109,7 @@ impl Flow {
     }
 
     /// Starts the Flow's event loop.
-    pub fn start<Model: FlowModel + Send + 'static>(self) -> Result<!, FlowStartError> {
+    pub fn start<Model: FlowModel + 'static>(self) -> Result<!, FlowStartError> {
         info!("Creating runtime...");
         let runtime = runtime::Builder::new_multi_thread().enable_all().build()?;
 
@@ -168,9 +168,9 @@ impl Flow {
         let status = Arc::new(AtomicBool::new(true));
         let poll_status = status.clone();
         let mut poll_task = Some(runtime.spawn(async move {
-            while poll_status.load(Ordering::Relaxed) {
+            while poll_status.load(Ordering::Acquire) {
                 poll_device.poll(Maintain::Poll);
-                task::yield_now().await;
+                sleep(Duration::from_millis(50)).await;
             }
         }));
 
@@ -190,6 +190,7 @@ impl Flow {
         // setup model
         info!("Creating model...");
         let init = FlowModelInit {
+            handle: runtime.handle().clone(),
             device: device.clone(),
             queue: queue.clone(),
             window: window.clone(),
@@ -197,7 +198,7 @@ impl Flow {
             frame_format: config.format,
             event_loop_proxy: event_loop.create_proxy(),
         };
-        let mut model: Option<Model> = Some(runtime.block_on(Model::init(init)));
+        let mut model: Option<Model> = Some(Model::init(init));
         let mut previous_update = SystemTime::now();
         let mut previous_render = SystemTime::now();
 
@@ -230,11 +231,7 @@ impl Flow {
                         _ => {},
                     }
 
-                    if let Some(signal) = runtime
-                        .as_ref()
-                        .unwrap()
-                        .block_on(model.as_mut().unwrap().event(event))
-                    {
+                    if let Some(signal) = model.as_mut().unwrap().event(event) {
                         match signal {
                             FlowSignal::RequestRedraw => window.request_redraw(),
                             FlowSignal::Exit => *control = ControlFlow::Exit,
@@ -249,11 +246,7 @@ impl Flow {
                     let delta = now.duration_since(previous_update).unwrap();
                     previous_update = now;
 
-                    match runtime
-                        .as_ref()
-                        .unwrap()
-                        .block_on(model.as_mut().unwrap().update(delta))
-                    {
+                    match model.as_mut().unwrap().update(delta) {
                         None | Some(FlowSignal::RequestRedraw) => window.request_redraw(),
                         Some(FlowSignal::Exit) => *control = ControlFlow::Exit,
                         Some(FlowSignal::Fullscreen(fullscreen)) => {
@@ -286,10 +279,7 @@ impl Flow {
                     if let Some(frame) = frame {
                         let view = frame.texture.create_view(&TextureViewDescriptor::default());
 
-                        runtime
-                            .as_ref()
-                            .unwrap()
-                            .block_on(model.as_mut().unwrap().render(&view, delta));
+                        model.as_mut().unwrap().render(&view, delta);
 
                         frame.present();
                     }
@@ -300,10 +290,10 @@ impl Flow {
                     let runtime = runtime.take().unwrap();
 
                     let mut model = model.take().unwrap();
-                    runtime.block_on(model.all_events(&event));
-                    runtime.block_on(model.shutdown());
+                    model.all_events(&event);
+                    model.shutdown();
 
-                    status.store(false, Ordering::Relaxed);
+                    status.store(false, Ordering::Release);
                     if let Err(e) = runtime.block_on(poll_task.take().unwrap()) {
                         error!("Error stopping device poll task: {:?}", e);
                     }
@@ -321,8 +311,8 @@ impl Flow {
                 _ => {},
             }
 
-            if let (Some(model), Some(runtime)) = (&mut model, &runtime) {
-                runtime.block_on(model.all_events(&event));
+            if let Some(model) = &mut model {
+                model.all_events(&event);
             }
         });
     }

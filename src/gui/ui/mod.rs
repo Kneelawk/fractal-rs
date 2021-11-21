@@ -13,12 +13,14 @@ use crate::{
 use egui::{CtxRef, Layout, ScrollArea};
 use egui_wgpu_backend::RenderPass;
 use std::sync::Arc;
+use tokio::runtime::Handle;
 use wgpu::{Device, Queue};
 use winit::event::VirtualKeyCode;
 
 /// Struct specifically devoted to UI rendering and state.
 pub struct FractalRSUI {
     // needed for creating new instances
+    handle: Handle,
     device: Arc<Device>,
     queue: Arc<Queue>,
 
@@ -49,6 +51,8 @@ pub struct FractalRSUI {
 
 /// Struct containing context passed when creating UIState.
 pub struct UICreationContext<'a> {
+    /// Runtime handle reference.
+    pub handle: Handle,
     /// Device reference.
     pub device: Arc<Device>,
     /// Queue reference.
@@ -79,6 +83,7 @@ impl FractalRSUI {
 
         let first_instance = UIInstance::new(UIInstanceCreationContext {
             name: "Fractal 1",
+            handle: ctx.handle.clone(),
             device: ctx.device.clone(),
             queue: ctx.queue.clone(),
             factory: factory.clone(),
@@ -87,6 +92,7 @@ impl FractalRSUI {
         });
 
         FractalRSUI {
+            handle: ctx.handle.clone(),
             device: ctx.device,
             queue: ctx.queue,
             close_requested: false,
@@ -257,6 +263,7 @@ impl FractalRSUI {
             // it.
             let new_instance = UIInstance::new(UIInstanceCreationContext {
                 name: format!("Fractal {}", self.instance_name_index),
+                handle: self.handle.clone(),
                 device: self.device.clone(),
                 queue: self.queue.clone(),
                 factory: self.factory.clone(),

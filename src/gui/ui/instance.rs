@@ -12,6 +12,7 @@ use egui::{vec2, DragValue, ProgressBar, Ui};
 use egui_wgpu_backend::RenderPass;
 use num_complex::Complex32;
 use std::{borrow::Cow, sync::Arc};
+use tokio::runtime::Handle;
 use wgpu::{Device, Queue};
 
 const MAX_CHUNK_WIDTH: usize = 256;
@@ -59,6 +60,8 @@ pub struct UIInstance {
 pub struct UIInstanceCreationContext<'a, S: ToString> {
     /// The name of this ui instance.
     pub name: S,
+    /// Runtime handle for running async tasks.
+    pub handle: Handle,
     /// Device reference.
     pub device: Arc<Device>,
     /// Queue reference.
@@ -118,7 +121,7 @@ impl UIInstance {
         let center_x = ctx.initial_settings.view.plane_start_x + plane_width / 2.0;
         let center_y = ctx.initial_settings.view.plane_start_y + plane_height / 2.0;
 
-        let manager = GeneratorManager::new(ctx.factory);
+        let manager = GeneratorManager::new(ctx.handle, ctx.factory);
 
         let viewer = FractalViewer::new(&ctx.device, ctx.render_pass, ctx.initial_settings.view);
 
