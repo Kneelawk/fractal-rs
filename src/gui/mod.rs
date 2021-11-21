@@ -49,9 +49,9 @@ struct FractalRSGuiMain {
     ui: FractalRSUI,
 }
 
-#[async_trait]
 impl FlowModel for FractalRSGuiMain {
-    async fn init(init: FlowModelInit) -> Self {
+    fn init(init: FlowModelInit) -> Self {
+        let handle = init.handle;
         let device = init.device;
         let queue = init.queue;
         let window = init.window;
@@ -74,6 +74,7 @@ impl FlowModel for FractalRSGuiMain {
 
         info!("Initializing UI State...");
         let ui = FractalRSUI::new(UICreationContext {
+            handle,
             device: device.clone(),
             queue: queue.clone(),
             render_pass: &mut render_pass,
@@ -94,7 +95,7 @@ impl FlowModel for FractalRSGuiMain {
         }
     }
 
-    async fn event(&mut self, event: &WindowEvent<'_>) -> Option<FlowSignal> {
+    fn event(&mut self, event: &WindowEvent<'_>) -> Option<FlowSignal> {
         if let WindowEvent::Resized(new_size) = event {
             self.window_size = *new_size;
         }
@@ -119,11 +120,11 @@ impl FlowModel for FractalRSGuiMain {
         None
     }
 
-    async fn all_events(&mut self, event: &Event<FlowSignal>) {
+    fn all_events(&mut self, event: &Event<FlowSignal>) {
         self.platform.handle_event(event);
     }
 
-    async fn update(&mut self, _update_delta: Duration) -> Option<FlowSignal> {
+    fn update(&mut self, _update_delta: Duration) -> Option<FlowSignal> {
         self.ui.update();
 
         if self.ui.close_requested {
@@ -140,7 +141,7 @@ impl FlowModel for FractalRSGuiMain {
         }
     }
 
-    async fn render(&mut self, frame_view: &TextureView, _render_delta: Duration) {
+    fn render(&mut self, frame_view: &TextureView, _render_delta: Duration) {
         // Setup platform for frame
         self.platform
             .update_time(self.start_time.elapsed().as_secs_f64());
@@ -205,5 +206,5 @@ impl FlowModel for FractalRSGuiMain {
         self.queue.submit(self.commands.drain(..));
     }
 
-    async fn shutdown(self) {}
+    fn shutdown(self) {}
 }
