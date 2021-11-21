@@ -1,23 +1,24 @@
 use crate::{
     generator::{
         args::{Multisampling, Smoothing},
-        manager::GeneratorManager,
+        manager::{GeneratorManager, PollError, WriteError},
         view::View,
         FractalGeneratorFactory, FractalOpts,
     },
     gui::ui::{viewer::FractalViewer, UIRenderContext},
     util::result::ResultExt,
 };
-use egui::{vec2, DragValue, ProgressBar, Ui};
+use egui::{vec2, DragValue, ProgressBar, TextEdit, Ui};
 use egui_wgpu_backend::RenderPass;
 use num_complex::Complex32;
-use std::{borrow::Cow, sync::Arc};
+use std::{borrow::Cow, path::PathBuf, sync::Arc};
 use tokio::runtime::Handle;
 use wgpu::{Device, Queue};
 
 const MAX_CHUNK_WIDTH: usize = 256;
 const MAX_CHUNK_HEIGHT: usize = 256;
 const DEFAULT_GENERATION_MESSAGE: &str = "Not Generating";
+const DEFAULT_WRITER_MESSAGE: &str = "Not Writing Image";
 
 /// The UI is broken up into instances, much like how PhotoShop has open files.
 /// These instances manage most of the UI and the actual fractal generation.
@@ -33,13 +34,19 @@ pub struct UIInstance {
     show_viewer_controls: bool,
 
     // generator controls
-    generate_fractal: bool,
+    generate_fractal: Option<GenerationType>,
+    generation_running: bool,
     generation_fraction: f32,
     generation_message: Cow<'static, str>,
+    writer_fraction: f32,
+    writer_message: Cow<'static, str>,
 
     // image controls
-    edit_fractal_width: usize,
-    edit_fractal_height: usize,
+    edit_viewer_width: usize,
+    edit_viewer_height: usize,
+    output_location: String,
+    edit_image_width: usize,
+    edit_image_height: usize,
 
     // complex plane controls
     edit_fractal_plane_width: f32,
@@ -103,7 +110,7 @@ impl Default for UIInstanceInitialSettings {
 impl UIInstanceInitialSettings {
     pub fn from_instance(instance: &UIInstance) -> Self {
         Self {
-            view: instance.fractal_view(),
+            view: instance.viewer_view(),
             mandelbrot: instance.mandelbrot,
             c: instance.c,
             iterations: instance.iterations,
@@ -132,11 +139,17 @@ impl UIInstance {
             manager,
             show_generator_controls: true,
             show_viewer_controls: true,
-            generate_fractal: false,
+            generate_fractal: None,
+            generation_running: false,
             generation_fraction: 0.0,
             generation_message: Cow::Borrowed(DEFAULT_GENERATION_MESSAGE),
-            edit_fractal_width: ctx.initial_settings.view.image_width,
-            edit_fractal_height: ctx.initial_settings.view.image_height,
+            writer_fraction: 0.0,
+            writer_message: Cow::Borrowed(DEFAULT_WRITER_MESSAGE),
+            edit_viewer_width: ctx.initial_settings.view.image_width,
+            edit_viewer_height: ctx.initial_settings.view.image_height,
+            output_location: "".to_string(),
+            edit_image_width: 1024,
+            edit_image_height: 1024,
             edit_fractal_plane_width: plane_width,
             edit_fractal_plane_centered: center_x == 0.0 && center_y == 0.0,
             edit_fractal_plane_center_x: center_x,
@@ -159,11 +172,17 @@ impl UIInstance {
     }
 
     pub fn update(&mut self) {
-        if self.generate_fractal {
-            self.generate_fractal = false;
+        if self.generate_fractal.is_some() {
+            let generation_type = self
+                .generate_fractal
+                .take()
+                .expect("Attempted to start fractal generation with None as type! (This is a bug)");
 
             if !self.manager.running() {
-                let view = self.fractal_view();
+                let view = match generation_type {
+                    GenerationType::Viewer => self.viewer_view(),
+                    GenerationType::Image => self.image_view(),
+                };
 
                 // construct the FractalOpts from UI settings
                 let opts = FractalOpts {
@@ -180,24 +199,47 @@ impl UIInstance {
                     .collect();
 
                 // start the generator
-                self.manager.start_to_gpu(
-                    opts,
-                    &views,
-                    self.device.clone(),
-                    self.queue.clone(),
-                    self.viewer.get_texture(),
-                    self.viewer.get_texture_view()
-                ).expect("Attempted to start new fractal generator while one was already running! (This is a bug)");
+                match generation_type {
+                    GenerationType::Viewer => {
+                        self.manager.start_to_gui(
+                            opts,
+                            views,
+                            self.device.clone(),
+                            self.queue.clone(),
+                            self.viewer.get_texture(),
+                            self.viewer.get_texture_view()
+                        ).expect("Attempted to start new fractal generator while one was already running! (This is a bug)");
+                    },
+                    GenerationType::Image => {
+                        self.manager.start_to_image(
+                            opts,
+                            view,
+                            views,
+                            PathBuf::from(&self.output_location)
+                        ).expect("Attempted to start a new gractal generator while one was already running! (This is a bug)");
+                    },
+                }
             }
         }
 
-        self.manager
-            .poll()
-            .on_err(|e| error!("Error polling instance manager: {:?}", e));
+        if let Err(e) = self.manager.poll() {
+            match e {
+                PollError::WriteError(WriteError::Canceled) => {
+                    info!("Image writer canceled.");
+                },
+                e @ _ => {
+                    error!("Error polling instance manager: {:?}", e);
+                },
+            }
+        }
 
+        self.generation_running = self.manager.running();
         let gen_progress = self.manager.progress();
         self.generation_fraction = gen_progress;
         self.generation_message = Cow::Owned(format!("{:.1}%", gen_progress * 100.0));
+        let writer_progress = self.manager.writer_progress();
+        self.writer_fraction = writer_progress;
+        self.writer_message = Cow::Owned(format!("{:.1}%", writer_progress * 100.0));
     }
 
     pub fn draw_window_options(&mut self, _ctx: &UIRenderContext, ui: &mut Ui) {
@@ -210,7 +252,7 @@ impl UIInstance {
         self.draw_generator_controls(ctx);
         self.draw_viewer_controls(ctx);
 
-        if self.generate_fractal {
+        if self.generate_fractal.is_some() {
             self.apply_view_settings(ctx);
         }
     }
@@ -232,7 +274,7 @@ impl UIInstance {
             .show(ctx.ctx, |ui| {
                 ui.add(ProgressBar::new(self.generation_fraction).text(&self.generation_message));
 
-                ui.add_enabled_ui(self.manager.running(), |ui| {
+                ui.add_enabled_ui(self.generation_running, |ui| {
                     if ui.button("Cancel Generation").clicked() {
                         self.manager.cancel();
                     }
@@ -243,9 +285,9 @@ impl UIInstance {
                 egui::CollapsingHeader::new("Generate to Viewer")
                     .default_open(true)
                     .show(ui, |ui| {
-                        ui.add_enabled_ui(!self.manager.running(), |ui| {
+                        ui.add_enabled_ui(!self.generation_running, |ui| {
                             if ui.button("Generate!").clicked() {
-                                self.generate_fractal = true;
+                                self.generate_fractal = Some(GenerationType::Viewer);
                             }
 
                             egui::Grid::new("generate_to_viewer.image_settings.grid").show(
@@ -253,7 +295,7 @@ impl UIInstance {
                                 |ui| {
                                     ui.label("Image Width:");
                                     ui.add(
-                                        DragValue::new(&mut self.edit_fractal_width)
+                                        DragValue::new(&mut self.edit_viewer_width)
                                             .speed(1.0)
                                             .clamp_range(2..=8192),
                                     );
@@ -261,7 +303,7 @@ impl UIInstance {
 
                                     ui.label("Image Height:");
                                     ui.add(
-                                        DragValue::new(&mut self.edit_fractal_height)
+                                        DragValue::new(&mut self.edit_viewer_height)
                                             .speed(1.0)
                                             .clamp_range(2..=8192),
                                     );
@@ -274,7 +316,45 @@ impl UIInstance {
                 egui::CollapsingHeader::new("Generate to Exported Image")
                     .default_open(false)
                     .show(ui, |ui| {
-                        ui.label("TODO");
+                        ui.add(ProgressBar::new(self.writer_fraction).text(&self.writer_message));
+
+                        ui.add_enabled_ui(!self.generation_running, |ui| {
+                            ui.add_enabled_ui(!self.output_location.is_empty(), |ui| {
+                                if ui.button("Generate!").clicked() {
+                                    self.generate_fractal = Some(GenerationType::Image);
+                                }
+                            });
+
+                            egui::Grid::new("generate_to_image.image_settings.grid")
+                                .min_col_width(100.0)
+                                .show(ui, |ui| {
+                                    ui.label("Output Location:");
+                                    ui.add(
+                                        TextEdit::singleline(&mut self.output_location)
+                                            .desired_width(100.0),
+                                    );
+                                    if ui.button("Choose File").clicked() {
+                                        // TODO: file chooser
+                                    }
+                                    ui.end_row();
+
+                                    ui.label("Image Width:");
+                                    ui.add(
+                                        DragValue::new(&mut self.edit_image_width)
+                                            .speed(1.0)
+                                            .clamp_range(2..=65536),
+                                    );
+                                    ui.end_row();
+
+                                    ui.label("Image Height:");
+                                    ui.add(
+                                        DragValue::new(&mut self.edit_image_height)
+                                            .speed(1.0)
+                                            .clamp_range(2..=65536),
+                                    );
+                                    ui.end_row();
+                                });
+                        });
                     });
 
                 ui.separator();
@@ -352,17 +432,35 @@ impl UIInstance {
             });
     }
 
-    pub fn fractal_view(&self) -> View {
+    pub fn viewer_view(&self) -> View {
         if self.edit_fractal_plane_centered {
             View::new_centered_uniform(
-                self.edit_fractal_width,
-                self.edit_fractal_height,
+                self.edit_viewer_width,
+                self.edit_viewer_height,
                 self.edit_fractal_plane_width,
             )
         } else {
             View::new_uniform(
-                self.edit_fractal_width,
-                self.edit_fractal_height,
+                self.edit_viewer_width,
+                self.edit_viewer_height,
+                self.edit_fractal_plane_width,
+                self.edit_fractal_plane_center_x,
+                self.edit_fractal_plane_center_y,
+            )
+        }
+    }
+
+    pub fn image_view(&self) -> View {
+        if self.edit_fractal_plane_centered {
+            View::new_centered_uniform(
+                self.edit_image_width,
+                self.edit_image_height,
+                self.edit_fractal_plane_width,
+            )
+        } else {
+            View::new_uniform(
+                self.edit_image_width,
+                self.edit_image_height,
                 self.edit_fractal_plane_width,
                 self.edit_fractal_plane_center_x,
                 self.edit_fractal_plane_center_y,
@@ -371,9 +469,11 @@ impl UIInstance {
     }
 
     fn apply_view_settings(&mut self, ctx: &mut UIRenderContext) {
-        self.viewer
-            .set_fractal_view(&self.device, ctx.render_pass, self.fractal_view())
-            .on_err(|e| error!("Error resizing fractal image: {:?}", e));
+        if let Some(GenerationType::Viewer) = self.generate_fractal {
+            self.viewer
+                .set_fractal_view(&self.device, ctx.render_pass, self.viewer_view())
+                .on_err(|e| error!("Error resizing fractal image: {:?}", e));
+        }
     }
 
     fn draw_viewer_controls(&mut self, ctx: &UIRenderContext) {
@@ -405,4 +505,10 @@ impl UIInstance {
                 }
             });
     }
+}
+
+#[derive(Copy, Clone)]
+enum GenerationType {
+    Viewer,
+    Image,
 }

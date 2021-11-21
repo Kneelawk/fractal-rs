@@ -13,7 +13,7 @@ use crate::{
         buffer::{BufferWrapper, Encodable},
         util::{create_texture, create_texture_buffer},
     },
-    util::display_duration,
+    util::{display_duration, running_guard::RunningGuard},
 };
 use chrono::Utc;
 use futures::{
@@ -252,6 +252,7 @@ impl FractalGenerator for GpuFractalGenerator {
 struct GpuFractalGeneratorInstance {
     view_count: usize,
     completed: Arc<AtomicUsize>,
+    running: Arc<AtomicBool>,
     canceled: Arc<AtomicBool>,
 }
 
@@ -268,8 +269,10 @@ impl GpuFractalGeneratorInstance {
         let start_time = Utc::now();
         let view_count = views.len();
         let completed = Arc::new(AtomicUsize::new(0));
+        let running = Arc::new(AtomicBool::new(true));
         let canceled = Arc::new(AtomicBool::new(false));
         let spawn_completed = completed.clone();
+        let spawn_running = running.clone();
         let spawn_canceled = canceled.clone();
 
         let (mut uniforms_buffer, uniform_bind_group) =
@@ -278,6 +281,8 @@ impl GpuFractalGeneratorInstance {
         info!("Spawning gpu manager task...");
 
         tokio::spawn(async move {
+            let _running_guard = RunningGuard::new(spawn_running);
+
             let mut buffers = HashMap::new();
 
             for view in views {
@@ -382,19 +387,23 @@ impl GpuFractalGeneratorInstance {
                     "Sending pixel block for ({}, {})...",
                     view.image_x, view.image_y
                 );
-                sender
+                if let Err(e) = sender
                     .send(Ok(PixelBlock {
                         view,
                         image: image_data.into_boxed_slice(),
                     }))
                     .await
-                    .unwrap();
+                {
+                    warn!("Unable to send pixel block! Error: {:?}", e);
+                    return;
+                }
             }
         });
 
         GpuFractalGeneratorInstance {
             view_count,
             completed,
+            running,
             canceled,
         }
     }
@@ -411,8 +420,10 @@ impl GpuFractalGeneratorInstance {
         let start_time = Utc::now();
         let view_count = views.len();
         let completed = Arc::new(AtomicUsize::new(0));
+        let running = Arc::new(AtomicBool::new(true));
         let canceled = Arc::new(AtomicBool::new(false));
         let spawn_completed = completed.clone();
+        let spawn_running = running.clone();
         let spawn_canceled = canceled.clone();
 
         let (mut uniforms_buffer, uniform_bind_group) =
@@ -421,7 +432,10 @@ impl GpuFractalGeneratorInstance {
         info!("Spawning gpu manager task...");
 
         tokio::spawn(async move {
+            let _running_guard = RunningGuard::new(spawn_running);
+
             let mut buffers = HashMap::new();
+
             for view in views {
                 if spawn_canceled.load(Ordering::Acquire) {
                     info!("Received cancel signal.");
@@ -486,6 +500,7 @@ impl GpuFractalGeneratorInstance {
         GpuFractalGeneratorInstance {
             view_count,
             completed,
+            running,
             canceled,
         }
     }
@@ -650,8 +665,6 @@ impl FractalGeneratorInstance for GpuFractalGeneratorInstance {
     }
 
     fn running(&self) -> BoxFuture<'static, anyhow::Result<bool>> {
-        ready(Ok(self.completed.load(Ordering::Acquire) < self.view_count
-            && !self.canceled.load(Ordering::Acquire)))
-        .boxed()
+        ready(Ok(self.running.load(Ordering::Acquire))).boxed()
     }
 }

@@ -4,7 +4,7 @@ use crate::{
         FractalGeneratorFactory, FractalGeneratorInstance, FractalOpts, PixelBlock,
         BYTES_PER_PIXEL,
     },
-    util::{display_duration, result::ResultExt},
+    util::{display_duration, result::ResultExt, running_guard::RunningGuard},
 };
 use cgmath::Vector4;
 use chrono::Utc;
@@ -122,6 +122,7 @@ impl FractalGenerator for CpuFractalGenerator {
 struct CpuFractalGeneratorInstance {
     view_count: usize,
     completed: Arc<AtomicUsize>,
+    running: Arc<AtomicBool>,
     canceled: Arc<AtomicBool>,
 }
 
@@ -135,8 +136,10 @@ impl CpuFractalGeneratorInstance {
         info!("Starting new CPU fractal generator...");
         let view_count = views.len();
         let completed = Arc::new(AtomicUsize::new(0));
+        let running = Arc::new(AtomicBool::new(true));
         let canceled = Arc::new(AtomicBool::new(false));
         let async_completed = completed.clone();
+        let async_running = running.clone();
         let async_canceled = canceled.clone();
 
         let sample_count = opts.multisampling.sample_count();
@@ -145,6 +148,7 @@ impl CpuFractalGeneratorInstance {
         let offsets = Arc::new(opts.multisampling.offsets());
 
         tokio::spawn(async move {
+            let _running_guard = RunningGuard::new(async_running);
             let start_time = Utc::now();
 
             for view in views {
@@ -218,12 +222,13 @@ impl CpuFractalGeneratorInstance {
                 .flatten();
 
                 if let Some(image) = res {
-                    sink.accept(PixelBlock { view, image }).await.on_err(|e| {
+                    if let Err(e) = sink.accept(PixelBlock { view, image }).await {
                         warn!(
                             "Error while submitting pixel block in CPU generator: {:?}",
                             e
-                        )
-                    });
+                        );
+                        return;
+                    }
                 }
             }
         });
@@ -233,6 +238,7 @@ impl CpuFractalGeneratorInstance {
         CpuFractalGeneratorInstance {
             view_count,
             completed,
+            running,
             canceled,
         }
     }
@@ -251,9 +257,7 @@ impl FractalGeneratorInstance for CpuFractalGeneratorInstance {
     }
 
     fn running(&self) -> BoxFuture<'static, anyhow::Result<bool>> {
-        ready(Ok(self.completed.load(Ordering::Acquire) < self.view_count
-            && !self.canceled.load(Ordering::Acquire)))
-        .boxed()
+        ready(Ok(self.running.load(Ordering::Acquire))).boxed()
     }
 }
 

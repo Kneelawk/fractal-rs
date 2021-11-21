@@ -1,12 +1,16 @@
 //! util.rs - Random utility functions for the program.
 
 pub mod result;
+pub mod running_guard;
 
 use chrono::{DateTime, Utc};
 use chrono_humanize::{Accuracy, HumanTime, Tense};
 use futures::task::Context;
 use std::{future::Future, pin::Pin, task::Poll};
-use tokio::{runtime::Handle, task::JoinHandle};
+use tokio::{
+    runtime::Handle,
+    task::{JoinError, JoinHandle},
+};
 
 #[allow(dead_code)]
 pub fn push_or_else<T, E, F: FnOnce(E)>(res: Result<T, E>, vec: &mut Vec<T>, or_else: F) {
@@ -35,14 +39,17 @@ pub fn poll_unpin<R, F: Future<Output = R> + Unpin>(handle: &Handle, future: &mu
     Pin::new(future).poll(&mut cx)
 }
 
-pub fn poll_join_result<R>(
+pub fn poll_join_result<R, E>(
     handle: &Handle,
-    future: &mut JoinHandle<anyhow::Result<R>>,
-) -> Option<anyhow::Result<R>> {
+    future: &mut JoinHandle<Result<R, E>>,
+) -> Option<Result<R, E>>
+where
+    E: From<JoinError>,
+{
     if let Poll::Ready(res) = poll_unpin(handle, future) {
         Some(match res {
             Ok(res) => res,
-            Err(err) => Err(anyhow::Error::from(err)),
+            Err(err) => Err(E::from(err)),
         })
     } else {
         None
