@@ -5,12 +5,13 @@ use crate::{
         view::View,
         FractalGeneratorFactory, FractalOpts,
     },
-    gui::ui::{viewer::FractalViewer, UIRenderContext},
+    gui::ui::{file_dialog::FileDialogWrapper, viewer::FractalViewer, UIRenderContext},
     util::result::ResultExt,
 };
 use egui::{vec2, DragValue, ProgressBar, TextEdit, Ui};
 use egui_wgpu_backend::RenderPass;
 use num_complex::Complex32;
+use rfd::AsyncFileDialog;
 use std::{borrow::Cow, path::PathBuf, sync::Arc};
 use tokio::runtime::Handle;
 use wgpu::{Device, Queue};
@@ -47,6 +48,7 @@ pub struct UIInstance {
     output_location: String,
     edit_image_width: usize,
     edit_image_height: usize,
+    file_dialog_wrapper: FileDialogWrapper,
 
     // complex plane controls
     edit_fractal_plane_width: f32,
@@ -128,7 +130,7 @@ impl UIInstance {
         let center_x = ctx.initial_settings.view.plane_start_x + plane_width / 2.0;
         let center_y = ctx.initial_settings.view.plane_start_y + plane_height / 2.0;
 
-        let manager = GeneratorManager::new(ctx.handle, ctx.factory);
+        let manager = GeneratorManager::new(ctx.handle.clone(), ctx.factory);
 
         let viewer = FractalViewer::new(&ctx.device, ctx.render_pass, ctx.initial_settings.view);
 
@@ -150,6 +152,7 @@ impl UIInstance {
             output_location: "".to_string(),
             edit_image_width: 1024,
             edit_image_height: 1024,
+            file_dialog_wrapper: FileDialogWrapper::new(ctx.handle),
             edit_fractal_plane_width: plane_width,
             edit_fractal_plane_centered: center_x == 0.0 && center_y == 0.0,
             edit_fractal_plane_center_x: center_x,
@@ -240,6 +243,13 @@ impl UIInstance {
         let writer_progress = self.manager.writer_progress();
         self.writer_fraction = writer_progress;
         self.writer_message = Cow::Owned(format!("{:.1}%", writer_progress * 100.0));
+
+        let res = self.file_dialog_wrapper.poll().flatten();
+        if let Some(file) = res {
+            // FIXME: This could break hilariously on some platforms but I don't see much
+            //  use in supporting non-Unicode right now.
+            self.output_location = file.path().to_string_lossy().to_string();
+        }
     }
 
     pub fn draw_window_options(&mut self, _ctx: &UIRenderContext, ui: &mut Ui) {
@@ -334,7 +344,12 @@ impl UIInstance {
                                             .desired_width(100.0),
                                     );
                                     if ui.button("Choose File").clicked() {
-                                        // TODO: file chooser
+                                        self.file_dialog_wrapper
+                                            .save_file(
+                                                AsyncFileDialog::new()
+                                                    .add_filter("PNG Image", &["png"]),
+                                            )
+                                            .ok();
                                     }
                                     ui.end_row();
 

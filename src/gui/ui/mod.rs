@@ -1,5 +1,6 @@
 mod instance;
 mod viewer;
+mod file_dialog;
 
 use crate::{
     generator::{
