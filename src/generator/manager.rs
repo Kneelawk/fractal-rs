@@ -8,7 +8,7 @@ use crate::{
         FractalGeneratorInstance, FractalOpts, PixelBlock,
     },
     gpu::GPUContext,
-    util::{poll_join_result, poll_optional, running_guard::RunningGuard, RunningState},
+    util::future::{future_wrapper::FutureWrapper, poll_join_result, poll_optional, RunningState},
 };
 use mtpng::{encoder, ColorType, Header};
 use std::{
@@ -58,10 +58,9 @@ pub struct GeneratorManager {
     instance_canceled: bool,
 
     // image writer stuff
-    current_image_writer: Option<JoinHandle<Result<(), WriteError>>>,
+    current_image_writer: FutureWrapper<JoinHandle<Result<(), WriteError>>>,
     image_max_y: usize,
     image_writer_progress: Arc<AtomicUsize>,
-    image_writer_running: Arc<AtomicBool>,
 }
 
 impl GeneratorManager {
@@ -81,10 +80,9 @@ impl GeneratorManager {
             progress: 0.0,
             cancel: Arc::new(AtomicBool::new(false)),
             instance_canceled: false,
-            current_image_writer: None,
+            current_image_writer: Default::default(),
             image_max_y: 0,
             image_writer_progress: Arc::new(AtomicUsize::new(0)),
-            image_writer_running: Arc::new(AtomicBool::new(false)),
         }
     }
 
@@ -92,7 +90,7 @@ impl GeneratorManager {
     pub fn running(&self) -> bool {
         self.current_instance.is_started()
             || self.generator_future.is_some()
-            || self.image_writer_running.load(Ordering::Acquire)
+            || self.current_image_writer.contains_future()
     }
 
     /// Gets this InstanceManager's FractalGeneratorInstance's current
@@ -185,15 +183,19 @@ impl GeneratorManager {
             );
 
             // start the image writer too
-            self.current_image_writer = Some(self.handle.spawn(write_to_image(
-                self.cancel.clone(),
-                self.image_writer_progress.clone(),
-                self.image_writer_running.clone(),
-                receiver,
-                parent_view,
-                child_views,
-                output,
-            )));
+            self.current_image_writer
+                .insert_spawn(
+                    &self.handle,
+                    write_to_image(
+                        self.cancel.clone(),
+                        self.image_writer_progress.clone(),
+                        receiver,
+                        parent_view,
+                        child_views,
+                        output,
+                    ),
+                )
+                .unwrap();
         }
 
         Ok(())
@@ -292,15 +294,19 @@ impl GeneratorManager {
                                     .spawn(generator.start_generation_to_cpu(&child_views, sender)),
                             );
 
-                            self.current_image_writer = Some(self.handle.spawn(write_to_image(
-                                self.cancel.clone(),
-                                self.image_writer_progress.clone(),
-                                self.image_writer_running.clone(),
-                                receiver,
-                                parent_view,
-                                child_views,
-                                output,
-                            )));
+                            self.current_image_writer
+                                .insert_spawn(
+                                    &self.handle,
+                                    write_to_image(
+                                        self.cancel.clone(),
+                                        self.image_writer_progress.clone(),
+                                        receiver,
+                                        parent_view,
+                                        child_views,
+                                        output,
+                                    ),
+                                )
+                                .unwrap();
                         }
 
                         opts
@@ -384,12 +390,8 @@ impl GeneratorManager {
         }
 
         // poll image writer join handle
-        if let Some(mut writer_future) = self.current_image_writer.take() {
-            if let Some(future_res) = poll_join_result(&self.handle, &mut writer_future) {
-                future_res?;
-            } else {
-                self.current_image_writer = Some(writer_future);
-            }
+        if let Some(writer_res) = self.current_image_writer.poll_join_result(&self.handle) {
+            writer_res?;
         }
 
         Ok(())
@@ -433,14 +435,11 @@ pub enum WriteError {
 async fn write_to_image(
     canceled: Arc<AtomicBool>,
     progress: Arc<AtomicUsize>,
-    running: Arc<AtomicBool>,
     mut receiver: Receiver<anyhow::Result<PixelBlock>>,
     parent_view: View,
     child_views: Vec<View>,
     output: PathBuf,
 ) -> Result<(), WriteError> {
-    let _running_guard = RunningGuard::new(running);
-
     if canceled.load(Ordering::Acquire) {
         return Err(WriteError::Canceled);
     }
