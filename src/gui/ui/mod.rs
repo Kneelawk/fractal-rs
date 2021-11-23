@@ -1,11 +1,12 @@
+mod file_dialog;
 mod instance;
 mod viewer;
-mod file_dialog;
 
 use crate::{
     generator::{
         cpu::CpuFractalGeneratorFactory, gpu::GpuFractalGeneratorFactory, FractalGeneratorFactory,
     },
+    gpu::GPUContext,
     gui::{
         keyboard::KeyboardTracker,
         ui::instance::{UIInstance, UIInstanceCreationContext, UIInstanceInitialSettings},
@@ -15,15 +16,13 @@ use egui::{CtxRef, Layout, ScrollArea};
 use egui_wgpu_backend::RenderPass;
 use std::sync::Arc;
 use tokio::runtime::Handle;
-use wgpu::{Device, Queue};
 use winit::event::VirtualKeyCode;
 
 /// Struct specifically devoted to UI rendering and state.
 pub struct FractalRSUI {
     // needed for creating new instances
     handle: Handle,
-    device: Arc<Device>,
-    queue: Arc<Queue>,
+    present: GPUContext,
 
     // application flow controls
     pub close_requested: bool,
@@ -54,10 +53,8 @@ pub struct FractalRSUI {
 pub struct UICreationContext<'a> {
     /// Runtime handle reference.
     pub handle: Handle,
-    /// Device reference.
-    pub device: Arc<Device>,
-    /// Queue reference.
-    pub queue: Arc<Queue>,
+    /// Presentable context.
+    pub present: GPUContext,
     /// WGPU Egui Render Pass reference for managing textures.
     pub render_pass: &'a mut RenderPass,
 }
@@ -79,23 +76,22 @@ impl FractalRSUI {
         // Set up the fractal generator factory
         info!("Creating Fractal Generator Factory...");
         let factory: Arc<dyn FractalGeneratorFactory + Send + Sync + 'static> = Arc::new(
-            GpuFractalGeneratorFactory::new(ctx.device.clone(), ctx.queue.clone()),
+            // TODO: Use `Dedicated` GPUContext here
+            GpuFractalGeneratorFactory::new(ctx.present.clone()),
         );
 
         let first_instance = UIInstance::new(UIInstanceCreationContext {
             name: "Fractal 1",
             handle: ctx.handle.clone(),
-            device: ctx.device.clone(),
-            queue: ctx.queue.clone(),
+            present: ctx.present.clone(),
             factory: factory.clone(),
             render_pass: ctx.render_pass,
             initial_settings: Default::default(),
         });
 
         FractalRSUI {
-            handle: ctx.handle.clone(),
-            device: ctx.device,
-            queue: ctx.queue,
+            handle: ctx.handle,
+            present: ctx.present,
             close_requested: false,
             previous_fullscreen: false,
             request_fullscreen: false,
@@ -103,7 +99,7 @@ impl FractalRSUI {
             show_ui_settings: false,
             current_generator_type: GeneratorType::GPU,
             new_generator_type: GeneratorType::GPU,
-            factory: factory.clone(),
+            factory,
             instances: vec![first_instance],
             current_instance: 0,
             new_instance_requested: false,
@@ -119,10 +115,9 @@ impl FractalRSUI {
 
             self.factory = match self.new_generator_type {
                 GeneratorType::CPU => Arc::new(CpuFractalGeneratorFactory::new(num_cpus::get())),
-                GeneratorType::GPU => Arc::new(GpuFractalGeneratorFactory::new(
-                    self.device.clone(),
-                    self.queue.clone(),
-                )),
+                GeneratorType::GPU => {
+                    Arc::new(GpuFractalGeneratorFactory::new(self.present.clone()))
+                },
             };
 
             // update the factories for all existing instances
@@ -265,8 +260,7 @@ impl FractalRSUI {
             let new_instance = UIInstance::new(UIInstanceCreationContext {
                 name: format!("Fractal {}", self.instance_name_index),
                 handle: self.handle.clone(),
-                device: self.device.clone(),
-                queue: self.queue.clone(),
+                present: self.present.clone(),
                 factory: self.factory.clone(),
                 render_pass: ctx.render_pass,
                 initial_settings,

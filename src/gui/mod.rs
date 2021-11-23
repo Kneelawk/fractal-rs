@@ -1,9 +1,12 @@
 //! gui/mod.rs - This is where the GUI-based core application logic happens.
 
-use crate::gui::{
-    flow::{Flow, FlowModel, FlowModelInit, FlowSignal},
-    keyboard::KeyboardTracker,
-    ui::{FractalRSUI, UICreationContext, UIRenderContext},
+use crate::{
+    gpu::GPUContext,
+    gui::{
+        flow::{Flow, FlowModel, FlowModelInit, FlowSignal},
+        keyboard::KeyboardTracker,
+        ui::{FractalRSUI, UICreationContext, UIRenderContext},
+    },
 };
 use egui_wgpu_backend::{RenderPass, ScreenDescriptor};
 use egui_winit_platform::{Platform, PlatformDescriptor};
@@ -11,7 +14,7 @@ use std::{
     sync::Arc,
     time::{Duration, Instant},
 };
-use wgpu::{Color, CommandBuffer, CommandEncoderDescriptor, Device, Queue, TextureView};
+use wgpu::{Color, CommandBuffer, CommandEncoderDescriptor, TextureView};
 use winit::{
     dpi::PhysicalSize,
     event::{Event, WindowEvent},
@@ -34,8 +37,7 @@ pub fn start_gui_application() -> ! {
 
 struct FractalRSGuiMain {
     // initialization state
-    device: Arc<Device>,
-    queue: Arc<Queue>,
+    present: GPUContext,
     window: Arc<Window>,
     window_size: PhysicalSize<u32>,
     scale_factor: f64,
@@ -52,8 +54,7 @@ struct FractalRSGuiMain {
 impl FlowModel for FractalRSGuiMain {
     fn init(init: FlowModelInit) -> Self {
         let handle = init.handle;
-        let device = init.device;
-        let queue = init.queue;
+        let present = init.present;
         let window = init.window;
         let window_size = init.window_size;
         let scale_factor = window.scale_factor();
@@ -70,19 +71,17 @@ impl FlowModel for FractalRSGuiMain {
             style: Default::default(),
         });
 
-        let mut render_pass = RenderPass::new(&device, frame_format, 1);
+        let mut render_pass = RenderPass::new(&present.device, frame_format, 1);
 
         info!("Initializing UI State...");
         let ui = FractalRSUI::new(UICreationContext {
             handle,
-            device: device.clone(),
-            queue: queue.clone(),
+            present: present.clone(),
             render_pass: &mut render_pass,
         });
 
         FractalRSGuiMain {
-            device,
-            queue,
+            present,
             window,
             window_size,
             scale_factor,
@@ -169,16 +168,21 @@ impl FlowModel for FractalRSGuiMain {
             scale_factor: self.scale_factor as f32,
         };
         self.render_pass.update_texture(
-            &self.device,
-            &self.queue,
+            &self.present.device,
+            &self.present.queue,
             &self.platform.context().texture(),
         );
         self.render_pass
-            .update_user_textures(&self.device, &self.queue);
-        self.render_pass
-            .update_buffers(&self.device, &self.queue, &paint_jobs, &screen_descriptor);
+            .update_user_textures(&self.present.device, &self.present.queue);
+        self.render_pass.update_buffers(
+            &self.present.device,
+            &self.present.queue,
+            &paint_jobs,
+            &screen_descriptor,
+        );
 
         let mut encoder = self
+            .present
             .device
             .create_command_encoder(&CommandEncoderDescriptor {
                 label: Some("UI Render Encoder"),
@@ -203,7 +207,7 @@ impl FlowModel for FractalRSGuiMain {
         self.commands.push(encoder.finish());
 
         // Submit all commands encoded since the last frame
-        self.queue.submit(self.commands.drain(..));
+        self.present.queue.submit(self.commands.drain(..));
     }
 
     fn shutdown(self) {}

@@ -4,6 +4,7 @@ use crate::{
         FractalGeneratorFactory, FractalGeneratorInstance, FractalOpts, PixelBlock,
         BYTES_PER_PIXEL,
     },
+    gpu::{GPUContext, GPUContextType},
     util::{display_duration, result::ResultExt, running_guard::RunningGuard},
 };
 use cgmath::Vector4;
@@ -26,7 +27,7 @@ use std::{
 };
 use tokio::{sync::mpsc::Sender, task};
 use wgpu::{
-    Device, Extent3d, ImageCopyTexture, ImageDataLayout, Origin3d, Queue, Texture, TextureAspect,
+    Extent3d, ImageCopyTexture, ImageDataLayout, Origin3d, Queue, Texture, TextureAspect,
     TextureView,
 };
 
@@ -100,17 +101,25 @@ impl FractalGenerator for CpuFractalGenerator {
     fn start_generation_to_gpu(
         &self,
         views: &[View],
-        _device: Arc<Device>,
-        queue: Arc<Queue>,
+        present: GPUContext,
         texture: Arc<Texture>,
         _texture_view: Arc<TextureView>,
     ) -> BoxFuture<'static, anyhow::Result<Box<dyn FractalGeneratorInstance + Send + 'static>>>
     {
+        assert_eq!(
+            present.ty,
+            GPUContextType::Presentable,
+            "To-GPU GPUContext.ty must be GPUContextType::Presentable (this is a bug)"
+        );
+
         let thread_pool = self.thread_pool.clone();
         let views = views.to_vec();
         let opts = self.opts.clone();
         async move {
-            let sink = GpuPixelBlockSink { queue, texture };
+            let sink = GpuPixelBlockSink {
+                queue: present.queue,
+                texture,
+            };
             let boxed: Box<dyn FractalGeneratorInstance + Send> =
                 Box::new(CpuFractalGeneratorInstance::start(thread_pool, views, sink, opts).await);
             Ok(boxed)

@@ -7,6 +7,7 @@ use crate::{
         row_stitcher::RowStitcher, view::View, FractalGenerator, FractalGeneratorFactory,
         FractalGeneratorInstance, FractalOpts, PixelBlock,
     },
+    gpu::GPUContext,
     util::{poll_join_result, poll_optional, running_guard::RunningGuard, RunningState},
 };
 use mtpng::{encoder, ColorType, Header};
@@ -26,7 +27,7 @@ use tokio::{
     sync::{mpsc, mpsc::Receiver},
     task::{JoinError, JoinHandle},
 };
-use wgpu::{Device, Queue, Texture, TextureView};
+use wgpu::{Texture, TextureView};
 
 const MAX_CHUNK_BACKLOG: usize = 32;
 
@@ -214,8 +215,7 @@ impl GeneratorManager {
         &mut self,
         opts: FractalOpts,
         views: Vec<View>,
-        device: Arc<Device>,
-        queue: Arc<Queue>,
+        present: GPUContext,
         texture: Arc<Texture>,
         texture_view: Arc<TextureView>,
     ) -> Result<(), ViewerStartError> {
@@ -233,8 +233,7 @@ impl GeneratorManager {
             self.start_with_new_generator(StartArgs::GPU {
                 opts,
                 views,
-                device,
-                queue,
+                present,
                 texture,
                 texture_view,
             });
@@ -246,7 +245,7 @@ impl GeneratorManager {
                         .as_ref()
                         .unwrap()
                         .1
-                        .start_generation_to_gpu(&views, device, queue, texture, texture_view),
+                        .start_generation_to_gpu(&views, present, texture, texture_view),
                 ),
             );
         }
@@ -309,8 +308,7 @@ impl GeneratorManager {
                     StartArgs::GPU {
                         opts,
                         views,
-                        device,
-                        queue,
+                        present,
                         texture,
                         texture_view,
                     } => {
@@ -318,8 +316,7 @@ impl GeneratorManager {
                             self.current_instance = RunningState::Starting(self.handle.spawn(
                                 generator.start_generation_to_gpu(
                                     &views,
-                                    device,
-                                    queue,
+                                    present,
                                     texture,
                                     texture_view,
                                 ),
@@ -541,8 +538,7 @@ enum StartArgs {
     GPU {
         opts: FractalOpts,
         views: Vec<View>,
-        device: Arc<Device>,
-        queue: Arc<Queue>,
+        present: GPUContext,
         texture: Arc<Texture>,
         texture_view: Arc<TextureView>,
     },

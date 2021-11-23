@@ -1,5 +1,6 @@
 #![allow(dead_code)]
 
+use crate::gpu::{GPUContext, GPUContextType};
 use std::{
     io,
     sync::{
@@ -10,7 +11,7 @@ use std::{
 };
 use tokio::{runtime, runtime::Handle, time::sleep};
 use wgpu::{
-    Backends, Device, DeviceDescriptor, Instance, Maintain, PowerPreference, PresentMode, Queue,
+    Backends, DeviceDescriptor, Instance, Maintain, PowerPreference, PresentMode,
     RequestAdapterOptions, RequestDeviceError, SurfaceConfiguration, SurfaceError, TextureFormat,
     TextureUsages, TextureView, TextureViewDescriptor,
 };
@@ -32,8 +33,8 @@ pub enum FlowSignal {
 /// Contains data to be used when initializing the FlowModel.
 pub struct FlowModelInit {
     pub handle: Handle,
-    pub device: Arc<Device>,
-    pub queue: Arc<Queue>,
+    pub instance: Arc<Instance>,
+    pub present: GPUContext,
     pub window: Arc<Window>,
     pub window_size: PhysicalSize<u32>,
     pub frame_format: TextureFormat,
@@ -135,7 +136,7 @@ impl Flow {
         let window_size = window.inner_size();
 
         info!("Creating instance...");
-        let instance = Instance::new(Backends::PRIMARY);
+        let instance = Arc::new(Instance::new(Backends::PRIMARY));
 
         info!("Creating surface...");
         let surface = unsafe { instance.create_surface(window.as_ref()) };
@@ -143,8 +144,7 @@ impl Flow {
         info!("Requesting adapter...");
         let adapter = runtime
             .block_on(instance.request_adapter(&RequestAdapterOptions {
-                // We will be doing quite a lot of calculation on the GPU, might as well warn it.
-                power_preference: PowerPreference::HighPerformance,
+                power_preference: PowerPreference::default(),
                 force_fallback_adapter: false,
                 compatible_surface: Some(&surface),
             }))
@@ -191,8 +191,12 @@ impl Flow {
         info!("Creating model...");
         let init = FlowModelInit {
             handle: runtime.handle().clone(),
-            device: device.clone(),
-            queue: queue.clone(),
+            instance: instance.clone(),
+            present: GPUContext {
+                device: device.clone(),
+                queue: queue.clone(),
+                ty: GPUContextType::Presentable,
+            },
             window: window.clone(),
             window_size,
             frame_format: config.format,

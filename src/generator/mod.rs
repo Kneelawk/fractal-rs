@@ -34,9 +34,12 @@ pub mod row_stitcher;
 pub mod util;
 pub mod view;
 
-use crate::generator::{
-    args::{Multisampling, Smoothing},
-    view::View,
+use crate::{
+    generator::{
+        args::{Multisampling, Smoothing},
+        view::View,
+    },
+    gpu::GPUContext,
 };
 use futures::future::BoxFuture;
 use num_complex::Complex;
@@ -46,7 +49,7 @@ use std::{
     sync::Arc,
 };
 use tokio::sync::mpsc::Sender;
-use wgpu::{Device, Queue, Texture, TextureView};
+use wgpu::{Texture, TextureView};
 
 pub const BYTES_PER_PIXEL: usize = size_of::<u32>();
 
@@ -117,11 +120,13 @@ pub trait FractalGenerator {
     /// Starts the generation of a fractal. This variant writes fractal image
     /// data directly to a gpu-side image instead of sending it as cpu-side
     /// pixel blocks.
+    ///
+    /// # Panics
+    /// This can panic if `present.ty != GPUContextType::Presentable`.
     fn start_generation_to_gpu(
         &self,
         views: &[View],
-        device: Arc<Device>,
-        queue: Arc<Queue>,
+        present: GPUContext,
         texture: Arc<Texture>,
         texture_view: Arc<TextureView>,
     ) -> BoxFuture<'static, anyhow::Result<Box<dyn FractalGeneratorInstance + Send + 'static>>>;

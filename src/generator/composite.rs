@@ -2,11 +2,14 @@
 // Note: https://doc.rust-lang.org/std/collections/struct.BinaryHeap.html
 // Note: https://docs.rs/futures/0.3.12/futures/future/fn.join_all.html
 
-use crate::generator::{view::View, FractalGenerator, FractalGeneratorInstance, PixelBlock};
+use crate::{
+    generator::{view::View, FractalGenerator, FractalGeneratorInstance, PixelBlock},
+    gpu::GPUContext,
+};
 use futures::{future::BoxFuture, FutureExt};
 use std::sync::Arc;
 use tokio::sync::mpsc::Sender;
-use wgpu::{Device, Queue, Texture, TextureView};
+use wgpu::{Texture, TextureView};
 
 pub struct CompositeFractalGenerator {
     generators: Vec<Box<dyn FractalGenerator + Send + Sync>>,
@@ -42,8 +45,7 @@ impl FractalGenerator for CompositeFractalGenerator {
     fn start_generation_to_gpu(
         &self,
         _views: &[View],
-        _device: Arc<Device>,
-        _queue: Arc<Queue>,
+        _present: GPUContext,
         _texture: Arc<Texture>,
         _texture_view: Arc<TextureView>,
     ) -> BoxFuture<'static, anyhow::Result<Box<dyn FractalGeneratorInstance + Send + 'static>>>

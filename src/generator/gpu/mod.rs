@@ -12,6 +12,7 @@ use crate::{
     gpu::{
         buffer::{BufferWrapper, Encodable},
         util::{create_texture, create_texture_buffer},
+        GPUContext, GPUContextType,
     },
     util::{display_duration, running_guard::RunningGuard},
 };
@@ -36,7 +37,7 @@ use wgpu::{
     CommandBuffer, CommandEncoder, CommandEncoderDescriptor, Device, Extent3d, Face, FragmentState,
     FrontFace, ImageCopyBuffer, ImageCopyTexture, ImageDataLayout, LoadOp, MapMode,
     MultisampleState, Operations, Origin3d, PipelineLayout, PipelineLayoutDescriptor, PolygonMode,
-    PrimitiveState, PrimitiveTopology, Queue, RenderPassColorAttachment, RenderPassDescriptor,
+    PrimitiveState, PrimitiveTopology, RenderPassColorAttachment, RenderPassDescriptor,
     RenderPipeline, RenderPipelineDescriptor, ShaderModuleDescriptor, ShaderStages, Texture,
     TextureAspect, TextureFormat, TextureUsages, TextureView, VertexState,
 };
@@ -45,17 +46,16 @@ mod shader;
 mod uniforms;
 
 pub struct GpuFractalGeneratorFactory {
-    device: Arc<Device>,
-    queue: Arc<Queue>,
+    gpu: GPUContext,
     uniform_bind_group_layout: Arc<BindGroupLayout>,
     render_pipeline_layout: Arc<PipelineLayout>,
 }
 
 impl GpuFractalGeneratorFactory {
-    pub fn new(device: Arc<Device>, queue: Arc<Queue>) -> GpuFractalGeneratorFactory {
+    pub fn new(gpu: GPUContext) -> GpuFractalGeneratorFactory {
         info!("Creating uniform bind group layout...");
-        let uniform_bind_group_layout =
-            Arc::new(device.create_bind_group_layout(&BindGroupLayoutDescriptor {
+        let uniform_bind_group_layout = Arc::new(gpu.device.create_bind_group_layout(
+            &BindGroupLayoutDescriptor {
                 label: Some("Uniform Bind Group Layout"),
                 entries: &[BindGroupLayoutEntry {
                     binding: 0,
@@ -67,19 +67,20 @@ impl GpuFractalGeneratorFactory {
                     },
                     count: None,
                 }],
-            }));
+            },
+        ));
 
         info!("Creating render pipeline layout...");
-        let render_pipeline_layout =
-            Arc::new(device.create_pipeline_layout(&PipelineLayoutDescriptor {
+        let render_pipeline_layout = Arc::new(gpu.device.create_pipeline_layout(
+            &PipelineLayoutDescriptor {
                 label: Some("Render Pipeline Layout"),
                 bind_group_layouts: &[&uniform_bind_group_layout],
                 push_constant_ranges: &[],
-            }));
+            },
+        ));
 
         GpuFractalGeneratorFactory {
-            device,
-            queue,
+            gpu,
             uniform_bind_group_layout,
             render_pipeline_layout,
         }
@@ -91,8 +92,7 @@ impl FractalGeneratorFactory for GpuFractalGeneratorFactory {
         &self,
         opts: FractalOpts,
     ) -> BoxFuture<'static, anyhow::Result<Box<dyn FractalGenerator + Send + 'static>>> {
-        let device = self.device.clone();
-        let queue = self.queue.clone();
+        let gpu = self.gpu.clone();
         let uniform_bind_group_layout = self.uniform_bind_group_layout.clone();
         let render_pipeline_layout = self.render_pipeline_layout.clone();
 
@@ -100,8 +100,7 @@ impl FractalGeneratorFactory for GpuFractalGeneratorFactory {
             let boxed: Box<dyn FractalGenerator + Send> = Box::new(
                 GpuFractalGenerator::new(
                     opts,
-                    device,
-                    queue,
+                    gpu,
                     uniform_bind_group_layout,
                     render_pipeline_layout,
                 )
@@ -115,8 +114,7 @@ impl FractalGeneratorFactory for GpuFractalGeneratorFactory {
 
 pub struct GpuFractalGenerator {
     opts: FractalOpts,
-    device: Arc<Device>,
-    queue: Arc<Queue>,
+    gpu: GPUContext,
     uniform_bind_group_layout: Arc<BindGroupLayout>,
     render_pipeline: Arc<RenderPipeline>,
 }
@@ -124,57 +122,57 @@ pub struct GpuFractalGenerator {
 impl GpuFractalGenerator {
     async fn new(
         opts: FractalOpts,
-        device: Arc<Device>,
-        queue: Arc<Queue>,
+        gpu: GPUContext,
         uniform_bind_group_layout: Arc<BindGroupLayout>,
         render_pipeline_layout: Arc<PipelineLayout>,
     ) -> anyhow::Result<GpuFractalGenerator> {
         info!("Creating shader module...");
         let shader = load_shaders(opts).await?;
-        let module = device.create_shader_module(&ShaderModuleDescriptor {
+        let module = gpu.device.create_shader_module(&ShaderModuleDescriptor {
             label: Some("Vertex Shader"),
             source: shader,
         });
 
         info!("Creating render pipeline...");
-        let render_pipeline = Arc::new(device.create_render_pipeline(&RenderPipelineDescriptor {
-            label: Some("Render Pipeline"),
-            layout: Some(&render_pipeline_layout),
-            vertex: VertexState {
-                module: &module,
-                entry_point: "vert_main",
-                buffers: &[],
+        let render_pipeline = Arc::new(gpu.device.create_render_pipeline(
+            &RenderPipelineDescriptor {
+                label: Some("Render Pipeline"),
+                layout: Some(&render_pipeline_layout),
+                vertex: VertexState {
+                    module: &module,
+                    entry_point: "vert_main",
+                    buffers: &[],
+                },
+                fragment: Some(FragmentState {
+                    module: &module,
+                    entry_point: "frag_main",
+                    targets: &[ColorTargetState {
+                        format: TextureFormat::Rgba8Unorm,
+                        blend: Some(BlendState::REPLACE),
+                        write_mask: ColorWrites::ALL,
+                    }],
+                }),
+                primitive: PrimitiveState {
+                    topology: PrimitiveTopology::TriangleList,
+                    strip_index_format: None,
+                    front_face: FrontFace::Ccw,
+                    cull_mode: Some(Face::Back),
+                    clamp_depth: false,
+                    polygon_mode: PolygonMode::Fill,
+                    conservative: false,
+                },
+                depth_stencil: None,
+                multisample: MultisampleState {
+                    count: 1,
+                    mask: !0,
+                    alpha_to_coverage_enabled: false,
+                },
             },
-            fragment: Some(FragmentState {
-                module: &module,
-                entry_point: "frag_main",
-                targets: &[ColorTargetState {
-                    format: TextureFormat::Rgba8Unorm,
-                    blend: Some(BlendState::REPLACE),
-                    write_mask: ColorWrites::ALL,
-                }],
-            }),
-            primitive: PrimitiveState {
-                topology: PrimitiveTopology::TriangleList,
-                strip_index_format: None,
-                front_face: FrontFace::Ccw,
-                cull_mode: Some(Face::Back),
-                clamp_depth: false,
-                polygon_mode: PolygonMode::Fill,
-                conservative: false,
-            },
-            depth_stencil: None,
-            multisample: MultisampleState {
-                count: 1,
-                mask: !0,
-                alpha_to_coverage_enabled: false,
-            },
-        }));
+        ));
 
         Ok(GpuFractalGenerator {
             opts,
-            device,
-            queue,
+            gpu,
             uniform_bind_group_layout,
             render_pipeline,
         })
@@ -194,8 +192,7 @@ impl FractalGenerator for GpuFractalGenerator {
     {
         // This future must be 'static so we need to copy everything or use Arcs.
         let opts = self.opts;
-        let device = self.device.clone();
-        let queue = self.queue.clone();
+        let gpu = self.gpu.clone();
         let uniform_bind_group_layout = self.uniform_bind_group_layout.clone();
         let render_pipeline = self.render_pipeline.clone();
         let views = views.to_vec();
@@ -204,8 +201,7 @@ impl FractalGenerator for GpuFractalGenerator {
             let boxed: Box<dyn FractalGeneratorInstance + Send> =
                 Box::new(GpuFractalGeneratorInstance::start_to_cpu(
                     opts,
-                    device,
-                    queue,
+                    gpu,
                     uniform_bind_group_layout,
                     render_pipeline,
                     views,
@@ -219,15 +215,19 @@ impl FractalGenerator for GpuFractalGenerator {
     fn start_generation_to_gpu(
         &self,
         views: &[View],
-        _device: Arc<Device>,
-        _queue: Arc<Queue>,
+        present: GPUContext,
         texture: Arc<Texture>,
         _texture_view: Arc<TextureView>,
     ) -> BoxFuture<'static, anyhow::Result<Box<dyn FractalGeneratorInstance + Send + 'static>>>
     {
+        assert_eq!(
+            present.ty,
+            GPUContextType::Presentable,
+            "To-GPU GPUContext.ty must be GPUContextType::Presentable (this is a bug)"
+        );
+
         let opts = self.opts;
-        let device = self.device.clone();
-        let queue = self.queue.clone();
+        let gpu = self.gpu.clone();
         let uniform_bind_group_layout = self.uniform_bind_group_layout.clone();
         let render_pipeline = self.render_pipeline.clone();
         let views = views.to_vec();
@@ -236,8 +236,8 @@ impl FractalGenerator for GpuFractalGenerator {
             let boxed: Box<dyn FractalGeneratorInstance + Send> =
                 Box::new(GpuFractalGeneratorInstance::start_to_gpu(
                     opts,
-                    device,
-                    queue,
+                    gpu,
+                    present,
                     uniform_bind_group_layout,
                     render_pipeline,
                     views,
@@ -259,8 +259,7 @@ struct GpuFractalGeneratorInstance {
 impl GpuFractalGeneratorInstance {
     fn start_to_cpu(
         _opts: FractalOpts,
-        device: Arc<Device>,
-        queue: Arc<Queue>,
+        gpu: GPUContext,
         uniform_bind_group_layout: Arc<BindGroupLayout>,
         render_pipeline: Arc<RenderPipeline>,
         views: Vec<View>,
@@ -276,11 +275,12 @@ impl GpuFractalGeneratorInstance {
         let spawn_canceled = canceled.clone();
 
         let (mut uniforms_buffer, uniform_bind_group) =
-            setup_uniforms(&device, &uniform_bind_group_layout);
+            setup_uniforms(&gpu.device, &uniform_bind_group_layout);
 
         info!("Spawning gpu manager task...");
 
         tokio::spawn(async move {
+            let _gpu = &gpu;
             let _running_guard = RunningGuard::new(spawn_running);
 
             let mut buffers = HashMap::new();
@@ -292,18 +292,20 @@ impl GpuFractalGeneratorInstance {
                 }
 
                 let (texture_width, texture_height, texture, texture_view, buffer) =
-                    find_texture_buffer_for_view(&device, &mut buffers, view);
+                    find_texture_buffer_for_view(&gpu.device, &mut buffers, view);
 
-                let uniforms_cb = write_uniforms(&device, &mut uniforms_buffer, view).await;
+                let uniforms_cb = write_uniforms(&gpu.device, &mut uniforms_buffer, view).await;
 
                 {
                     info!(
                         "Encoding render command buffer for ({}, {})...",
                         view.image_x, view.image_y
                     );
-                    let mut encoder = device.create_command_encoder(&CommandEncoderDescriptor {
-                        label: Some("Render Command Encoder"),
-                    });
+                    let mut encoder =
+                        gpu.device
+                            .create_command_encoder(&CommandEncoderDescriptor {
+                                label: Some("Render Command Encoder"),
+                            });
 
                     encode_render_pass(
                         &render_pipeline,
@@ -341,7 +343,7 @@ impl GpuFractalGeneratorInstance {
                         "Submitting command buffers for ({}, {})...",
                         view.image_x, view.image_y
                     );
-                    queue.submit([uniforms_cb, encoder.finish()]);
+                    gpu.queue.submit([uniforms_cb, encoder.finish()]);
                 }
 
                 let mut image_data =
@@ -410,8 +412,8 @@ impl GpuFractalGeneratorInstance {
 
     fn start_to_gpu(
         _opts: FractalOpts,
-        device: Arc<Device>,
-        queue: Arc<Queue>,
+        gpu: GPUContext,
+        _present: GPUContext,
         uniform_bind_group_layout: Arc<BindGroupLayout>,
         render_pipeline: Arc<RenderPipeline>,
         views: Vec<View>,
@@ -427,13 +429,16 @@ impl GpuFractalGeneratorInstance {
         let spawn_canceled = canceled.clone();
 
         let (mut uniforms_buffer, uniform_bind_group) =
-            setup_uniforms(&device, &uniform_bind_group_layout);
+            setup_uniforms(&gpu.device, &uniform_bind_group_layout);
 
         info!("Spawning gpu manager task...");
 
         tokio::spawn(async move {
+            let _gpu = &gpu;
             let _running_guard = RunningGuard::new(spawn_running);
 
+            // TODO: split this because copying from `Dedicated` device to `Presentable`
+            //  device will need more buffers.
             let mut buffers = HashMap::new();
 
             for view in views {
@@ -442,18 +447,21 @@ impl GpuFractalGeneratorInstance {
                     return;
                 }
 
-                let (texture, texture_view) = find_texture_for_view(&device, &mut buffers, view);
+                let (texture, texture_view) =
+                    find_texture_for_view(&gpu.device, &mut buffers, view);
 
-                let uniforms_cb = write_uniforms(&device, &mut uniforms_buffer, view).await;
+                let uniforms_cb = write_uniforms(&gpu.device, &mut uniforms_buffer, view).await;
 
                 {
                     info!(
                         "Encoding render command buffer for ({}, {})...",
                         view.image_x, view.image_y
                     );
-                    let mut encoder = device.create_command_encoder(&CommandEncoderDescriptor {
-                        label: Some("Render Command Encoder"),
-                    });
+                    let mut encoder =
+                        gpu.device
+                            .create_command_encoder(&CommandEncoderDescriptor {
+                                label: Some("Render Command Encoder"),
+                            });
 
                     encode_render_pass(
                         &render_pipeline,
@@ -462,6 +470,8 @@ impl GpuFractalGeneratorInstance {
                         &mut encoder,
                     );
 
+                    // TODO: Only copy textures directly if `gpu` is a `Presentable` context,
+                    //  otherwise copy to CPU and use `present` to copy to `Presentable` device.
                     encoder.copy_texture_to_texture(
                         ImageCopyTexture {
                             texture,
@@ -486,7 +496,7 @@ impl GpuFractalGeneratorInstance {
                         },
                     );
 
-                    queue.submit([uniforms_cb, encoder.finish()]);
+                    gpu.queue.submit([uniforms_cb, encoder.finish()]);
                 }
 
                 let completed = spawn_completed.fetch_add(1, Ordering::AcqRel) + 1;
