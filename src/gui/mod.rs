@@ -74,12 +74,12 @@ impl FlowModel for FractalRSGuiMain {
         let mut render_pass = RenderPass::new(&present.device, frame_format, 1);
 
         info!("Initializing UI State...");
-        let ui = handle.block_on(FractalRSUI::new(UICreationContext {
+        let ui = FractalRSUI::new(UICreationContext {
             instance: init.instance,
             handle: handle.clone(),
             present: present.clone(),
             render_pass: &mut render_pass,
-        }));
+        });
 
         FractalRSGuiMain {
             present,

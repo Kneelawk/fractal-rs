@@ -94,10 +94,10 @@ pub struct UIRenderContext<'a> {
 impl FractalRSUI {
     /// Create a new UIState, making sure to initialize all required textures
     /// and such.
-    pub async fn new(ctx: UICreationContext<'_>) -> FractalRSUI {
+    pub fn new(ctx: UICreationContext<'_>) -> FractalRSUI {
         // Set up the fractal generator factory
         info!("Creating Fractal Generator Factory...");
-        let (factory, gpu_poll) = create_gpu_factory(ctx.instance.clone()).await;
+        let factory = Arc::new(GpuFractalGeneratorFactory::new(ctx.present.clone()));
 
         let first_instance = UIInstance::new(UIInstanceCreationContext {
             name: "Fractal 1",
@@ -116,13 +116,13 @@ impl FractalRSUI {
             request_fullscreen: false,
             show_app_settings: false,
             show_ui_settings: false,
-            current_generator_type: GeneratorType::DedicatedGPU,
-            new_generator_type: GeneratorType::DedicatedGPU,
+            current_generator_type: GeneratorType::PresentGPU,
+            new_generator_type: GeneratorType::PresentGPU,
             chunk_size_power: 8,
             instance: ctx.instance,
             factory_future: Default::default(),
             factory,
-            gpu_poll: Some(gpu_poll),
+            gpu_poll: None,
             instances: vec![first_instance],
             current_instance: 0,
             new_instance_requested: false,
@@ -297,7 +297,7 @@ impl FractalRSUI {
                     multiple GPUs. All this option does is have the generator use a separate \
                     logical device from the display. This device has a much higher poll-rate, \
                     meaning that it can generate faster, but having it enabled causes the \
-                    application to use more CPU",
+                    application to use more CPU.",
                 );
 
                 ui.add(Label::new("Chunk Size:").heading());
