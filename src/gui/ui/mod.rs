@@ -1,29 +1,39 @@
+mod file_dialog;
 mod instance;
 mod viewer;
-mod file_dialog;
 
 use crate::{
     generator::{
         cpu::CpuFractalGeneratorFactory, gpu::GpuFractalGeneratorFactory, FractalGeneratorFactory,
     },
+    gpu::{GPUContext, GPUContextType},
     gui::{
         keyboard::KeyboardTracker,
-        ui::instance::{UIInstance, UIInstanceCreationContext, UIInstanceInitialSettings},
+        ui::instance::{
+            UIInstance, UIInstanceCreationContext, UIInstanceInitialSettings,
+            UIInstanceUpdateContext,
+        },
     },
+    util::{future::future_wrapper::FutureWrapper, running_guard::RunningGuard},
 };
-use egui::{CtxRef, Layout, ScrollArea};
+use egui::{CtxRef, DragValue, Label, Layout, ScrollArea};
 use egui_wgpu_backend::RenderPass;
-use std::sync::Arc;
-use tokio::runtime::Handle;
-use wgpu::{Device, Queue};
+use std::sync::{
+    atomic::{AtomicBool, Ordering},
+    Arc,
+};
+use tokio::{
+    runtime::Handle,
+    task::{yield_now, JoinHandle},
+};
+use wgpu::{DeviceDescriptor, Instance, Maintain, PowerPreference, RequestAdapterOptions};
 use winit::event::VirtualKeyCode;
 
 /// Struct specifically devoted to UI rendering and state.
 pub struct FractalRSUI {
     // needed for creating new instances
     handle: Handle,
-    device: Arc<Device>,
-    queue: Arc<Queue>,
+    present: GPUContext,
 
     // application flow controls
     pub close_requested: bool,
@@ -39,9 +49,18 @@ pub struct FractalRSUI {
     // settings
     current_generator_type: GeneratorType,
     new_generator_type: GeneratorType,
+    chunk_size_power: usize,
 
     // generator stuff
+    instance: Arc<Instance>,
+    factory_future: FutureWrapper<
+        JoinHandle<(
+            Arc<dyn FractalGeneratorFactory + Send + Sync + 'static>,
+            RunningGuard,
+        )>,
+    >,
     factory: Arc<dyn FractalGeneratorFactory + Send + Sync + 'static>,
+    gpu_poll: Option<RunningGuard>,
 
     // instances
     instances: Vec<UIInstance>,
@@ -52,12 +71,12 @@ pub struct FractalRSUI {
 
 /// Struct containing context passed when creating UIState.
 pub struct UICreationContext<'a> {
+    /// Instance reference.
+    pub instance: Arc<Instance>,
     /// Runtime handle reference.
     pub handle: Handle,
-    /// Device reference.
-    pub device: Arc<Device>,
-    /// Queue reference.
-    pub queue: Arc<Queue>,
+    /// Presentable context.
+    pub present: GPUContext,
     /// WGPU Egui Render Pass reference for managing textures.
     pub render_pass: &'a mut RenderPass,
 }
@@ -78,32 +97,32 @@ impl FractalRSUI {
     pub fn new(ctx: UICreationContext<'_>) -> FractalRSUI {
         // Set up the fractal generator factory
         info!("Creating Fractal Generator Factory...");
-        let factory: Arc<dyn FractalGeneratorFactory + Send + Sync + 'static> = Arc::new(
-            GpuFractalGeneratorFactory::new(ctx.device.clone(), ctx.queue.clone()),
-        );
+        let factory = Arc::new(GpuFractalGeneratorFactory::new(ctx.present.clone()));
 
         let first_instance = UIInstance::new(UIInstanceCreationContext {
             name: "Fractal 1",
             handle: ctx.handle.clone(),
-            device: ctx.device.clone(),
-            queue: ctx.queue.clone(),
+            present: ctx.present.clone(),
             factory: factory.clone(),
             render_pass: ctx.render_pass,
             initial_settings: Default::default(),
         });
 
         FractalRSUI {
-            handle: ctx.handle.clone(),
-            device: ctx.device,
-            queue: ctx.queue,
+            handle: ctx.handle,
+            present: ctx.present,
             close_requested: false,
             previous_fullscreen: false,
             request_fullscreen: false,
             show_app_settings: false,
             show_ui_settings: false,
-            current_generator_type: GeneratorType::GPU,
-            new_generator_type: GeneratorType::GPU,
-            factory: factory.clone(),
+            current_generator_type: GeneratorType::PresentGPU,
+            new_generator_type: GeneratorType::PresentGPU,
+            chunk_size_power: 8,
+            instance: ctx.instance,
+            factory_future: Default::default(),
+            factory,
+            gpu_poll: None,
             instances: vec![first_instance],
             current_instance: 0,
             new_instance_requested: false,
@@ -114,15 +133,27 @@ impl FractalRSUI {
     /// Update things associated with the UI but that do not involve rendering.
     pub fn update(&mut self) {
         // check to see if our generator type has changed
-        if self.current_generator_type != self.new_generator_type {
+        if self.current_generator_type != self.new_generator_type && self.factory_future.is_empty()
+        {
             self.current_generator_type = self.new_generator_type;
 
-            self.factory = match self.new_generator_type {
-                GeneratorType::CPU => Arc::new(CpuFractalGeneratorFactory::new(num_cpus::get())),
-                GeneratorType::GPU => Arc::new(GpuFractalGeneratorFactory::new(
-                    self.device.clone(),
-                    self.queue.clone(),
-                )),
+            match self.new_generator_type {
+                GeneratorType::CPU => {
+                    self.factory = Arc::new(CpuFractalGeneratorFactory::new(num_cpus::get()));
+                    self.gpu_poll = None;
+                },
+                GeneratorType::PresentGPU => {
+                    self.factory = Arc::new(GpuFractalGeneratorFactory::new(self.present.clone()));
+                    self.gpu_poll = None;
+                },
+                GeneratorType::DedicatedGPU => {
+                    self.factory_future
+                        .insert_spawn(&self.handle, create_gpu_factory(self.instance.clone()))
+                        .expect(
+                            "Error inserting gpu-based factory creation future into wrapper. \
+                            (this is a bug)",
+                        );
+                },
             };
 
             // update the factories for all existing instances
@@ -131,10 +162,18 @@ impl FractalRSUI {
             }
         }
 
+        if let Some(factory) = self.factory_future.poll_unpin(&self.handle) {
+            let (factory, gpu_poll) = factory.expect("Panic while creating new gpu-based factory.");
+            self.factory = factory;
+            self.gpu_poll = Some(gpu_poll);
+        }
+
         // Update all the instances, even the ones that are not currently being
         // rendered.
         for instance in self.instances.iter_mut() {
-            instance.update();
+            instance.update(UIInstanceUpdateContext {
+                chunk_size: 1 << self.chunk_size_power,
+            });
         }
     }
 
@@ -232,10 +271,45 @@ impl FractalRSUI {
             .default_size([340.0, 500.0])
             .open(&mut self.show_app_settings)
             .show(ctx.ctx, |ui| {
-                ui.label("Generator Type:");
-                ui.radio_value(&mut self.new_generator_type, GeneratorType::CPU, "CPU");
-                ui.radio_value(&mut self.new_generator_type, GeneratorType::GPU, "GPU");
-                ui.label("Note that while the GPU generator is significantly faster on most platforms, it may not run on all platforms. Some Linux/Mesa combinations can lead to application hangs when using the GPU-based generator.")
+                ui.add(Label::new("Generator Type:").heading());
+                ui.radio_value(
+                    &mut self.new_generator_type,
+                    GeneratorType::CPU,
+                    "CPU (Slow)",
+                );
+                ui.radio_value(
+                    &mut self.new_generator_type,
+                    GeneratorType::PresentGPU,
+                    "Display GPU (Faster)",
+                );
+                ui.radio_value(
+                    &mut self.new_generator_type,
+                    GeneratorType::DedicatedGPU,
+                    "Dedicated GPU (Fastest)",
+                );
+                ui.label(
+                    "Note 1: While the GPU generator is significantly faster on most \
+                    platforms, it may not run on all platforms. Some Linux/Mesa combinations can \
+                    lead to application hangs when using the GPU-based generator.",
+                );
+                ui.label(
+                    "Note 2: The Dedicated GPU option does not actually require you have \
+                    multiple GPUs. All this option does is have the generator use a separate \
+                    logical device from the display. This device has a much higher poll-rate, \
+                    meaning that it can generate faster, but having it enabled causes the \
+                    application to use more CPU.",
+                );
+
+                ui.add(Label::new("Chunk Size:").heading());
+                ui.horizontal(|ui| {
+                    ui.add(Label::new("2^").monospace());
+                    ui.add(DragValue::new(&mut self.chunk_size_power).clamp_range(4..=13));
+                });
+                ui.label(
+                    "Note that while larger values are generally faster, some drivers may \
+                    crash with values that are too large. Most devices handle 2^8 relatively well. \
+                    My GTX1060 timed out when rendering a mandelbrot set at 2^13.",
+                );
             });
     }
 
@@ -265,8 +339,7 @@ impl FractalRSUI {
             let new_instance = UIInstance::new(UIInstanceCreationContext {
                 name: format!("Fractal {}", self.instance_name_index),
                 handle: self.handle.clone(),
-                device: self.device.clone(),
-                queue: self.queue.clone(),
+                present: self.present.clone(),
                 factory: self.factory.clone(),
                 render_pass: ctx.render_pass,
                 initial_settings,
@@ -295,5 +368,59 @@ impl FractalRSUI {
 #[derive(Copy, Clone, Ord, PartialOrd, Eq, PartialEq)]
 enum GeneratorType {
     CPU,
-    GPU,
+    PresentGPU,
+    DedicatedGPU,
+}
+
+async fn create_gpu_factory(
+    instance: Arc<Instance>,
+) -> (
+    Arc<dyn FractalGeneratorFactory + Send + Sync + 'static>,
+    RunningGuard,
+) {
+    info!("Getting dedicated GPU for fractal generation...");
+    let adapter = instance
+        .request_adapter(&RequestAdapterOptions {
+            power_preference: PowerPreference::HighPerformance,
+            force_fallback_adapter: false,
+            compatible_surface: None,
+        })
+        .await
+        .expect("Unable to retrieve high-performance GPUAdapter.");
+    let (device, queue) = adapter
+        .request_device(
+            &DeviceDescriptor {
+                label: Some("High-Performance Device"),
+                features: Default::default(),
+                limits: Default::default(),
+            },
+            None,
+        )
+        .await
+        .expect("Error requesting dedicated logical device.");
+
+    let device = Arc::new(device);
+    let queue = Arc::new(queue);
+
+    info!("Creating device poll task...");
+    let poll_device = device.clone();
+    let status = Arc::new(AtomicBool::new(true));
+    let poll_status = status.clone();
+    tokio::spawn(async move {
+        while poll_status.load(Ordering::Acquire) {
+            poll_device.poll(Maintain::Poll);
+            yield_now().await;
+        }
+    });
+
+    let dedicated = GPUContext {
+        device,
+        queue,
+        ty: GPUContextType::Dedicated,
+    };
+
+    (
+        Arc::new(GpuFractalGeneratorFactory::new(dedicated)),
+        RunningGuard::new(status),
+    )
 }

@@ -1,14 +1,12 @@
-use crate::util::poll_unpin;
+use crate::util::future::future_wrapper::FutureWrapper;
 use rfd::{AsyncFileDialog, FileHandle};
-use std::{future::Future, task::Poll};
-use tokio::{
-    runtime::Handle,
-};
+use std::future::Future;
+use tokio::runtime::Handle;
 
 /// Asynchronously runs a file dialog.
 pub struct FileDialogWrapper {
     handle: Handle,
-    dialog: Option<Box<dyn Future<Output = Option<FileHandle>> + Send + Unpin + 'static>>,
+    dialog: FutureWrapper<Box<dyn Future<Output = Option<FileHandle>> + Send + Unpin + 'static>>,
 }
 
 impl FileDialogWrapper {
@@ -16,17 +14,17 @@ impl FileDialogWrapper {
     pub fn new(handle: Handle) -> FileDialogWrapper {
         FileDialogWrapper {
             handle,
-            dialog: None,
+            dialog: Default::default(),
         }
     }
 
     /// Opens a save file dialog.
     pub fn save_file(&mut self, dialog: AsyncFileDialog) -> Result<(), OpenError> {
-        if self.dialog.is_some() {
+        if self.dialog.contains_future() {
             return Err(OpenError::AlreadyOpen);
         }
 
-        self.dialog = Some(Box::new(dialog.save_file()));
+        self.dialog.insert(Box::new(dialog.save_file())).unwrap();
 
         Ok(())
     }
@@ -34,20 +32,11 @@ impl FileDialogWrapper {
     /// Polls this wrapper to see if the dialog has been closed.
     ///
     /// Returns:
-    /// * Err(..): when an error occurred while polling.
-    /// * Ok(None): if nothing happened.
-    /// * Ok(Some(None)): if the dialog was closed and no file was selected.
-    /// * Ok(Some(Some(..))): if the dialog was closed and a file was selected.
-    pub fn poll(&mut self) -> Option<Option<FileHandle>>{
-        if self.dialog.is_some() {
-            if let Poll::Ready(res) = poll_unpin(&self.handle, self.dialog.as_mut().unwrap()) {
-                self.dialog = None;
-
-                return Some(res);
-            }
-        }
-
-        return None;
+    /// * None: if nothing happened.
+    /// * Some(None): if the dialog was closed and no file was selected.
+    /// * Some(Some(..)): if the dialog was closed and a file was selected.
+    pub fn poll(&mut self) -> Option<Option<FileHandle>> {
+        self.dialog.poll_unpin(&self.handle)
     }
 }
 

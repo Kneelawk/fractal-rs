@@ -5,6 +5,7 @@ use crate::{
         view::View,
         FractalGeneratorFactory, FractalOpts,
     },
+    gpu::GPUContext,
     gui::ui::{file_dialog::FileDialogWrapper, viewer::FractalViewer, UIRenderContext},
     util::result::ResultExt,
 };
@@ -14,10 +15,7 @@ use num_complex::Complex32;
 use rfd::AsyncFileDialog;
 use std::{borrow::Cow, path::PathBuf, sync::Arc};
 use tokio::runtime::Handle;
-use wgpu::{Device, Queue};
 
-const MAX_CHUNK_WIDTH: usize = 256;
-const MAX_CHUNK_HEIGHT: usize = 256;
 const DEFAULT_GENERATION_MESSAGE: &str = "Not Generating";
 const DEFAULT_WRITER_MESSAGE: &str = "Not Writing Image";
 
@@ -26,8 +24,7 @@ const DEFAULT_WRITER_MESSAGE: &str = "Not Writing Image";
 pub struct UIInstance {
     // instance stuff
     pub name: String,
-    device: Arc<Device>,
-    queue: Arc<Queue>,
+    present: GPUContext,
     manager: GeneratorManager,
 
     // open windows
@@ -71,10 +68,8 @@ pub struct UIInstanceCreationContext<'a, S: ToString> {
     pub name: S,
     /// Runtime handle for running async tasks.
     pub handle: Handle,
-    /// Device reference.
-    pub device: Arc<Device>,
-    /// Queue reference.
-    pub queue: Arc<Queue>,
+    /// Presentable context.
+    pub present: GPUContext,
     /// The current fractal generator factory.
     pub factory: Arc<dyn FractalGeneratorFactory + Send + Sync + 'static>,
     /// WGPU Egui Render Pass reference for managing textures.
@@ -93,6 +88,11 @@ pub struct UIInstanceInitialSettings {
     pub c: Complex32,
     /// The number of times the complex iterative function should be run on `z`.
     pub iterations: u32,
+}
+
+pub struct UIInstanceUpdateContext {
+    /// The maximum size of generation chunks.
+    pub chunk_size: usize,
 }
 
 impl Default for UIInstanceInitialSettings {
@@ -132,12 +132,15 @@ impl UIInstance {
 
         let manager = GeneratorManager::new(ctx.handle.clone(), ctx.factory);
 
-        let viewer = FractalViewer::new(&ctx.device, ctx.render_pass, ctx.initial_settings.view);
+        let viewer = FractalViewer::new(
+            &ctx.present.device,
+            ctx.render_pass,
+            ctx.initial_settings.view,
+        );
 
         UIInstance {
             name: ctx.name.to_string(),
-            device: ctx.device,
-            queue: ctx.queue,
+            present: ctx.present,
             manager,
             show_generator_controls: true,
             show_viewer_controls: true,
@@ -174,7 +177,7 @@ impl UIInstance {
         self.manager.set_factory(factory);
     }
 
-    pub fn update(&mut self) {
+    pub fn update(&mut self, ctx: UIInstanceUpdateContext) {
         if self.generate_fractal.is_some() {
             let generation_type = self
                 .generate_fractal
@@ -198,28 +201,32 @@ impl UIInstance {
 
                 // subdivide the view
                 let views: Vec<_> = view
-                    .subdivide_rectangles(MAX_CHUNK_WIDTH, MAX_CHUNK_HEIGHT)
+                    .subdivide_rectangles(ctx.chunk_size, ctx.chunk_size)
                     .collect();
 
                 // start the generator
                 match generation_type {
                     GenerationType::Viewer => {
-                        self.manager.start_to_gui(
-                            opts,
-                            views,
-                            self.device.clone(),
-                            self.queue.clone(),
-                            self.viewer.get_texture(),
-                            self.viewer.get_texture_view()
-                        ).expect("Attempted to start new fractal generator while one was already running! (This is a bug)");
+                        self.manager
+                            .start_to_gui(
+                                opts,
+                                views,
+                                self.present.clone(),
+                                self.viewer.get_texture(),
+                                self.viewer.get_texture_view(),
+                            )
+                            .expect(
+                                "Attempted to start new fractal generator while one was \
+                                already running! (This is a bug)",
+                            );
                     },
                     GenerationType::Image => {
-                        self.manager.start_to_image(
-                            opts,
-                            view,
-                            views,
-                            PathBuf::from(&self.output_location)
-                        ).expect("Attempted to start a new gractal generator while one was already running! (This is a bug)");
+                        self.manager
+                            .start_to_image(opts, view, views, PathBuf::from(&self.output_location))
+                            .expect(
+                                "Attempted to start a new gractal generator while one was \
+                                already running! (This is a bug)",
+                            );
                     },
                 }
             }
@@ -486,7 +493,7 @@ impl UIInstance {
     fn apply_view_settings(&mut self, ctx: &mut UIRenderContext) {
         if let Some(GenerationType::Viewer) = self.generate_fractal {
             self.viewer
-                .set_fractal_view(&self.device, ctx.render_pass, self.viewer_view())
+                .set_fractal_view(&self.present.device, ctx.render_pass, self.viewer_view())
                 .on_err(|e| error!("Error resizing fractal image: {:?}", e));
         }
     }
