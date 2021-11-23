@@ -106,6 +106,7 @@ impl<T, E: From<JoinError>> FutureWrapper<JoinHandle<Result<T, E>>> {
     pub fn poll_join_result(&mut self, handle: &Handle) -> Option<Result<T, E>> {
         if self.future.is_some() {
             if let Poll::Ready(res) = poll_unpin(handle, self.future.as_mut().unwrap()) {
+                self.future = None;
                 Some(match res {
                     Ok(res) => res,
                     Err(err) => Err(E::from(err)),

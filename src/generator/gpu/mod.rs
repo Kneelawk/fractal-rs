@@ -16,7 +16,7 @@ use crate::{
     },
     util::{display_duration, running_guard::RunningGuard},
 };
-use chrono::Utc;
+use chrono::{DateTime, Utc};
 use futures::{
     future::{ready, BoxFuture},
     FutureExt,
@@ -413,7 +413,7 @@ impl GpuFractalGeneratorInstance {
     fn start_to_gpu(
         _opts: FractalOpts,
         gpu: GPUContext,
-        _present: GPUContext,
+        present: GPUContext,
         uniform_bind_group_layout: Arc<BindGroupLayout>,
         render_pipeline: Arc<RenderPipeline>,
         views: Vec<View>,
@@ -428,7 +428,7 @@ impl GpuFractalGeneratorInstance {
         let spawn_running = running.clone();
         let spawn_canceled = canceled.clone();
 
-        let (mut uniforms_buffer, uniform_bind_group) =
+        let (uniforms_buffer, uniform_bind_group) =
             setup_uniforms(&gpu.device, &uniform_bind_group_layout);
 
         info!("Spawning gpu manager task...");
@@ -437,73 +437,35 @@ impl GpuFractalGeneratorInstance {
             let _gpu = &gpu;
             let _running_guard = RunningGuard::new(spawn_running);
 
-            // TODO: split this because copying from `Dedicated` device to `Presentable`
-            //  device will need more buffers.
-            let mut buffers = HashMap::new();
-
-            for view in views {
-                if spawn_canceled.load(Ordering::Acquire) {
-                    info!("Received cancel signal.");
-                    return;
-                }
-
-                let (texture, texture_view) =
-                    find_texture_for_view(&gpu.device, &mut buffers, view);
-
-                let uniforms_cb = write_uniforms(&gpu.device, &mut uniforms_buffer, view).await;
-
-                {
-                    info!(
-                        "Encoding render command buffer for ({}, {})...",
-                        view.image_x, view.image_y
-                    );
-                    let mut encoder =
-                        gpu.device
-                            .create_command_encoder(&CommandEncoderDescriptor {
-                                label: Some("Render Command Encoder"),
-                            });
-
-                    encode_render_pass(
-                        &render_pipeline,
-                        &uniform_bind_group,
-                        texture_view,
-                        &mut encoder,
-                    );
-
-                    // TODO: Only copy textures directly if `gpu` is a `Presentable` context,
-                    //  otherwise copy to CPU and use `present` to copy to `Presentable` device.
-                    encoder.copy_texture_to_texture(
-                        ImageCopyTexture {
-                            texture,
-                            mip_level: 0,
-                            origin: Origin3d::ZERO,
-                            aspect: TextureAspect::All,
-                        },
-                        ImageCopyTexture {
-                            texture: &out_texture,
-                            mip_level: 0,
-                            origin: Origin3d {
-                                x: view.image_x as u32,
-                                y: view.image_y as u32,
-                                z: 0,
-                            },
-                            aspect: TextureAspect::All,
-                        },
-                        Extent3d {
-                            width: view.image_width as u32,
-                            height: view.image_height as u32,
-                            depth_or_array_layers: 1,
-                        },
-                    );
-
-                    gpu.queue.submit([uniforms_cb, encoder.finish()]);
-                }
-
-                let completed = spawn_completed.fetch_add(1, Ordering::AcqRel) + 1;
-
-                if completed == view_count {
-                    display_duration(start_time);
-                }
+            if gpu.ty == GPUContextType::Presentable {
+                Self::generate_to_same_device(
+                    gpu,
+                    render_pipeline,
+                    views,
+                    out_texture,
+                    start_time,
+                    view_count,
+                    spawn_completed,
+                    spawn_canceled,
+                    uniforms_buffer,
+                    uniform_bind_group,
+                )
+                .await;
+            } else {
+                Self::generate_to_different_device(
+                    gpu,
+                    present,
+                    render_pipeline,
+                    views,
+                    out_texture,
+                    start_time,
+                    view_count,
+                    spawn_completed,
+                    spawn_canceled,
+                    uniforms_buffer,
+                    uniform_bind_group,
+                )
+                .await;
             }
         });
 
@@ -512,6 +474,205 @@ impl GpuFractalGeneratorInstance {
             completed,
             running,
             canceled,
+        }
+    }
+
+    async fn generate_to_same_device(
+        gpu: GPUContext,
+        render_pipeline: Arc<RenderPipeline>,
+        views: Vec<View>,
+        out_texture: Arc<Texture>,
+        start_time: DateTime<Utc>,
+        view_count: usize,
+        spawn_completed: Arc<AtomicUsize>,
+        spawn_canceled: Arc<AtomicBool>,
+        mut uniforms_buffer: BufferWrapper<Uniforms>,
+        uniform_bind_group: BindGroup,
+    ) {
+        let mut buffers = HashMap::new();
+
+        for view in views {
+            if spawn_canceled.load(Ordering::Acquire) {
+                info!("Received cancel signal.");
+                return;
+            }
+
+            let (texture, texture_view) = find_texture_for_view(&gpu.device, &mut buffers, view);
+
+            let uniforms_cb = write_uniforms(&gpu.device, &mut uniforms_buffer, view).await;
+
+            {
+                info!(
+                    "Encoding render command buffer for ({}, {})...",
+                    view.image_x, view.image_y
+                );
+                let mut encoder = gpu
+                    .device
+                    .create_command_encoder(&CommandEncoderDescriptor {
+                        label: Some("Render Command Encoder"),
+                    });
+
+                encode_render_pass(
+                    &render_pipeline,
+                    &uniform_bind_group,
+                    texture_view,
+                    &mut encoder,
+                );
+
+                encoder.copy_texture_to_texture(
+                    ImageCopyTexture {
+                        texture,
+                        mip_level: 0,
+                        origin: Origin3d::ZERO,
+                        aspect: TextureAspect::All,
+                    },
+                    ImageCopyTexture {
+                        texture: &out_texture,
+                        mip_level: 0,
+                        origin: Origin3d {
+                            x: view.image_x as u32,
+                            y: view.image_y as u32,
+                            z: 0,
+                        },
+                        aspect: TextureAspect::All,
+                    },
+                    Extent3d {
+                        width: view.image_width as u32,
+                        height: view.image_height as u32,
+                        depth_or_array_layers: 1,
+                    },
+                );
+
+                gpu.queue.submit([uniforms_cb, encoder.finish()]);
+            }
+
+            let completed = spawn_completed.fetch_add(1, Ordering::AcqRel) + 1;
+
+            if completed == view_count {
+                display_duration(start_time);
+            }
+        }
+    }
+
+    async fn generate_to_different_device(
+        gpu: GPUContext,
+        present: GPUContext,
+        render_pipeline: Arc<RenderPipeline>,
+        views: Vec<View>,
+        out_texture: Arc<Texture>,
+        start_time: DateTime<Utc>,
+        view_count: usize,
+        spawn_completed: Arc<AtomicUsize>,
+        spawn_canceled: Arc<AtomicBool>,
+        mut uniforms_buffer: BufferWrapper<Uniforms>,
+        uniform_bind_group: BindGroup,
+    ) {
+        let mut buffers = HashMap::new();
+
+        for view in views {
+            if spawn_canceled.load(Ordering::Acquire) {
+                info!("Received cancel signal.");
+                return;
+            }
+
+            let (texture_width, texture_height, texture, texture_view, buffer) =
+                find_texture_buffer_for_view(&gpu.device, &mut buffers, view);
+
+            let uniforms_cb = write_uniforms(&gpu.device, &mut uniforms_buffer, view).await;
+
+            {
+                info!(
+                    "Encoding render command buffer for ({}, {})...",
+                    view.image_x, view.image_y
+                );
+                let mut encoder = gpu
+                    .device
+                    .create_command_encoder(&CommandEncoderDescriptor {
+                        label: Some("Render Command Encoder"),
+                    });
+
+                encode_render_pass(
+                    &render_pipeline,
+                    &uniform_bind_group,
+                    texture_view,
+                    &mut encoder,
+                );
+
+                encoder.copy_texture_to_buffer(
+                    ImageCopyTexture {
+                        texture,
+                        mip_level: 0,
+                        origin: Origin3d::ZERO,
+                        aspect: Default::default(),
+                    },
+                    ImageCopyBuffer {
+                        buffer,
+                        layout: ImageDataLayout {
+                            offset: 0,
+                            bytes_per_row: Some(
+                                NonZeroU32::new(BYTES_PER_PIXEL as u32 * texture_width).unwrap(),
+                            ),
+                            rows_per_image: Some(NonZeroU32::new(texture_height).unwrap()),
+                        },
+                    },
+                    Extent3d {
+                        width: texture_width,
+                        height: texture_height,
+                        depth_or_array_layers: 1,
+                    },
+                );
+
+                gpu.queue.submit([uniforms_cb, encoder.finish()]);
+            }
+
+            {
+                info!(
+                    "Reading framebuffer for ({}, {})...",
+                    view.image_x, view.image_y
+                );
+                let buffer_slice = buffer.slice(..);
+                buffer_slice.map_async(MapMode::Read).await.unwrap();
+
+                let data = buffer_slice.get_mapped_range();
+
+                info!(
+                    "Writing image piece to other device for ({}, {})",
+                    view.image_x, view.image_y
+                );
+                present.queue.write_texture(
+                    ImageCopyTexture {
+                        texture: &out_texture,
+                        mip_level: 0,
+                        origin: Origin3d {
+                            x: view.image_x as u32,
+                            y: view.image_y as u32,
+                            z: 0,
+                        },
+                        aspect: TextureAspect::All,
+                    },
+                    data.as_ref(),
+                    ImageDataLayout {
+                        offset: 0,
+                        bytes_per_row: Some(
+                            NonZeroU32::new((view.image_width * BYTES_PER_PIXEL) as u32).unwrap(),
+                        ),
+                        rows_per_image: None,
+                    },
+                    Extent3d {
+                        width: view.image_width as u32,
+                        height: view.image_height as u32,
+                        depth_or_array_layers: 1,
+                    },
+                )
+            }
+
+            buffer.unmap();
+
+            let completed = spawn_completed.fetch_add(1, Ordering::AcqRel) + 1;
+
+            if completed == view_count {
+                display_duration(start_time);
+            }
         }
     }
 }
