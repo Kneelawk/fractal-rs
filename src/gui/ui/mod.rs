@@ -9,11 +9,14 @@ use crate::{
     gpu::{GPUContext, GPUContextType},
     gui::{
         keyboard::KeyboardTracker,
-        ui::instance::{UIInstance, UIInstanceCreationContext, UIInstanceInitialSettings},
+        ui::instance::{
+            UIInstance, UIInstanceCreationContext, UIInstanceInitialSettings,
+            UIInstanceUpdateContext,
+        },
     },
     util::{future::future_wrapper::FutureWrapper, running_guard::RunningGuard},
 };
-use egui::{CtxRef, Layout, ScrollArea};
+use egui::{CtxRef, DragValue, Label, Layout, ScrollArea};
 use egui_wgpu_backend::RenderPass;
 use std::sync::{
     atomic::{AtomicBool, Ordering},
@@ -46,6 +49,7 @@ pub struct FractalRSUI {
     // settings
     current_generator_type: GeneratorType,
     new_generator_type: GeneratorType,
+    chunk_size_power: usize,
 
     // generator stuff
     instance: Arc<Instance>,
@@ -112,8 +116,9 @@ impl FractalRSUI {
             request_fullscreen: false,
             show_app_settings: false,
             show_ui_settings: false,
-            current_generator_type: GeneratorType::GPU,
-            new_generator_type: GeneratorType::GPU,
+            current_generator_type: GeneratorType::DedicatedGPU,
+            new_generator_type: GeneratorType::DedicatedGPU,
+            chunk_size_power: 8,
             instance: ctx.instance,
             factory_future: Default::default(),
             factory,
@@ -137,11 +142,16 @@ impl FractalRSUI {
                     self.factory = Arc::new(CpuFractalGeneratorFactory::new(num_cpus::get()));
                     self.gpu_poll = None;
                 },
-                GeneratorType::GPU => {
+                GeneratorType::PresentGPU => {
+                    self.factory = Arc::new(GpuFractalGeneratorFactory::new(self.present.clone()));
+                    self.gpu_poll = None;
+                },
+                GeneratorType::DedicatedGPU => {
                     self.factory_future
                         .insert_spawn(&self.handle, create_gpu_factory(self.instance.clone()))
                         .expect(
-                            "Error inserting gpu-based factory creation future into wrapper. (this is a bug)",
+                            "Error inserting gpu-based factory creation future into wrapper. \
+                            (this is a bug)",
                         );
                 },
             };
@@ -161,7 +171,9 @@ impl FractalRSUI {
         // Update all the instances, even the ones that are not currently being
         // rendered.
         for instance in self.instances.iter_mut() {
-            instance.update();
+            instance.update(UIInstanceUpdateContext {
+                chunk_size: 1 << self.chunk_size_power,
+            });
         }
     }
 
@@ -259,10 +271,45 @@ impl FractalRSUI {
             .default_size([340.0, 500.0])
             .open(&mut self.show_app_settings)
             .show(ctx.ctx, |ui| {
-                ui.label("Generator Type:");
-                ui.radio_value(&mut self.new_generator_type, GeneratorType::CPU, "CPU");
-                ui.radio_value(&mut self.new_generator_type, GeneratorType::GPU, "GPU");
-                ui.label("Note that while the GPU generator is significantly faster on most platforms, it may not run on all platforms. Some Linux/Mesa combinations can lead to application hangs when using the GPU-based generator.")
+                ui.add(Label::new("Generator Type:").heading());
+                ui.radio_value(
+                    &mut self.new_generator_type,
+                    GeneratorType::CPU,
+                    "CPU (Slow)",
+                );
+                ui.radio_value(
+                    &mut self.new_generator_type,
+                    GeneratorType::PresentGPU,
+                    "Display GPU (Faster)",
+                );
+                ui.radio_value(
+                    &mut self.new_generator_type,
+                    GeneratorType::DedicatedGPU,
+                    "Dedicated GPU (Fastest)",
+                );
+                ui.label(
+                    "Note 1: While the GPU generator is significantly faster on most \
+                    platforms, it may not run on all platforms. Some Linux/Mesa combinations can \
+                    lead to application hangs when using the GPU-based generator.",
+                );
+                ui.label(
+                    "Note 2: The Dedicated GPU option does not actually require you have \
+                    multiple GPUs. All this option does is have the generator use a separate \
+                    logical device from the display. This device has a much higher poll-rate, \
+                    meaning that it can generate faster, but having it enabled causes the \
+                    application to use more CPU",
+                );
+
+                ui.add(Label::new("Chunk Size:").heading());
+                ui.horizontal(|ui| {
+                    ui.add(Label::new("2^").monospace());
+                    ui.add(DragValue::new(&mut self.chunk_size_power).clamp_range(4..=13));
+                });
+                ui.label(
+                    "Note that while larger values are generally faster, some drivers may \
+                    crash with values that are too large. Most devices handle 2^8 relatively well. \
+                    My GTX1060 timed out when rendering a mandelbrot set at 2^13.",
+                );
             });
     }
 
@@ -321,7 +368,8 @@ impl FractalRSUI {
 #[derive(Copy, Clone, Ord, PartialOrd, Eq, PartialEq)]
 enum GeneratorType {
     CPU,
-    GPU,
+    PresentGPU,
+    DedicatedGPU,
 }
 
 async fn create_gpu_factory(

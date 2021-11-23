@@ -16,8 +16,6 @@ use rfd::AsyncFileDialog;
 use std::{borrow::Cow, path::PathBuf, sync::Arc};
 use tokio::runtime::Handle;
 
-const MAX_CHUNK_WIDTH: usize = 256;
-const MAX_CHUNK_HEIGHT: usize = 256;
 const DEFAULT_GENERATION_MESSAGE: &str = "Not Generating";
 const DEFAULT_WRITER_MESSAGE: &str = "Not Writing Image";
 
@@ -90,6 +88,11 @@ pub struct UIInstanceInitialSettings {
     pub c: Complex32,
     /// The number of times the complex iterative function should be run on `z`.
     pub iterations: u32,
+}
+
+pub struct UIInstanceUpdateContext {
+    /// The maximum size of generation chunks.
+    pub chunk_size: usize,
 }
 
 impl Default for UIInstanceInitialSettings {
@@ -174,7 +177,7 @@ impl UIInstance {
         self.manager.set_factory(factory);
     }
 
-    pub fn update(&mut self) {
+    pub fn update(&mut self, ctx: UIInstanceUpdateContext) {
         if self.generate_fractal.is_some() {
             let generation_type = self
                 .generate_fractal
@@ -198,27 +201,32 @@ impl UIInstance {
 
                 // subdivide the view
                 let views: Vec<_> = view
-                    .subdivide_rectangles(MAX_CHUNK_WIDTH, MAX_CHUNK_HEIGHT)
+                    .subdivide_rectangles(ctx.chunk_size, ctx.chunk_size)
                     .collect();
 
                 // start the generator
                 match generation_type {
                     GenerationType::Viewer => {
-                        self.manager.start_to_gui(
-                            opts,
-                            views,
-                            self.present.clone(),
-                            self.viewer.get_texture(),
-                            self.viewer.get_texture_view()
-                        ).expect("Attempted to start new fractal generator while one was already running! (This is a bug)");
+                        self.manager
+                            .start_to_gui(
+                                opts,
+                                views,
+                                self.present.clone(),
+                                self.viewer.get_texture(),
+                                self.viewer.get_texture_view(),
+                            )
+                            .expect(
+                                "Attempted to start new fractal generator while one was \
+                                already running! (This is a bug)",
+                            );
                     },
                     GenerationType::Image => {
-                        self.manager.start_to_image(
-                            opts,
-                            view,
-                            views,
-                            PathBuf::from(&self.output_location)
-                        ).expect("Attempted to start a new gractal generator while one was already running! (This is a bug)");
+                        self.manager
+                            .start_to_image(opts, view, views, PathBuf::from(&self.output_location))
+                            .expect(
+                                "Attempted to start a new gractal generator while one was \
+                                already running! (This is a bug)",
+                            );
                     },
                 }
             }
