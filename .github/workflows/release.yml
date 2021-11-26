@@ -1,0 +1,55 @@
+# This handles the building and publishing of the project's release artifacts
+
+name: release
+on:
+  push:
+    tags:
+      - 'v[0-9]+.[0-9]+.[0-9]+*'
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Install Linux dependencies
+        if: ${{ runner.os == 'Linux' }}
+        run: sudo apt-get install -y libgtk-3-dev
+      - name: Checkout
+        uses: actions/checkout@v2
+      - name: Install Rust toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: nightly-2021-11-26
+      - name: Build release
+        uses: actions-rs/cargo@v1
+        with:
+          command: build
+          args: --release
+      - name: Create 'dist' directory
+        run: mkdir dist
+      - name: Copy release files
+        run: cp target/release/fractal-rs-2!(.d) dist/
+      - name: Archive release (Windows)
+        if: ${{ runner.os == 'Windows' }}
+        uses: thedoctor0/zip-release@master
+        with:
+          type: 'zip'
+          directory: 'dist/'
+          filename: fractal-rs-2-${{ runner.os }}.zip
+          path: 'fractal-rs-2*'
+      - name: Archive release (Unix)
+        if: ${{ runner.os != 'Windows' }}
+        uses: thedoctor0/zip-release@master
+        with:
+          type: 'tar'
+          directory: 'dist/'
+          filename: fractal-rs-2-${{ runner.os }}.tgz
+          path: 'fractal-rs-2*'
+      - name: Publish release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: fractal-rs-2-${{ runner.os }}.*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
