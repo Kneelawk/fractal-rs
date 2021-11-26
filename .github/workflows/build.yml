@@ -33,7 +33,11 @@ jobs:
         uses: actions-rs/cargo@v1
         with:
           command: build
+        env:
+          WINIT_LINK_COLORSYNC: true
       - name: Run tests
         uses: actions-rs/cargo@v1
         with:
           command: test
+        env:
+          WINIT_LINK_COLORSYNC: true

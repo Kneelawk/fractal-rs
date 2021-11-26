@@ -30,6 +30,8 @@ jobs:
         with:
           command: build
           args: --release
+        env:
+          WINIT_LINK_COLORSYNC: true
       - name: Create 'dist' directory
         run: mkdir dist
       - name: Copy release files
