@@ -1,0 +1,21 @@
+# This handles basic CI building of the project, running tests, and such.
+
+name: build
+on: [pull_request, push]
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: checkout
+        uses: actions/checkout@v2
+      - name: rust toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          toochain: nightly
+      - uses: actions-rs/cargo@v1
+        with:
+          command: test
