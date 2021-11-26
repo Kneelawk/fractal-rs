@@ -34,8 +34,12 @@ jobs:
           WINIT_LINK_COLORSYNC: true
       - name: Create 'dist' directory
         run: mkdir dist
-      - name: Copy release files
-        run: cp target/release/fractal-rs-2!(.d) dist/
+      - name: Copy release files (Windows)
+        if: ${{ runner.os == 'Windows' }}
+        run: cp target/release/fractal-rs-2.exe dist/
+      - name: Copy release files (Unix)
+        if: ${{ runner.os != 'Windows' }}
+        run: cp target/release/fractal-rs-2 dist/
       - name: Archive release (Windows)
         if: ${{ runner.os == 'Windows' }}
         uses: thedoctor0/zip-release@master
