@@ -273,29 +273,24 @@ impl FractalRSUI {
                             let item_spacing = ui.spacing().item_spacing.x;
 
                             // render all the tabs
-                            for index in 0..self.instances.len() {
-                                let name = self.instances[index].name.clone();
-
+                            for (index, instance) in self.instances.iter_mut().enumerate() {
                                 // get the tab size
                                 let tab_padding = ctx.ctx.style().spacing.button_padding;
                                 let tab_extra = tab_padding + tab_padding;
                                 let tab_galley = ctx.ctx.fonts().layout_delayed_color(
-                                    name.clone(),
+                                    instance.name.clone(),
                                     TextStyle::Button,
                                     f32::INFINITY,
                                 );
                                 let tab_size = tab_galley.size() + tab_extra;
 
-                                {
-                                    let instance = &mut self.instances[index];
+                                let tab_x = total_tab_x;
+                                total_tab_x += tab_size.x + item_spacing;
 
+                                if self.dragging_instance != Some(index) {
                                     // if the currently rendered instance is not the currently
                                     // dragged instance, reset the instance's position
-                                    if self.dragging_instance != Some(index) {
-                                        instance.tab_x = total_tab_x;
-                                    }
-
-                                    total_tab_x += tab_size.x + item_spacing;
+                                    instance.tab_x = tab_x;
 
                                     // get a ui to contain the tab, specifically at the tab's
                                     // current position
@@ -311,7 +306,7 @@ impl FractalRSUI {
                                     let res = ui.add(
                                         SelectableLabel2::new(
                                             self.current_instance == index,
-                                            &name,
+                                            &instance.name,
                                         )
                                         .sense(Sense::click_and_drag()),
                                     );
@@ -327,8 +322,58 @@ impl FractalRSUI {
                                     // if the drag is released, then we're not dragging anything
                                     // anymore
                                     if res.drag_released() {
+                                        // we have this here just in case something wonky happens
+                                        // between frames
                                         self.dragging_instance = None;
                                     }
+                                }
+                            }
+
+                            // render the dragged tab last so it appears on top
+                            if let Some(index) = self.dragging_instance {
+                                let instance = &mut self.instances[index];
+
+                                // get the tab size
+                                let tab_padding = ctx.ctx.style().spacing.button_padding;
+                                let tab_extra = tab_padding + tab_padding;
+                                let tab_galley = ctx.ctx.fonts().layout_delayed_color(
+                                    instance.name.clone(),
+                                    TextStyle::Button,
+                                    f32::INFINITY,
+                                );
+                                let tab_size = tab_galley.size() + tab_extra;
+
+                                // get a ui to contain the tab, specifically at the tab's
+                                // current position
+                                let mut ui = ui.child_ui(
+                                    Rect::from_min_size(
+                                        pos2(instance.tab_x + offset, tab_y),
+                                        tab_size,
+                                    ),
+                                    Layout::left_to_right(),
+                                );
+
+                                // render the tab
+                                let res = ui.add(
+                                    SelectableLabel2::new(
+                                        self.current_instance == index,
+                                        &instance.name,
+                                    )
+                                    .sense(Sense::click_and_drag()),
+                                );
+
+                                // handle tab clicking and dragging
+                                if res.clicked() {
+                                    self.current_instance = index;
+                                } else if res.dragged() {
+                                    self.dragging_instance = Some(index);
+                                    instance.tab_x += res.drag_delta().x;
+                                }
+
+                                // if the drag is released, then we're not dragging anything
+                                // anymore
+                                if res.drag_released() {
+                                    self.dragging_instance = None;
                                 }
                             }
 
