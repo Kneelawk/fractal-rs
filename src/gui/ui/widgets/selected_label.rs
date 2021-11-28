@@ -44,6 +44,8 @@ impl Widget for SelectableLabel2 {
             sense,
         } = self;
 
+        let id = ui.make_persistent_id(&text);
+
         let text_style = text_style
             .or(ui.style().override_text_style)
             .unwrap_or(TextStyle::Button);
@@ -63,7 +65,8 @@ impl Widget for SelectableLabel2 {
 
         let mut desired_size = total_extra + galley.size();
         desired_size.y = desired_size.y.at_least(ui.spacing().interact_size.y);
-        let (rect, response) = ui.allocate_at_least(desired_size, sense);
+        let (_, rect) = ui.allocate_space(desired_size);
+        let response = ui.interact(rect, id, sense);
         response.widget_info(|| {
             WidgetInfo::selected(WidgetType::SelectableLabel, selected, galley.text())
         });

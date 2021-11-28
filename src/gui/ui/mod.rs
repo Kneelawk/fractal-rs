@@ -69,6 +69,7 @@ pub struct FractalRSUI {
 
     // instances
     instances: Vec<UIInstance>,
+    dragging_instance: Option<usize>,
     current_instance: usize,
     new_instance_requested: bool,
     instance_name_index: u32,
@@ -129,6 +130,7 @@ impl FractalRSUI {
             factory,
             gpu_poll: None,
             instances: vec![first_instance],
+            dragging_instance: None,
             current_instance: 0,
             new_instance_requested: false,
             instance_name_index: 2,
@@ -269,17 +271,18 @@ impl FractalRSUI {
                             let mut total_tab_x = 0.0;
                             let offset = ui.max_rect().left();
                             let item_spacing = ui.spacing().item_spacing.x;
-                            for (index, instance) in self.instances.iter_mut().enumerate() {
-                                let tab_x = if let Some(tab_x) = instance.tab_x {
-                                    tab_x
-                                } else {
-                                    total_tab_x
-                                };
+
+                            // render all the tabs
+                            for index in 0..self.instances.len() {
+                                let name = self.instances[index].name.clone();
+
+                                // get the tab x to render the tab at
+                                let tab_x = self.instances[index].tab_x;
 
                                 let tab_padding = ctx.ctx.style().spacing.button_padding;
                                 let tab_extra = tab_padding + tab_padding;
                                 let tab_galley = ctx.ctx.fonts().layout_delayed_color(
-                                    instance.name.to_string(),
+                                    name.clone(),
                                     TextStyle::Button,
                                     f32::INFINITY,
                                 );
@@ -293,13 +296,15 @@ impl FractalRSUI {
                                     let res = ui.add(
                                         SelectableLabel2::new(
                                             self.current_instance == index,
-                                            &instance.name,
+                                            &name,
                                         )
                                         .sense(Sense::click_and_drag()),
                                     );
 
-                                    if instance.tab_x.is_none() {
-                                        instance.tab_x = Some(total_tab_x);
+                                    let instance = &mut self.instances[index];
+
+                                    if self.dragging_instance != Some(index) {
+                                        instance.tab_x = total_tab_x;
                                     }
 
                                     total_tab_x += tab_size.x + item_spacing;
@@ -307,12 +312,51 @@ impl FractalRSUI {
                                     if res.clicked() {
                                         self.current_instance = index;
                                     } else if res.dragged() {
-                                        *instance.tab_x.as_mut().unwrap() += res.drag_delta().x;
+                                        self.dragging_instance = Some(index);
+                                        instance.tab_x += res.drag_delta().x;
+                                    }
+
+                                    if res.drag_released() {
+                                        self.dragging_instance = None;
                                     }
                                 }
                             }
 
                             ui.allocate_space(vec2(total_tab_x, tab_height));
+
+                            if let Some(drag_index) = &mut self.dragging_instance {
+                                // check if we need to move drag index up
+                                while *drag_index < self.instances.len() - 1
+                                    && self.instances[*drag_index].tab_x
+                                        > self.instances[*drag_index + 1].tab_x
+                                {
+                                    self.instances.swap(*drag_index, *drag_index + 1);
+
+                                    if self.current_instance == *drag_index {
+                                        self.current_instance += 1;
+                                    } else if self.current_instance == *drag_index + 1 {
+                                        self.current_instance -= 1;
+                                    }
+
+                                    *drag_index += 1;
+                                }
+
+                                // check if we need to move drag index down
+                                while *drag_index > 0
+                                    && self.instances[*drag_index].tab_x
+                                        < self.instances[*drag_index - 1].tab_x
+                                {
+                                    self.instances.swap(*drag_index, *drag_index - 1);
+
+                                    if self.current_instance == *drag_index {
+                                        self.current_instance -= 1;
+                                    } else if self.current_instance == *drag_index - 1 {
+                                        self.current_instance += 1;
+                                    }
+
+                                    *drag_index -= 1;
+                                }
+                            }
                         });
                 });
             });

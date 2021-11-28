@@ -24,7 +24,7 @@ const DEFAULT_WRITER_MESSAGE: &str = "Not Writing Image";
 pub struct UIInstance {
     // instance stuff
     pub name: String,
-    pub tab_x: Option<f32>,
+    pub tab_x: f32,
     present: GPUContext,
     manager: GeneratorManager,
 
@@ -141,7 +141,7 @@ impl UIInstance {
 
         UIInstance {
             name: ctx.name.to_string(),
-            tab_x: None,
+            tab_x: 0.0,
             present: ctx.present,
             manager,
             show_generator_controls: true,
