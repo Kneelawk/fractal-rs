@@ -271,6 +271,7 @@ impl FractalRSUI {
                             let mut total_tab_x = 0.0;
                             let offset = ui.max_rect().left();
                             let item_spacing = ui.spacing().item_spacing.x;
+                            let mut starting_dragging = false;
 
                             // render all the tabs
                             for (index, instance) in self.instances.iter_mut().enumerate() {
@@ -315,6 +316,7 @@ impl FractalRSUI {
                                     if res.clicked() {
                                         self.current_instance = index;
                                     } else if res.dragged() {
+                                        starting_dragging = true;
                                         self.dragging_instance = Some(index);
                                         instance.tab_x += res.drag_delta().x;
                                     }
@@ -330,7 +332,8 @@ impl FractalRSUI {
                             }
 
                             // render the dragged tab last so it appears on top
-                            if let Some(index) = self.dragging_instance {
+                            if self.dragging_instance.is_some() && !starting_dragging {
+                                let index = self.dragging_instance.unwrap();
                                 let instance = &mut self.instances[index];
 
                                 // get the tab size
