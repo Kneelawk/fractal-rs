@@ -6,7 +6,7 @@ use crate::{
         FractalGeneratorFactory, FractalOpts,
     },
     gpu::GPUContext,
-    gui::ui::{file_dialog::FileDialogWrapper, viewer::FractalViewer, UIRenderContext},
+    gui::ui::{file_dialog::FileDialogWrapper, widgets::viewer::FractalViewer, UIRenderContext},
     util::result::ResultExt,
 };
 use egui::{vec2, DragValue, ProgressBar, TextEdit, Ui};

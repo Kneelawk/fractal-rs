@@ -1,6 +1,6 @@
 mod file_dialog;
 mod instance;
-mod viewer;
+mod widgets;
 
 use crate::{
     generator::{
@@ -9,14 +9,17 @@ use crate::{
     gpu::{GPUContext, GPUContextType},
     gui::{
         keyboard::KeyboardTracker,
-        ui::instance::{
-            UIInstance, UIInstanceCreationContext, UIInstanceInitialSettings,
-            UIInstanceUpdateContext,
+        ui::{
+            instance::{
+                UIInstance, UIInstanceCreationContext, UIInstanceInitialSettings,
+                UIInstanceUpdateContext,
+            },
+            widgets::selected_label::SelectableLabel2,
         },
     },
     util::{future::future_wrapper::FutureWrapper, running_guard::RunningGuard},
 };
-use egui::{CtxRef, DragValue, Label, Layout, ScrollArea};
+use egui::{CtxRef, DragValue, Label, Layout, ScrollArea, Sense};
 use egui_wgpu_backend::RenderPass;
 use std::sync::{
     atomic::{AtomicBool, Ordering},
@@ -254,7 +257,19 @@ impl FractalRSUI {
                 ui.with_layout(Layout::left_to_right(), |ui| {
                     ScrollArea::horizontal().show(ui, |ui| {
                         for (index, instance) in self.instances.iter().enumerate() {
-                            ui.selectable_value(&mut self.current_instance, index, &instance.name);
+                            let res = ui.add(
+                                SelectableLabel2::new(
+                                    self.current_instance == index,
+                                    &instance.name,
+                                )
+                                .sense(Sense::click_and_drag()),
+                            );
+                            if res.clicked() {
+                                self.current_instance = index;
+                            }
+                            if res.dragged() {
+                                // TODO: dragging calculations
+                            }
                         }
                     });
                 });
