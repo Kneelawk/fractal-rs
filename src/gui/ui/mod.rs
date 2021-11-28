@@ -19,7 +19,9 @@ use crate::{
     },
     util::{future::future_wrapper::FutureWrapper, running_guard::RunningGuard},
 };
-use egui::{CtxRef, DragValue, Label, Layout, ScrollArea, Sense};
+use egui::{
+    pos2, vec2, Align, CtxRef, DragValue, Label, Layout, Rect, ScrollArea, Sense, TextStyle,
+};
 use egui_wgpu_backend::RenderPass;
 use std::sync::{
     atomic::{AtomicBool, Ordering},
@@ -216,6 +218,7 @@ impl FractalRSUI {
     }
 
     fn draw_top_bar(&mut self, ctx: &UIRenderContext) {
+        // Draw top bar
         egui::TopBottomPanel::top("Menu Bar").show(ctx.ctx, |ui| {
             egui::menu::bar(ui, |ui| {
                 egui::menu::menu(ui, "File", |ui| {
@@ -241,9 +244,14 @@ impl FractalRSUI {
                 });
             });
             ui.separator();
-            ui.with_layout(Layout::right_to_left(), |ui| {
+            ui.with_layout(Layout::right_to_left().with_cross_align(Align::Min), |ui| {
+                let mut tab_y = 0.0;
+                let mut tab_height = 0.0;
                 ui.add_enabled_ui(!self.instances.is_empty(), |ui| {
-                    if ui.button("X").clicked() {
+                    let res = ui.button("X");
+                    tab_y = res.rect.min.y;
+                    tab_height = res.rect.height();
+                    if res.clicked() {
                         if self.current_instance < self.instances.len() {
                             self.instances.remove(self.current_instance);
                             if self.current_instance > 0 {
@@ -255,23 +263,57 @@ impl FractalRSUI {
                     }
                 });
                 ui.with_layout(Layout::left_to_right(), |ui| {
-                    ScrollArea::horizontal().show(ui, |ui| {
-                        for (index, instance) in self.instances.iter().enumerate() {
-                            let res = ui.add(
-                                SelectableLabel2::new(
-                                    self.current_instance == index,
-                                    &instance.name,
-                                )
-                                .sense(Sense::click_and_drag()),
-                            );
-                            if res.clicked() {
-                                self.current_instance = index;
+                    ScrollArea::horizontal()
+                        .always_show_scroll(true)
+                        .show(ui, |ui| {
+                            let mut total_tab_x = 0.0;
+                            let offset = ui.max_rect().left();
+                            let item_spacing = ui.spacing().item_spacing.x;
+                            for (index, instance) in self.instances.iter_mut().enumerate() {
+                                let tab_x = if let Some(tab_x) = instance.tab_x {
+                                    tab_x
+                                } else {
+                                    total_tab_x
+                                };
+
+                                let tab_padding = ctx.ctx.style().spacing.button_padding;
+                                let tab_extra = tab_padding + tab_padding;
+                                let tab_galley = ctx.ctx.fonts().layout_delayed_color(
+                                    instance.name.to_string(),
+                                    TextStyle::Button,
+                                    f32::INFINITY,
+                                );
+                                let tab_size = tab_galley.size() + tab_extra;
+
+                                {
+                                    let mut ui = ui.child_ui(
+                                        Rect::from_min_size(pos2(tab_x + offset, tab_y), tab_size),
+                                        Layout::left_to_right(),
+                                    );
+                                    let res = ui.add(
+                                        SelectableLabel2::new(
+                                            self.current_instance == index,
+                                            &instance.name,
+                                        )
+                                        .sense(Sense::click_and_drag()),
+                                    );
+
+                                    if instance.tab_x.is_none() {
+                                        instance.tab_x = Some(total_tab_x);
+                                    }
+
+                                    total_tab_x += tab_size.x + item_spacing;
+
+                                    if res.clicked() {
+                                        self.current_instance = index;
+                                    } else if res.dragged() {
+                                        *instance.tab_x.as_mut().unwrap() += res.drag_delta().x;
+                                    }
+                                }
                             }
-                            if res.dragged() {
-                                // TODO: dragging calculations
-                            }
-                        }
-                    });
+
+                            ui.allocate_space(vec2(total_tab_x, tab_height));
+                        });
                 });
             });
         });

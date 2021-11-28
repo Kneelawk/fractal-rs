@@ -1,5 +1,9 @@
+#![allow(dead_code)]
+
 use egui::{NumExt, Response, Sense, TextStyle, Ui, Widget, WidgetInfo, WidgetType};
 
+/// Slightly altered version of egui's `SelectableLabel`, allowing for different
+/// `Sense`s.
 #[must_use = "You should put this widget in an ui with `ui.add(widget);`"]
 #[derive(Debug)]
 pub struct SelectableLabel2 {
