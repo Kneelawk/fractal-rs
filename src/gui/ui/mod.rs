@@ -245,14 +245,23 @@ impl FractalRSUI {
                     ui.checkbox(&mut self.show_ui_settings, "UI Settings");
                 });
             });
+
             ui.separator();
-            tab_list(
+
+            let res = tab_list(
                 ui,
                 &mut self.instances,
                 &mut self.current_instance,
                 &mut self.dragging_instance,
                 |instance| instance.data.name.clone(),
             );
+
+            if res.close_tab {
+                self.instances.remove(self.current_instance);
+                if self.current_instance > 0 {
+                    self.current_instance -= 1;
+                }
+            }
         });
     }
 

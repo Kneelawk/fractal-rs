@@ -7,7 +7,9 @@ pub fn tab_list<T: TabX, F1: FnMut(&mut T) -> String>(
     current_instance: &mut usize,
     dragging_instance: &mut Option<usize>,
     mut name_func: F1,
-) {
+) -> TabListResponse {
+    let mut close_tab = false;
+
     ui.with_layout(Layout::right_to_left().with_cross_align(Align::Min), |ui| {
         let mut tab_y = 0.0;
         let mut tab_height = 0.0;
@@ -17,10 +19,7 @@ pub fn tab_list<T: TabX, F1: FnMut(&mut T) -> String>(
             tab_height = res.rect.height();
             if res.clicked() {
                 if *current_instance < instances.len() {
-                    instances.remove(*current_instance);
-                    if *current_instance > 0 {
-                        *current_instance -= 1;
-                    }
+                    close_tab = true;
                 } else {
                     *current_instance = 0;
                 }
@@ -173,6 +172,14 @@ pub fn tab_list<T: TabX, F1: FnMut(&mut T) -> String>(
                 });
         });
     });
+
+    TabListResponse { close_tab }
+}
+
+/// Response of a tab list widget.
+pub struct TabListResponse {
+    /// Whether the close tab button was clicked.
+    pub close_tab: bool,
 }
 
 /// Something that can be used as a tab.
