@@ -30,6 +30,7 @@ pub struct UIInstance {
     // open windows
     show_generator_controls: bool,
     show_viewer_controls: bool,
+    show_project_settings: bool,
 
     // generator controls
     generate_fractal: Option<GenerationType>,
@@ -144,6 +145,7 @@ impl UIInstance {
             manager,
             show_generator_controls: true,
             show_viewer_controls: true,
+            show_project_settings: true,
             generate_fractal: None,
             generation_running: false,
             generation_fraction: 0.0,
@@ -262,12 +264,14 @@ impl UIInstance {
     pub fn draw_window_options(&mut self, _ctx: &UIRenderContext, ui: &mut Ui) {
         ui.checkbox(&mut self.show_generator_controls, "Generator Controls");
         ui.checkbox(&mut self.show_viewer_controls, "Viewer Controls");
+        ui.checkbox(&mut self.show_project_settings, "Project Settings");
     }
 
     pub fn draw(&mut self, ctx: &mut UIRenderContext) {
         self.draw_fractal_viewers(ctx);
         self.draw_generator_controls(ctx);
         self.draw_viewer_controls(ctx);
+        self.draw_project_settings(ctx);
 
         if self.generate_fractal.is_some() {
             self.apply_view_settings(ctx);
@@ -525,6 +529,16 @@ impl UIInstance {
                 if ui.button("Deselect Position").clicked() {
                     self.viewer.selection_pos = None;
                 }
+            });
+    }
+
+    fn draw_project_settings(&mut self, ctx: &UIRenderContext) {
+        egui::Window::new("Project Settings")
+            .default_size([340.0, 500.0])
+            .open(&mut self.show_project_settings)
+            .show(ctx.ctx, |ui| {
+                ui.label("Project name:");
+                ui.text_edit_singleline(&mut self.name);
             });
     }
 }
