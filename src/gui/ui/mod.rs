@@ -14,14 +14,12 @@ use crate::{
                 UIInstance, UIInstanceCreationContext, UIInstanceInitialSettings,
                 UIInstanceUpdateContext,
             },
-            widgets::selected_label::SelectableLabel2,
+            widgets::tab_list::{tab_list, SimpleTab},
         },
     },
     util::{future::future_wrapper::FutureWrapper, running_guard::RunningGuard},
 };
-use egui::{
-    pos2, vec2, Align, CtxRef, DragValue, Label, Layout, Rect, ScrollArea, Sense, TextStyle,
-};
+use egui::{CtxRef, DragValue, Label};
 use egui_wgpu_backend::RenderPass;
 use std::sync::{
     atomic::{AtomicBool, Ordering},
@@ -68,7 +66,7 @@ pub struct FractalRSUI {
     gpu_poll: Option<RunningGuard>,
 
     // instances
-    instances: Vec<UIInstance>,
+    instances: Vec<SimpleTab<UIInstance>>,
     dragging_instance: Option<usize>,
     current_instance: usize,
     new_instance_requested: bool,
@@ -129,7 +127,7 @@ impl FractalRSUI {
             factory_future: Default::default(),
             factory,
             gpu_poll: None,
-            instances: vec![first_instance],
+            instances: vec![SimpleTab::new(first_instance)],
             dragging_instance: None,
             current_instance: 0,
             new_instance_requested: false,
@@ -165,6 +163,7 @@ impl FractalRSUI {
 
             // update the factories for all existing instances
             for instance in self.instances.iter_mut() {
+                let instance = &mut instance.data;
                 instance.set_factory(self.factory.clone());
             }
         }
@@ -178,6 +177,7 @@ impl FractalRSUI {
         // Update all the instances, even the ones that are not currently being
         // rendered.
         for instance in self.instances.iter_mut() {
+            let instance = &mut instance.data;
             instance.update(UIInstanceUpdateContext {
                 chunk_size: 1 << self.chunk_size_power,
             });
@@ -246,179 +246,13 @@ impl FractalRSUI {
                 });
             });
             ui.separator();
-            ui.with_layout(Layout::right_to_left().with_cross_align(Align::Min), |ui| {
-                let mut tab_y = 0.0;
-                let mut tab_height = 0.0;
-                ui.add_enabled_ui(!self.instances.is_empty(), |ui| {
-                    let res = ui.button("X");
-                    tab_y = res.rect.min.y;
-                    tab_height = res.rect.height();
-                    if res.clicked() {
-                        if self.current_instance < self.instances.len() {
-                            self.instances.remove(self.current_instance);
-                            if self.current_instance > 0 {
-                                self.current_instance -= 1;
-                            }
-                        } else {
-                            self.current_instance = 0;
-                        }
-                    }
-                });
-                ui.with_layout(Layout::left_to_right(), |ui| {
-                    ScrollArea::horizontal()
-                        .always_show_scroll(true)
-                        .show(ui, |ui| {
-                            let mut total_tab_x = 0.0;
-                            let offset = ui.max_rect().left();
-                            let item_spacing = ui.spacing().item_spacing.x;
-                            let mut starting_dragging = false;
-
-                            // render all the tabs
-                            for (index, instance) in self.instances.iter_mut().enumerate() {
-                                // get the tab size
-                                let tab_padding = ctx.ctx.style().spacing.button_padding;
-                                let tab_extra = tab_padding + tab_padding;
-                                let tab_galley = ctx.ctx.fonts().layout_delayed_color(
-                                    instance.name.clone(),
-                                    TextStyle::Button,
-                                    f32::INFINITY,
-                                );
-                                let tab_size = tab_galley.size() + tab_extra;
-
-                                let tab_x = total_tab_x;
-                                total_tab_x += tab_size.x + item_spacing;
-
-                                if self.dragging_instance != Some(index) {
-                                    // if the currently rendered instance is not the currently
-                                    // dragged instance, reset the instance's position
-                                    instance.tab_x = tab_x;
-
-                                    // get a ui to contain the tab, specifically at the tab's
-                                    // current position
-                                    let mut ui = ui.child_ui(
-                                        Rect::from_min_size(
-                                            pos2(instance.tab_x + offset, tab_y),
-                                            tab_size,
-                                        ),
-                                        Layout::left_to_right(),
-                                    );
-
-                                    // render the tab
-                                    let res = ui.add(
-                                        SelectableLabel2::new(
-                                            self.current_instance == index,
-                                            &instance.name,
-                                        )
-                                        .sense(Sense::click_and_drag()),
-                                    );
-
-                                    // handle tab clicking and dragging
-                                    if res.clicked() {
-                                        self.current_instance = index;
-                                    } else if res.dragged() {
-                                        starting_dragging = true;
-                                        self.dragging_instance = Some(index);
-                                        instance.tab_x += res.drag_delta().x;
-                                    }
-
-                                    // if the drag is released, then we're not dragging anything
-                                    // anymore
-                                    if res.drag_released() {
-                                        // we have this here just in case something wonky happens
-                                        // between frames
-                                        self.dragging_instance = None;
-                                    }
-                                }
-                            }
-
-                            // render the dragged tab last so it appears on top
-                            if self.dragging_instance.is_some() && !starting_dragging {
-                                let index = self.dragging_instance.unwrap();
-                                let instance = &mut self.instances[index];
-
-                                // get the tab size
-                                let tab_padding = ctx.ctx.style().spacing.button_padding;
-                                let tab_extra = tab_padding + tab_padding;
-                                let tab_galley = ctx.ctx.fonts().layout_delayed_color(
-                                    instance.name.clone(),
-                                    TextStyle::Button,
-                                    f32::INFINITY,
-                                );
-                                let tab_size = tab_galley.size() + tab_extra;
-
-                                // get a ui to contain the tab, specifically at the tab's
-                                // current position
-                                let mut ui = ui.child_ui(
-                                    Rect::from_min_size(
-                                        pos2(instance.tab_x + offset, tab_y),
-                                        tab_size,
-                                    ),
-                                    Layout::left_to_right(),
-                                );
-
-                                // render the tab
-                                let res = ui.add(
-                                    SelectableLabel2::new(
-                                        self.current_instance == index,
-                                        &instance.name,
-                                    )
-                                    .sense(Sense::click_and_drag()),
-                                );
-
-                                // handle tab clicking and dragging
-                                if res.clicked() {
-                                    self.current_instance = index;
-                                } else if res.dragged() {
-                                    self.dragging_instance = Some(index);
-                                    instance.tab_x += res.drag_delta().x;
-                                }
-
-                                // if the drag is released, then we're not dragging anything
-                                // anymore
-                                if res.drag_released() {
-                                    self.dragging_instance = None;
-                                }
-                            }
-
-                            // make sure the scroll area is large enough
-                            ui.allocate_space(vec2(total_tab_x, tab_height));
-
-                            if let Some(drag_index) = &mut self.dragging_instance {
-                                // check if we need to move drag index up
-                                while *drag_index < self.instances.len() - 1
-                                    && self.instances[*drag_index].tab_x
-                                        > self.instances[*drag_index + 1].tab_x
-                                {
-                                    self.instances.swap(*drag_index, *drag_index + 1);
-
-                                    if self.current_instance == *drag_index {
-                                        self.current_instance += 1;
-                                    } else if self.current_instance == *drag_index + 1 {
-                                        self.current_instance -= 1;
-                                    }
-
-                                    *drag_index += 1;
-                                }
-
-                                // check if we need to move drag index down
-                                while *drag_index > 0
-                                    && self.instances[*drag_index].tab_x
-                                        < self.instances[*drag_index - 1].tab_x
-                                {
-                                    self.instances.swap(*drag_index, *drag_index - 1);
-
-                                    if self.current_instance == *drag_index {
-                                        self.current_instance -= 1;
-                                    } else if self.current_instance == *drag_index - 1 {
-                                        self.current_instance += 1;
-                                    }
-
-                                    *drag_index -= 1;
-                                }
-                            }
-                        });
-                });
-            });
+            tab_list(
+                ui,
+                &mut self.instances,
+                &mut self.current_instance,
+                &mut self.dragging_instance,
+                |instance| instance.data.name.clone(),
+            );
         });
     }
 
@@ -508,7 +342,7 @@ impl FractalRSUI {
             self.instance_name_index += 1;
 
             self.current_instance = self.instances.len();
-            self.instances.push(new_instance);
+            self.instances.push(SimpleTab::new(new_instance));
         }
     }
 
@@ -520,7 +354,9 @@ impl FractalRSUI {
                 self.current_instance = self.instances.len() - 1;
             }
 
-            self.instances.get_mut(self.current_instance)
+            self.instances
+                .get_mut(self.current_instance)
+                .map(|tab| &mut tab.data)
         }
     }
 }
