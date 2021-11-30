@@ -52,17 +52,21 @@ pub fn tab_list<T: TabX, F1: FnMut(&mut T) -> String>(
                         total_tab_x += tab_size.x + item_spacing;
 
                         if *dragging_tab != Some(index) {
-                            // if the currently rendered instance is not the currently
-                            // dragged instance, reset the instance's position
-                            let cur_tab_x = instance.tab_x();
-                            let diff = tab_x - cur_tab_x;
-                            instance.set_tab_x(cur_tab_x + diff * 0.5);
+                            // if the currently rendered tab has a position, animate it toward the
+                            // position it should have, otherwise just set it to the correct
+                            // position
+                            if let Some(cur_tab_x) = instance.tab_x() {
+                                let diff = tab_x - cur_tab_x;
+                                instance.set_tab_x(cur_tab_x + diff * 0.5);
+                            } else {
+                                instance.set_tab_x(tab_x);
+                            }
 
                             // get a ui to contain the tab, specifically at the tab's
                             // current position
                             let mut ui = ui.child_ui(
                                 Rect::from_min_size(
-                                    pos2(instance.tab_x() + offset, tab_y),
+                                    pos2(instance.tab_x().unwrap() + offset, tab_y),
                                     tab_size,
                                 ),
                                 Layout::left_to_right(),
@@ -80,7 +84,7 @@ pub fn tab_list<T: TabX, F1: FnMut(&mut T) -> String>(
                             } else if res.dragged() {
                                 starting_dragging = true;
                                 *dragging_tab = Some(index);
-                                instance.set_tab_x(instance.tab_x() + res.drag_delta().x);
+                                instance.set_tab_x(instance.tab_x().unwrap() + res.drag_delta().x);
                             }
 
                             // if the drag is released, then we're not dragging anything
@@ -112,7 +116,10 @@ pub fn tab_list<T: TabX, F1: FnMut(&mut T) -> String>(
                         // get a ui to contain the tab, specifically at the tab's
                         // current position
                         let mut ui = ui.child_ui(
-                            Rect::from_min_size(pos2(instance.tab_x() + offset, tab_y), tab_size),
+                            Rect::from_min_size(
+                                pos2(instance.tab_x_or(0.0) + offset, tab_y),
+                                tab_size,
+                            ),
                             Layout::left_to_right(),
                         );
 
@@ -127,7 +134,7 @@ pub fn tab_list<T: TabX, F1: FnMut(&mut T) -> String>(
                             *current_tab = index;
                         } else if res.dragged() {
                             *dragging_tab = Some(index);
-                            instance.set_tab_x(instance.tab_x() + res.drag_delta().x);
+                            instance.set_tab_x(instance.tab_x_or(0.0) + res.drag_delta().x);
                         }
 
                         // if the drag is released, then we're not dragging anything
@@ -143,7 +150,7 @@ pub fn tab_list<T: TabX, F1: FnMut(&mut T) -> String>(
                     if let Some(drag_index) = &mut *dragging_tab {
                         // check if we need to move drag index up
                         while *drag_index < tabs.len() - 1
-                            && tabs[*drag_index].tab_x() > tabs[*drag_index + 1].tab_x()
+                            && tabs[*drag_index].tab_x_or(0.0) > tabs[*drag_index + 1].tab_x_or(0.0)
                         {
                             tabs.swap(*drag_index, *drag_index + 1);
 
@@ -158,7 +165,7 @@ pub fn tab_list<T: TabX, F1: FnMut(&mut T) -> String>(
 
                         // check if we need to move drag index down
                         while *drag_index > 0
-                            && tabs[*drag_index].tab_x() < tabs[*drag_index - 1].tab_x()
+                            && tabs[*drag_index].tab_x_or(0.0) < tabs[*drag_index - 1].tab_x_or(0.0)
                         {
                             tabs.swap(*drag_index, *drag_index - 1);
 
@@ -186,8 +193,14 @@ pub struct TabListResponse {
 
 /// Something that can be used as a tab.
 pub trait TabX {
-    /// Gets the X position of this tab.
-    fn tab_x(&self) -> f32;
+    /// Gets the X position of this tab if this tab has a position.
+    fn tab_x(&self) -> Option<f32>;
+
+    /// Gets the X position of this tab or the default if this tab does not have
+    /// a position.
+    fn tab_x_or(&self, default: f32) -> f32 {
+        self.tab_x().unwrap_or(default)
+    }
 
     /// Sets the X position of this tab.
     fn set_tab_x(&mut self, tab_x: f32);
@@ -195,22 +208,22 @@ pub trait TabX {
 
 /// Tab wrapper for data.
 pub struct SimpleTab<T> {
-    pub tab_x: f32,
+    pub tab_x: Option<f32>,
     pub data: T,
 }
 
 impl<T> SimpleTab<T> {
     pub fn new(data: T) -> SimpleTab<T> {
-        SimpleTab { tab_x: 0.0, data }
+        SimpleTab { tab_x: None, data }
     }
 }
 
 impl<T> TabX for SimpleTab<T> {
-    fn tab_x(&self) -> f32 {
+    fn tab_x(&self) -> Option<f32> {
         self.tab_x
     }
 
     fn set_tab_x(&mut self, tab_x: f32) {
-        self.tab_x = tab_x;
+        self.tab_x = Some(tab_x);
     }
 }
