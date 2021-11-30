@@ -54,7 +54,9 @@ pub fn tab_list<T: TabX, F1: FnMut(&mut T) -> String>(
                         if *dragging_tab != Some(index) {
                             // if the currently rendered instance is not the currently
                             // dragged instance, reset the instance's position
-                            instance.set_tab_x(tab_x);
+                            let cur_tab_x = instance.tab_x();
+                            let diff = tab_x - cur_tab_x;
+                            instance.set_tab_x(cur_tab_x + diff * 0.5);
 
                             // get a ui to contain the tab, specifically at the tab's
                             // current position
