@@ -346,24 +346,22 @@ impl UIInstance {
                                 }
                             });
 
-                            egui::Grid::new("generate_to_image.image_settings.grid")
-                                .min_col_width(100.0)
-                                .show(ui, |ui| {
-                                    ui.label("Output Location:");
-                                    ui.add(
-                                        TextEdit::singleline(&mut self.output_location)
-                                            .desired_width(100.0),
-                                    );
-                                    if ui.button("Choose File").clicked() {
-                                        self.file_dialog_wrapper
-                                            .save_file(
-                                                AsyncFileDialog::new()
-                                                    .add_filter("PNG Image", &["png"]),
-                                            )
-                                            .ok();
-                                    }
-                                    ui.end_row();
+                            ui.label("Output Location:");
+                            ui.add(
+                                TextEdit::singleline(&mut self.output_location)
+                                    .desired_width(ui.available_width()),
+                            );
+                            if ui.button("Choose File").clicked() {
+                                self.file_dialog_wrapper
+                                    .save_file(
+                                        AsyncFileDialog::new().add_filter("PNG Image", &["png"]),
+                                    )
+                                    .ok();
+                            }
 
+                            egui::Grid::new("generate_to_image.image_settings.grid").show(
+                                ui,
+                                |ui| {
                                     ui.label("Image Width:");
                                     ui.add(
                                         DragValue::new(&mut self.edit_image_width)
@@ -379,7 +377,8 @@ impl UIInstance {
                                             .clamp_range(2..=65536),
                                     );
                                     ui.end_row();
-                                });
+                                },
+                            );
                         });
                     });
 
@@ -538,7 +537,7 @@ impl UIInstance {
             .open(&mut self.show_project_settings)
             .show(ctx.ctx, |ui| {
                 ui.label("Project name:");
-                ui.text_edit_singleline(&mut self.name);
+                ui.add(TextEdit::singleline(&mut self.name).desired_width(ui.available_width()));
             });
     }
 }
