@@ -126,6 +126,7 @@ pub fn tab_list<T: TabX, F1: FnMut(&mut T) -> String>(
                         // render the tab
                         let res = ui.add(
                             SelectableLabel2::new(*current_tab == index, &name)
+                                .always_draw_background(true)
                                 .sense(Sense::click_and_drag()),
                         );
 

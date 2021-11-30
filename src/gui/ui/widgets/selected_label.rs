@@ -11,6 +11,7 @@ pub struct SelectableLabel2 {
     text: String,
     text_style: Option<TextStyle>,
     sense: Sense,
+    always_draw_background: bool,
 }
 
 impl SelectableLabel2 {
@@ -21,6 +22,7 @@ impl SelectableLabel2 {
             text: text.to_string(),
             text_style: None,
             sense: Sense::click(),
+            always_draw_background: false,
         }
     }
 
@@ -33,6 +35,11 @@ impl SelectableLabel2 {
         self.sense = sense;
         self
     }
+
+    pub fn always_draw_background(mut self, always_draw_background: bool) -> Self {
+        self.always_draw_background = always_draw_background;
+        self
+    }
 }
 
 impl Widget for SelectableLabel2 {
@@ -42,6 +49,7 @@ impl Widget for SelectableLabel2 {
             text,
             text_style,
             sense,
+            always_draw_background,
         } = self;
 
         let id = ui.make_persistent_id(&text);
@@ -78,7 +86,7 @@ impl Widget for SelectableLabel2 {
 
         let visuals = ui.style().interact_selectable(&response, selected);
 
-        if selected || response.hovered() || response.has_focus() {
+        if always_draw_background || selected || response.hovered() || response.has_focus() {
             let rect = rect.expand(visuals.expansion);
 
             let corner_radius = 2.0;
