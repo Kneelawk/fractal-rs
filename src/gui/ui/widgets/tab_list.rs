@@ -47,8 +47,12 @@ pub fn tab_list<T: TabX, F1: FnMut(&mut T) -> String>(
                             f32::INFINITY,
                         );
                         let tab_size = tab_galley.size() + tab_extra;
+                        let half_width = tab_size.x / 2.0;
 
-                        let tab_x = total_tab_x;
+                        // Add half width to tab_x so that our x position is for the center of the
+                        // tab. This is so that the tab swapping checks compare the position of the
+                        // center of the tab instead of its start.
+                        let tab_x = total_tab_x + half_width;
                         total_tab_x += tab_size.x + item_spacing;
 
                         if *dragging_tab != Some(index) {
@@ -66,7 +70,7 @@ pub fn tab_list<T: TabX, F1: FnMut(&mut T) -> String>(
                             // current position
                             let mut ui = ui.child_ui(
                                 Rect::from_min_size(
-                                    pos2(instance.tab_x().unwrap() + offset, tab_y),
+                                    pos2(instance.tab_x().unwrap() - half_width + offset, tab_y),
                                     tab_size,
                                 ),
                                 Layout::left_to_right(),
@@ -117,7 +121,7 @@ pub fn tab_list<T: TabX, F1: FnMut(&mut T) -> String>(
                         // current position
                         let mut ui = ui.child_ui(
                             Rect::from_min_size(
-                                pos2(instance.tab_x_or(0.0) + offset, tab_y),
+                                pos2(instance.tab_x_or(0.0) - tab_size.x / 2.0 + offset, tab_y),
                                 tab_size,
                             ),
                             Layout::left_to_right(),
@@ -194,16 +198,17 @@ pub struct TabListResponse {
 
 /// Something that can be used as a tab.
 pub trait TabX {
-    /// Gets the X position of this tab if this tab has a position.
+    /// Gets the X position of the center of this tab if this tab has a
+    /// position.
     fn tab_x(&self) -> Option<f32>;
 
-    /// Gets the X position of this tab or the default if this tab does not have
-    /// a position.
+    /// Gets the X position of the center of this tab or the default if this tab
+    /// does not have a position.
     fn tab_x_or(&self, default: f32) -> f32 {
         self.tab_x().unwrap_or(default)
     }
 
-    /// Sets the X position of this tab.
+    /// Sets the X position of the center of this tab.
     fn set_tab_x(&mut self, tab_x: f32);
 }
 
