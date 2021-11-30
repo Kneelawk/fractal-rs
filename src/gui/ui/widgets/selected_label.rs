@@ -1,6 +1,6 @@
 #![allow(dead_code)]
 
-use egui::{NumExt, Response, Sense, TextStyle, Ui, Widget, WidgetInfo, WidgetType};
+use egui::{Id, NumExt, Response, Sense, TextStyle, Ui, Widget, WidgetInfo, WidgetType};
 
 /// Slightly altered version of egui's `SelectableLabel`, allowing for different
 /// `Sense`s.
@@ -12,6 +12,7 @@ pub struct SelectableLabel2 {
     text_style: Option<TextStyle>,
     sense: Sense,
     always_draw_background: bool,
+    override_id: Option<Id>,
 }
 
 impl SelectableLabel2 {
@@ -23,6 +24,7 @@ impl SelectableLabel2 {
             text_style: None,
             sense: Sense::click(),
             always_draw_background: false,
+            override_id: None,
         }
     }
 
@@ -40,6 +42,11 @@ impl SelectableLabel2 {
         self.always_draw_background = always_draw_background;
         self
     }
+
+    pub fn id(mut self, id: Id) -> Self {
+        self.override_id = Some(id);
+        self
+    }
 }
 
 impl Widget for SelectableLabel2 {
@@ -50,9 +57,10 @@ impl Widget for SelectableLabel2 {
             text_style,
             sense,
             always_draw_background,
+            override_id,
         } = self;
 
-        let id = ui.make_persistent_id(&text);
+        let id = override_id.unwrap_or_else(|| ui.make_persistent_id(&text));
 
         let text_style = text_style
             .or(ui.style().override_text_style)

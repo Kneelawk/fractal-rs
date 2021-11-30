@@ -1,12 +1,13 @@
 use crate::gui::ui::widgets::selected_label::SelectableLabel2;
-use egui::{pos2, vec2, Align, Layout, Rect, ScrollArea, Sense, TextStyle, Ui};
+use egui::{pos2, vec2, Align, Id, Layout, Rect, ScrollArea, Sense, TextStyle, Ui};
 
-pub fn tab_list<T: TabX, F1: FnMut(&mut T) -> String>(
+pub fn tab_list<T: TabX, F1: FnMut(&mut T) -> String, F2: FnMut(&mut Ui, &mut T) -> Id>(
     ui: &mut Ui,
     tabs: &mut Vec<T>,
     current_tab: &mut usize,
     dragging_tab: &mut Option<usize>,
     mut name_func: F1,
+    mut id_func: F2,
 ) -> TabListResponse {
     let mut close_tab = false;
 
@@ -76,9 +77,13 @@ pub fn tab_list<T: TabX, F1: FnMut(&mut T) -> String>(
                                 Layout::left_to_right(),
                             );
 
+                            // get a unique label id
+                            let label_id = id_func(&mut ui, instance);
+
                             // render the tab
                             let res = ui.add(
                                 SelectableLabel2::new(*current_tab == index, &name)
+                                    .id(label_id)
                                     .sense(Sense::click_and_drag()),
                             );
 
@@ -127,9 +132,13 @@ pub fn tab_list<T: TabX, F1: FnMut(&mut T) -> String>(
                             Layout::left_to_right(),
                         );
 
+                        // get a unique label id
+                        let label_id = id_func(&mut ui, instance);
+
                         // render the tab
                         let res = ui.add(
                             SelectableLabel2::new(*current_tab == index, &name)
+                                .id(label_id)
                                 .always_draw_background(true)
                                 .sense(Sense::click_and_drag()),
                         );

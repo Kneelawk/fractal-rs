@@ -279,6 +279,7 @@ impl FractalRSUI {
                 &mut self.current_tab,
                 &mut self.dragging_tab,
                 |tab| self.instances[&tab.data].name.clone(),
+                |ui, tab| ui.make_persistent_id(tab.data),
             );
 
             if res.close_tab {
