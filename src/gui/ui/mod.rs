@@ -16,13 +16,15 @@ use crate::{
             },
             widgets::tab_list::{tab_list, SimpleTab},
         },
+        util::get_trace_path,
     },
-    util::{future::future_wrapper::FutureWrapper, running_guard::RunningGuard},
+    util::{future::future_wrapper::FutureWrapper, result::ResultExt, running_guard::RunningGuard},
 };
 use egui::{CtxRef, DragValue, Label};
 use egui_wgpu_backend::RenderPass;
 use std::{
     collections::HashMap,
+    io,
     sync::{
         atomic::{AtomicBool, Ordering},
         Arc,
@@ -32,7 +34,10 @@ use tokio::{
     runtime::Handle,
     task::{yield_now, JoinHandle},
 };
-use wgpu::{DeviceDescriptor, Instance, Maintain, PowerPreference, RequestAdapterOptions};
+use wgpu::{
+    DeviceDescriptor, Instance, Maintain, PowerPreference, RequestAdapterOptions,
+    RequestDeviceError,
+};
 use winit::event::VirtualKeyCode;
 
 /// Struct specifically devoted to UI rendering and state.
@@ -60,10 +65,15 @@ pub struct FractalRSUI {
     // generator stuff
     instance: Arc<Instance>,
     factory_future: FutureWrapper<
-        JoinHandle<(
-            Arc<dyn FractalGeneratorFactory + Send + Sync + 'static>,
-            RunningGuard,
-        )>,
+        JoinHandle<
+            Result<
+                (
+                    Arc<dyn FractalGeneratorFactory + Send + Sync + 'static>,
+                    RunningGuard,
+                ),
+                CreateGpuFactoryError,
+            >,
+        >,
     >,
     factory: Arc<dyn FractalGeneratorFactory + Send + Sync + 'static>,
     gpu_poll: Option<RunningGuard>,
@@ -181,9 +191,13 @@ impl FractalRSUI {
         }
 
         if let Some(factory) = self.factory_future.poll_unpin(&self.handle) {
-            let (factory, gpu_poll) = factory.expect("Panic while creating new gpu-based factory.");
-            self.factory = factory;
-            self.gpu_poll = Some(gpu_poll);
+            let factory = factory.expect("Panic while creating new gpu-based factory.");
+            if let Some((factory, gpu_poll)) = factory
+                .on_err(|e| error!("Error creating dedicated GPU generator factory: {:?}", e))
+            {
+                self.factory = factory;
+                self.gpu_poll = Some(gpu_poll);
+            }
         }
 
         // Update all the instances, even the ones that are not currently being
@@ -394,10 +408,13 @@ enum GeneratorType {
 
 async fn create_gpu_factory(
     instance: Arc<Instance>,
-) -> (
-    Arc<dyn FractalGeneratorFactory + Send + Sync + 'static>,
-    RunningGuard,
-) {
+) -> Result<
+    (
+        Arc<dyn FractalGeneratorFactory + Send + Sync + 'static>,
+        RunningGuard,
+    ),
+    CreateGpuFactoryError,
+> {
     info!("Getting dedicated GPU for fractal generation...");
     let adapter = instance
         .request_adapter(&RequestAdapterOptions {
@@ -406,7 +423,8 @@ async fn create_gpu_factory(
             compatible_surface: None,
         })
         .await
-        .expect("Unable to retrieve high-performance GPUAdapter.");
+        .ok_or(CreateGpuFactoryError::RequestAdapterError)?;
+    let trace_path = get_trace_path("dedicated", false).await?;
     let (device, queue) = adapter
         .request_device(
             &DeviceDescriptor {
@@ -414,10 +432,9 @@ async fn create_gpu_factory(
                 features: Default::default(),
                 limits: Default::default(),
             },
-            None,
+            trace_path.as_ref().map(|p| p.as_path()),
         )
-        .await
-        .expect("Error requesting dedicated logical device.");
+        .await?;
 
     let device = Arc::new(device);
     let queue = Arc::new(queue);
@@ -439,8 +456,18 @@ async fn create_gpu_factory(
         ty: GPUContextType::Dedicated,
     };
 
-    (
+    Ok((
         Arc::new(GpuFractalGeneratorFactory::new(dedicated)),
         RunningGuard::new(status),
-    )
+    ))
+}
+
+#[derive(Debug, Error)]
+enum CreateGpuFactoryError {
+    #[error("IO error")]
+    IOError(#[from] io::Error),
+    #[error("Unable to retrieve high-performance GPUAdapter")]
+    RequestAdapterError,
+    #[error("Error requesting dedicated logical device")]
+    RequestDeviceError(#[from] RequestDeviceError),
 }

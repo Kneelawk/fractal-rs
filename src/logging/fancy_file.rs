@@ -1,3 +1,4 @@
+use crate::util::get_start_date;
 use log4rs::{
     append::{file::FileAppender, Append},
     config::{Deserialize, Deserializers},
@@ -61,6 +62,11 @@ fn expand_date(ty: &str, args: Option<&str>) -> Option<String> {
     match ty {
         "d" => Some(
             chrono::Local::now()
+                .format(args.unwrap_or("%Y-%m-%d_%H-%M-%S"))
+                .to_string(),
+        ),
+        "D" => Some(
+            get_start_date()
                 .format(args.unwrap_or("%Y-%m-%d_%H-%M-%S"))
                 .to_string(),
         ),

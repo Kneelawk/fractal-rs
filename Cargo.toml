@@ -5,6 +5,9 @@ authors = ["Kneelawk <kneelawk@gmail.com>"]
 edition = "2021"
 resolver = "2"
 
+[features]
+debug-wgpu-trace = ["wgpu/trace"]
+
 [dependencies]
 anyhow = "^1.0.43"
 async-trait = "^0.1.51"

@@ -4,7 +4,7 @@ pub mod future;
 pub mod result;
 pub mod running_guard;
 
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, Local, Utc};
 use chrono_humanize::{Accuracy, HumanTime, Tense};
 
 #[allow(dead_code)]
@@ -23,4 +23,12 @@ pub fn display_duration(start_time: DateTime<Utc>) {
         "Completed in: {}",
         HumanTime::from(duration).to_text_en(Accuracy::Precise, Tense::Present)
     );
+}
+
+lazy_static! {
+    static ref START_DATE: DateTime<Local> = Local::now();
+}
+
+pub fn get_start_date() -> &'static DateTime<Local> {
+    &START_DATE
 }

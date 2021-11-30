@@ -7,6 +7,8 @@
 #![feature(never_type)]
 
 #[macro_use]
+extern crate lazy_static;
+#[macro_use]
 extern crate log;
 #[macro_use]
 extern crate serde;
@@ -20,6 +22,10 @@ mod logging;
 mod util;
 
 fn main() {
+    // initialize the start date variable
+    util::get_start_date();
+
+    // setup the logger
     logging::init();
     info!("Hello from fractal-rs-2");
 

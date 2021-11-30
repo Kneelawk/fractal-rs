@@ -24,6 +24,7 @@ use winit::{
 mod flow;
 mod keyboard;
 mod ui;
+mod util;
 
 /// Launches the application as a GUI application.
 pub fn start_gui_application() -> ! {

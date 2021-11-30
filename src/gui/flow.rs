@@ -1,6 +1,9 @@
 #![allow(dead_code)]
 
-use crate::gpu::{GPUContext, GPUContextType};
+use crate::{
+    gpu::{GPUContext, GPUContextType},
+    gui::util::get_trace_path,
+};
 use std::{
     io,
     sync::{
@@ -151,13 +154,14 @@ impl Flow {
             .ok_or(FlowStartError::AdapterRequestError)?;
 
         info!("Requesting device...");
+        let trace_path = runtime.block_on(get_trace_path("present", true))?;
         let (device, queue) = runtime.block_on(adapter.request_device(
             &DeviceDescriptor {
                 label: Some("Device"),
                 limits: Default::default(),
                 features: Default::default(),
             },
-            None,
+            trace_path.as_ref().map(|p| p.as_path()),
         ))?;
 
         let device = Arc::new(device);
