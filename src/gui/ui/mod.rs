@@ -79,13 +79,13 @@ pub struct FractalRSUI {
     gpu_poll: Option<RunningGuard>,
 
     // instances
-    instances: HashMap<u32, UIInstance>,
-    next_instance_id: u32,
-    tabs: Vec<SimpleTab<u32>>,
+    instances: HashMap<u64, UIInstance>,
+    next_instance_id: u64,
+    tabs: Vec<SimpleTab<u64>>,
     dragging_tab: Option<usize>,
     current_tab: usize,
     new_instance_requested: bool,
-    next_instance_name_index: u32,
+    next_instance_name_index: u64,
 }
 
 /// Struct containing context passed when creating UIState.
@@ -119,7 +119,7 @@ impl FractalRSUI {
         let factory = Arc::new(GpuFractalGeneratorFactory::new(ctx.present.clone()));
 
         let mut instances = HashMap::new();
-        let mut next_instance_id = 0;
+        let mut next_instance_id = 1;
 
         let first_instance = UIInstance::new(UIInstanceCreationContext {
             name: "Fractal 1",
@@ -376,8 +376,8 @@ impl FractalRSUI {
 
             let new_tab = SimpleTab::new(self.next_instance_id);
             self.instances.insert(self.next_instance_id, new_instance);
-            self.next_instance_id += 1;
-            self.next_instance_name_index += 1;
+            self.next_instance_name_index = self.next_instance_name_index.wrapping_add(1);
+            self.increment_instance_id();
 
             self.current_tab = self.tabs.len();
             self.tabs.push(new_tab);
@@ -395,6 +395,13 @@ impl FractalRSUI {
             self.tabs
                 .get(self.current_tab)
                 .and_then(|tab| self.instances.get_mut(&tab.data))
+        }
+    }
+
+    fn increment_instance_id(&mut self) {
+        self.next_instance_id = self.next_instance_id.wrapping_add(1);
+        while self.instances.contains_key(&self.next_instance_id) {
+            self.next_instance_id = self.next_instance_id.wrapping_add(1);
         }
     }
 }
