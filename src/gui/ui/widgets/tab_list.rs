@@ -3,9 +3,9 @@ use egui::{pos2, vec2, Align, Layout, Rect, ScrollArea, Sense, TextStyle, Ui};
 
 pub fn tab_list<T: TabX, F1: FnMut(&mut T) -> String>(
     ui: &mut Ui,
-    instances: &mut Vec<T>,
-    current_instance: &mut usize,
-    dragging_instance: &mut Option<usize>,
+    tabs: &mut Vec<T>,
+    current_tab: &mut usize,
+    dragging_tab: &mut Option<usize>,
     mut name_func: F1,
 ) -> TabListResponse {
     let mut close_tab = false;
@@ -13,15 +13,15 @@ pub fn tab_list<T: TabX, F1: FnMut(&mut T) -> String>(
     ui.with_layout(Layout::right_to_left().with_cross_align(Align::Min), |ui| {
         let mut tab_y = 0.0;
         let mut tab_height = 0.0;
-        ui.add_enabled_ui(!instances.is_empty(), |ui| {
+        ui.add_enabled_ui(!tabs.is_empty(), |ui| {
             let res = ui.button("X");
             tab_y = res.rect.min.y;
             tab_height = res.rect.height();
             if res.clicked() {
-                if *current_instance < instances.len() {
+                if *current_tab < tabs.len() {
                     close_tab = true;
                 } else {
-                    *current_instance = 0;
+                    *current_tab = 0;
                 }
             }
         });
@@ -35,7 +35,7 @@ pub fn tab_list<T: TabX, F1: FnMut(&mut T) -> String>(
                     let mut starting_dragging = false;
 
                     // render all the tabs
-                    for (index, instance) in instances.iter_mut().enumerate() {
+                    for (index, instance) in tabs.iter_mut().enumerate() {
                         let name = name_func(instance);
 
                         // get the tab size
@@ -51,7 +51,7 @@ pub fn tab_list<T: TabX, F1: FnMut(&mut T) -> String>(
                         let tab_x = total_tab_x;
                         total_tab_x += tab_size.x + item_spacing;
 
-                        if *dragging_instance != Some(index) {
+                        if *dragging_tab != Some(index) {
                             // if the currently rendered instance is not the currently
                             // dragged instance, reset the instance's position
                             instance.set_tab_x(tab_x);
@@ -68,16 +68,16 @@ pub fn tab_list<T: TabX, F1: FnMut(&mut T) -> String>(
 
                             // render the tab
                             let res = ui.add(
-                                SelectableLabel2::new(*current_instance == index, &name)
+                                SelectableLabel2::new(*current_tab == index, &name)
                                     .sense(Sense::click_and_drag()),
                             );
 
                             // handle tab clicking and dragging
                             if res.clicked() {
-                                *current_instance = index;
+                                *current_tab = index;
                             } else if res.dragged() {
                                 starting_dragging = true;
-                                *dragging_instance = Some(index);
+                                *dragging_tab = Some(index);
                                 instance.set_tab_x(instance.tab_x() + res.drag_delta().x);
                             }
 
@@ -86,15 +86,15 @@ pub fn tab_list<T: TabX, F1: FnMut(&mut T) -> String>(
                             if res.drag_released() {
                                 // we have this here just in case something wonky happens
                                 // between frames
-                                *dragging_instance = None;
+                                *dragging_tab = None;
                             }
                         }
                     }
 
                     // render the dragged tab last so it appears on top
-                    if dragging_instance.is_some() && !starting_dragging {
-                        let index = dragging_instance.unwrap();
-                        let instance = &mut instances[index];
+                    if dragging_tab.is_some() && !starting_dragging {
+                        let index = dragging_tab.unwrap();
+                        let instance = &mut tabs[index];
                         let name = name_func(instance);
 
                         // get the tab size
@@ -116,39 +116,39 @@ pub fn tab_list<T: TabX, F1: FnMut(&mut T) -> String>(
 
                         // render the tab
                         let res = ui.add(
-                            SelectableLabel2::new(*current_instance == index, &name)
+                            SelectableLabel2::new(*current_tab == index, &name)
                                 .sense(Sense::click_and_drag()),
                         );
 
                         // handle tab clicking and dragging
                         if res.clicked() {
-                            *current_instance = index;
+                            *current_tab = index;
                         } else if res.dragged() {
-                            *dragging_instance = Some(index);
+                            *dragging_tab = Some(index);
                             instance.set_tab_x(instance.tab_x() + res.drag_delta().x);
                         }
 
                         // if the drag is released, then we're not dragging anything
                         // anymore
                         if res.drag_released() {
-                            *dragging_instance = None;
+                            *dragging_tab = None;
                         }
                     }
 
                     // make sure the scroll area is large enough
                     ui.allocate_space(vec2(total_tab_x, tab_height));
 
-                    if let Some(drag_index) = &mut *dragging_instance {
+                    if let Some(drag_index) = &mut *dragging_tab {
                         // check if we need to move drag index up
-                        while *drag_index < instances.len() - 1
-                            && instances[*drag_index].tab_x() > instances[*drag_index + 1].tab_x()
+                        while *drag_index < tabs.len() - 1
+                            && tabs[*drag_index].tab_x() > tabs[*drag_index + 1].tab_x()
                         {
-                            instances.swap(*drag_index, *drag_index + 1);
+                            tabs.swap(*drag_index, *drag_index + 1);
 
-                            if *current_instance == *drag_index {
-                                *current_instance += 1;
-                            } else if *current_instance == *drag_index + 1 {
-                                *current_instance -= 1;
+                            if *current_tab == *drag_index {
+                                *current_tab += 1;
+                            } else if *current_tab == *drag_index + 1 {
+                                *current_tab -= 1;
                             }
 
                             *drag_index += 1;
@@ -156,14 +156,14 @@ pub fn tab_list<T: TabX, F1: FnMut(&mut T) -> String>(
 
                         // check if we need to move drag index down
                         while *drag_index > 0
-                            && instances[*drag_index].tab_x() < instances[*drag_index - 1].tab_x()
+                            && tabs[*drag_index].tab_x() < tabs[*drag_index - 1].tab_x()
                         {
-                            instances.swap(*drag_index, *drag_index - 1);
+                            tabs.swap(*drag_index, *drag_index - 1);
 
-                            if *current_instance == *drag_index {
-                                *current_instance -= 1;
-                            } else if *current_instance == *drag_index - 1 {
-                                *current_instance += 1;
+                            if *current_tab == *drag_index {
+                                *current_tab -= 1;
+                            } else if *current_tab == *drag_index - 1 {
+                                *current_tab += 1;
                             }
 
                             *drag_index -= 1;
