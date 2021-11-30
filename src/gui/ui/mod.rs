@@ -1,6 +1,6 @@
 mod file_dialog;
 mod instance;
-mod viewer;
+mod widgets;
 
 use crate::{
     generator::{
@@ -9,18 +9,24 @@ use crate::{
     gpu::{GPUContext, GPUContextType},
     gui::{
         keyboard::KeyboardTracker,
-        ui::instance::{
-            UIInstance, UIInstanceCreationContext, UIInstanceInitialSettings,
-            UIInstanceUpdateContext,
+        ui::{
+            instance::{
+                UIInstance, UIInstanceCreationContext, UIInstanceInitialSettings,
+                UIInstanceUpdateContext,
+            },
+            widgets::tab_list::{tab_list, SimpleTab},
         },
     },
     util::{future::future_wrapper::FutureWrapper, running_guard::RunningGuard},
 };
-use egui::{CtxRef, DragValue, Label, Layout, ScrollArea};
+use egui::{CtxRef, DragValue, Label};
 use egui_wgpu_backend::RenderPass;
-use std::sync::{
-    atomic::{AtomicBool, Ordering},
-    Arc,
+use std::{
+    collections::HashMap,
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc,
+    },
 };
 use tokio::{
     runtime::Handle,
@@ -63,10 +69,13 @@ pub struct FractalRSUI {
     gpu_poll: Option<RunningGuard>,
 
     // instances
-    instances: Vec<UIInstance>,
-    current_instance: usize,
+    instances: HashMap<u32, UIInstance>,
+    next_instance_id: u32,
+    tabs: Vec<SimpleTab<u32>>,
+    dragging_tab: Option<usize>,
+    current_tab: usize,
     new_instance_requested: bool,
-    instance_name_index: u32,
+    next_instance_name_index: u32,
 }
 
 /// Struct containing context passed when creating UIState.
@@ -99,6 +108,9 @@ impl FractalRSUI {
         info!("Creating Fractal Generator Factory...");
         let factory = Arc::new(GpuFractalGeneratorFactory::new(ctx.present.clone()));
 
+        let mut instances = HashMap::new();
+        let mut next_instance_id = 0;
+
         let first_instance = UIInstance::new(UIInstanceCreationContext {
             name: "Fractal 1",
             handle: ctx.handle.clone(),
@@ -107,6 +119,9 @@ impl FractalRSUI {
             render_pass: ctx.render_pass,
             initial_settings: Default::default(),
         });
+        let first_tab = SimpleTab::new(next_instance_id);
+        instances.insert(next_instance_id, first_instance);
+        next_instance_id += 1;
 
         FractalRSUI {
             handle: ctx.handle,
@@ -123,10 +138,13 @@ impl FractalRSUI {
             factory_future: Default::default(),
             factory,
             gpu_poll: None,
-            instances: vec![first_instance],
-            current_instance: 0,
+            instances,
+            next_instance_id,
+            tabs: vec![first_tab],
+            dragging_tab: None,
+            current_tab: 0,
             new_instance_requested: false,
-            instance_name_index: 2,
+            next_instance_name_index: 2,
         }
     }
 
@@ -157,7 +175,7 @@ impl FractalRSUI {
             };
 
             // update the factories for all existing instances
-            for instance in self.instances.iter_mut() {
+            for instance in self.instances.values_mut() {
                 instance.set_factory(self.factory.clone());
             }
         }
@@ -170,7 +188,7 @@ impl FractalRSUI {
 
         // Update all the instances, even the ones that are not currently being
         // rendered.
-        for instance in self.instances.iter_mut() {
+        for instance in self.instances.values_mut() {
             instance.update(UIInstanceUpdateContext {
                 chunk_size: 1 << self.chunk_size_power,
             });
@@ -213,6 +231,7 @@ impl FractalRSUI {
     }
 
     fn draw_top_bar(&mut self, ctx: &UIRenderContext) {
+        // Draw top bar
         egui::TopBottomPanel::top("Menu Bar").show(ctx.ctx, |ui| {
             egui::menu::bar(ui, |ui| {
                 egui::menu::menu(ui, "File", |ui| {
@@ -237,28 +256,24 @@ impl FractalRSUI {
                     ui.checkbox(&mut self.show_ui_settings, "UI Settings");
                 });
             });
+
             ui.separator();
-            ui.with_layout(Layout::right_to_left(), |ui| {
-                ui.add_enabled_ui(!self.instances.is_empty(), |ui| {
-                    if ui.button("X").clicked() {
-                        if self.current_instance < self.instances.len() {
-                            self.instances.remove(self.current_instance);
-                            if self.current_instance > 0 {
-                                self.current_instance -= 1;
-                            }
-                        } else {
-                            self.current_instance = 0;
-                        }
-                    }
-                });
-                ui.with_layout(Layout::left_to_right(), |ui| {
-                    ScrollArea::horizontal().show(ui, |ui| {
-                        for (index, instance) in self.instances.iter().enumerate() {
-                            ui.selectable_value(&mut self.current_instance, index, &instance.name);
-                        }
-                    });
-                });
-            });
+
+            let res = tab_list(
+                ui,
+                &mut self.tabs,
+                &mut self.current_tab,
+                &mut self.dragging_tab,
+                |tab| self.instances[&tab.data].name.clone(),
+            );
+
+            if res.close_tab {
+                let tab = self.tabs.remove(self.current_tab);
+                self.instances.remove(&tab.data);
+                if self.current_tab > 0 {
+                    self.current_tab -= 1;
+                }
+            }
         });
     }
 
@@ -337,7 +352,7 @@ impl FractalRSUI {
             // When a new instance is creates, we add it to the end of the tabs and select
             // it.
             let new_instance = UIInstance::new(UIInstanceCreationContext {
-                name: format!("Fractal {}", self.instance_name_index),
+                name: format!("Fractal {}", self.next_instance_name_index),
                 handle: self.handle.clone(),
                 present: self.present.clone(),
                 factory: self.factory.clone(),
@@ -345,22 +360,27 @@ impl FractalRSUI {
                 initial_settings,
             });
 
-            self.instance_name_index += 1;
+            let new_tab = SimpleTab::new(self.next_instance_id);
+            self.instances.insert(self.next_instance_id, new_instance);
+            self.next_instance_id += 1;
+            self.next_instance_name_index += 1;
 
-            self.current_instance = self.instances.len();
-            self.instances.push(new_instance);
+            self.current_tab = self.tabs.len();
+            self.tabs.push(new_tab);
         }
     }
 
     fn open_instance(&mut self) -> Option<&mut UIInstance> {
-        if self.instances.is_empty() {
+        if self.tabs.is_empty() {
             None
         } else {
-            if self.current_instance >= self.instances.len() {
-                self.current_instance = self.instances.len() - 1;
+            if self.current_tab >= self.tabs.len() {
+                self.current_tab = self.tabs.len() - 1;
             }
 
-            self.instances.get_mut(self.current_instance)
+            self.tabs
+                .get(self.current_tab)
+                .and_then(|tab| self.instances.get_mut(&tab.data))
         }
     }
 }
