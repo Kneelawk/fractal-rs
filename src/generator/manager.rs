@@ -475,6 +475,12 @@ async fn write_to_image(
             biased;
             poll_block = receiver.recv() => {
                 if canceled.load(Ordering::Acquire) {
+                    // This will probably return an error since image writing could be incomplete.
+                    // We'll just ignore it
+                    tokio::task::spawn_blocking(move || stream_writer.unwrap().flush())
+                        .await
+                        .expect("Something panicked while flushing the encoder")
+                        .ok();
                     return Err(WriteError::Canceled);
                 }
 
@@ -484,7 +490,21 @@ async fn write_to_image(
                     break;
                 };
 
-                let block = block?;
+                // we're using a match here because mtpng does not handle being dropped in the
+                // middle of encoding very well, so we need to shut it down first
+                let block = match block {
+                    Ok(b) => b,
+                    Err(e) => {
+                        // This will probably return an error since image writing could be incomplete.
+                        // We'll just ignore it
+                        tokio::task::spawn_blocking(move || stream_writer.unwrap().flush())
+                            .await
+                            .expect("Something panicked while flushing the encoder")
+                            .ok();
+                        return Err(e.into());
+                    }
+                };
+
                 info!(
                     "Received block at ({}, {})",
                     block.view.image_x, block.view.image_y
@@ -504,17 +524,46 @@ async fn write_to_image(
                     .await
                     .expect("Something panicked while writing a row of the output PNG");
 
-                    stream_writer = Some(moved_writer?);
+                    // we're using a match here because mtpng does not handle being dropped in the
+                    // middle of encoding very well, so we need to shut it down first
+                    stream_writer = Some(match moved_writer {
+                        Ok(b) => b,
+                        Err(e) => {
+                            // This will probably return an error since image writing could be incomplete.
+                            // We'll just ignore it
+                            tokio::task::spawn_blocking(move || stream_writer.unwrap().flush())
+                                .await
+                                .expect("Something panicked while flushing the encoder")
+                                .ok();
+                            return Err(e.into());
+                        }
+                    });
 
                     progress.store(image_y + image_height, Ordering::Release);
                 }
             },
             else => {
                 if canceled.load(Ordering::Acquire) {
+                    // This will probably return an error since image writing could be incomplete.
+                    // We'll just ignore it
+                    tokio::task::spawn_blocking(move || stream_writer.unwrap().flush())
+                        .await
+                        .expect("Something panicked while flushing the encoder")
+                        .ok();
                     return Err(WriteError::Canceled);
                 }
             }
         }
+    }
+
+    if canceled.load(Ordering::Acquire) {
+        // This will probably return an error since image writing could be incomplete.
+        // We'll just ignore it
+        tokio::task::spawn_blocking(move || stream_writer.unwrap().flush())
+            .await
+            .expect("Something panicked while flushing the encoder")
+            .ok();
+        return Err(WriteError::Canceled);
     }
 
     info!("Finishing output file...");
