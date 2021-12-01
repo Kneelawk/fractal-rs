@@ -3,6 +3,7 @@
 pub mod future;
 pub mod result;
 pub mod running_guard;
+pub mod files;
 
 use chrono::{DateTime, Local, Utc};
 use chrono_humanize::{Accuracy, HumanTime, Tense};

@@ -1,6 +1,9 @@
 pub mod opts;
 
-use crate::generator::{gpu::shader::opts::GpuFractalOpts, FractalOpts};
+use crate::{
+    generator::{gpu::shader::opts::GpuFractalOpts, FractalOpts},
+    util::files::debug_dir,
+};
 use naga::{
     back, front,
     valid::{ValidationFlags, Validator},
@@ -18,7 +21,7 @@ pub async fn load_shaders(opts: FractalOpts) -> anyhow::Result<ShaderSource<'sta
     opts.install(&mut module)?;
 
     info!("Writing module as txt...");
-    let mut file = File::create("debug.txt").await.unwrap();
+    let mut file = File::create(debug_dir().join("debug.txt")).await.unwrap();
     file.write_all(format!("{:#?}", &module).as_bytes())
         .await
         .unwrap();
@@ -34,7 +37,7 @@ pub async fn load_shaders(opts: FractalOpts) -> anyhow::Result<ShaderSource<'sta
     writer.finish();
 
     info!("Writing WGSL...");
-    let mut wgsl_file = File::create("debug.wgsl").await.unwrap();
+    let mut wgsl_file = File::create(debug_dir().join("debug.wgsl")).await.unwrap();
     wgsl_file.write_all(wgsl_str.as_bytes()).await.unwrap();
 
     Ok(ShaderSource::Wgsl(Cow::Owned(wgsl_str)))
