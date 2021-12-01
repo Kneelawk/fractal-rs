@@ -13,7 +13,7 @@ appenders:
       - kind: threshold
         level: debug
     append: false
-    path: "logs/log-{D}.log"
+    path: "{l}/log-{D}.log"
     encoder:
       pattern: "[{d(%m-%d-%Y %H:%M:%S)} {l} {M}] {m}{n}"
 

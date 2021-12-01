@@ -6,7 +6,7 @@ pub async fn get_trace_path(
     typename: impl AsRef<str>,
     start_date: bool,
 ) -> Result<Option<PathBuf>, io::Error> {
-    use crate::util::get_start_date;
+    use crate::util::{files::logs_dir, get_start_date};
     use chrono::Local;
     use std::borrow::Cow;
     use tokio::fs::create_dir_all;
@@ -17,8 +17,8 @@ pub async fn get_trace_path(
         Cow::Owned(Local::now())
     };
 
-    let path = PathBuf::from(format!(
-        "logs/log-{}-{}.trace",
+    let path = logs_dir().join(format!(
+        "log-{}-{}.trace",
         date.format("%Y-%m-%d_%H-%M-%S").to_string(),
         typename.as_ref()
     ));
