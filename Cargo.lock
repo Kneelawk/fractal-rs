@@ -1328,8 +1328,7 @@ dependencies = [
 [[package]]
 name = "mtpng"
 version = "0.3.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0527f7f1534f123055f48e993ee2a263e179dad563ef5ed960dbb8a9a49e1382"
+source = "git+https://github.com/Kneelawk/mtpng.git?branch=encoder-drop-panic-fix#7d0ee74d10aa5ff39f85a192c5f4b1ad513190ad"
 dependencies = [
  "crc",
  "itertools",
