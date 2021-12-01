@@ -17,7 +17,7 @@ chrono-humanize = "^0.2.1"
 cgmath = "^0.18.0"
 egui = "^0.15.0"
 egui_wgpu_backend = { git = "https://github.com/Kneelawk/egui_wgpu_backend.git", branch = "textureid-with-sampler-options" }
-egui_winit_platform = "^0.11.0"
+egui_winit_platform = { version = "^0.11.0", features = ["clipboard", "webbrowser"] }
 futures = "^0.3.12"
 #imgui = "^0.8.0"
 #imgui-wgpu = "^0.17.0"
