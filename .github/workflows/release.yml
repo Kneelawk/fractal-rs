@@ -59,6 +59,7 @@ jobs:
       - name: Publish release
         uses: softprops/action-gh-release@v1
         with:
+          body_path: changelogs/changelog-${{ steps.tag_version.outputs.tag }}.md
           files: dist/fractal-rs-2-${{ steps.tag_version.outputs.tag }}-${{ runner.os }}.*
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
