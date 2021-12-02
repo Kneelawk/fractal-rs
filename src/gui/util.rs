@@ -36,3 +36,17 @@ pub async fn get_trace_path(
 ) -> Result<Option<PathBuf>, io::Error> {
     Ok(None)
 }
+
+#[macro_export]
+macro_rules! menu_text {
+    ($name:expr, $shortcut:expr) => {
+        concat!($name, "                ", $shortcut)
+    };
+    ($name:expr,cmd, $shortcut:expr) => {
+        if cfg!(target_os = "macos") {
+            concat!($name, "                \u{2318}-", $shortcut)
+        } else {
+            concat!($name, "                Ctrl+", $shortcut, "")
+        }
+    };
+}

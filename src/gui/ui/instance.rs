@@ -23,7 +23,10 @@ const DEFAULT_WRITER_MESSAGE: &str = "Not Writing Image";
 /// These instances manage most of the UI and the actual fractal generation.
 pub struct UIInstance {
     // instance stuff
+    /// This instance's name.
     pub name: String,
+    /// Whether this instance has been changed since the last save.
+    pub dirty: bool,
     present: GPUContext,
     manager: GeneratorManager,
 
@@ -142,6 +145,7 @@ impl UIInstance {
 
         UIInstance {
             name: ctx.name.to_string(),
+            dirty: false,
             present: ctx.present,
             manager,
             show_generator_controls: true,

@@ -18,9 +18,10 @@ use crate::{
         },
         util::get_trace_path,
     },
+    menu_text,
     util::{future::future_wrapper::FutureWrapper, result::ResultExt, running_guard::RunningGuard},
 };
-use egui::{CtxRef, DragValue, Label};
+use egui::{vec2, Align, Align2, CtxRef, DragValue, Label, Layout};
 use egui_wgpu_backend::RenderPass;
 use std::{
     collections::HashMap,
@@ -38,7 +39,7 @@ use wgpu::{
     DeviceDescriptor, Instance, Maintain, PowerPreference, RequestAdapterOptions,
     RequestDeviceError,
 };
-use winit::event::VirtualKeyCode;
+use winit::{dpi::PhysicalSize, event::VirtualKeyCode};
 
 /// Struct specifically devoted to UI rendering and state.
 pub struct FractalRSUI {
@@ -86,6 +87,7 @@ pub struct FractalRSUI {
     current_tab: usize,
     new_instance_requested: bool,
     next_instance_name_index: u64,
+    tab_close_requested: Option<usize>,
 }
 
 /// Struct containing context passed when creating UIState.
@@ -108,6 +110,8 @@ pub struct UIRenderContext<'a> {
     pub render_pass: &'a mut RenderPass,
     /// Tracker for currently pressed keys.
     pub keys: &'a KeyboardTracker,
+    /// The current inner size of the window.
+    pub window_size: PhysicalSize<u32>,
 }
 
 impl FractalRSUI {
@@ -155,6 +159,7 @@ impl FractalRSUI {
             current_tab: 0,
             new_instance_requested: false,
             next_instance_name_index: 2,
+            tab_close_requested: None,
         }
     }
 
@@ -213,7 +218,7 @@ impl FractalRSUI {
     pub fn draw(&mut self, ctx: &mut UIRenderContext) {
         self.handle_keyboard_shortcuts(ctx);
         self.draw_top_bar(ctx);
-        if let Some(instance) = self.open_instance() {
+        if let Some(instance) = self.current_tab() {
             instance.draw(ctx);
         } else {
             self.draw_empty_content(ctx);
@@ -221,6 +226,7 @@ impl FractalRSUI {
         self.draw_settings_window(ctx);
         self.draw_misc_windows(ctx);
 
+        self.handle_tab_close_requested(ctx);
         self.handle_new_instance(ctx);
     }
 
@@ -230,6 +236,16 @@ impl FractalRSUI {
         // Quit keyboard shortcut
         if keys.modifiers().command && keys.was_pressed(VirtualKeyCode::Q) {
             self.close_requested = true;
+        }
+
+        // New keyboard shortcut
+        if keys.modifiers().command && keys.was_pressed(VirtualKeyCode::N) {
+            self.new_instance_requested = true;
+        }
+
+        // Close tab keyboard shortcut
+        if keys.modifiers().command && keys.was_pressed(VirtualKeyCode::W) {
+            self.tab_close_requested = Some(self.current_tab);
         }
 
         // Fullscreen keyboard shortcut
@@ -249,20 +265,30 @@ impl FractalRSUI {
         egui::TopBottomPanel::top("Menu Bar").show(ctx.ctx, |ui| {
             egui::menu::bar(ui, |ui| {
                 egui::menu::menu(ui, "File", |ui| {
-                    if ui.button("New").clicked() {
+                    if ui.button(menu_text!("New", cmd, "N")).clicked() {
                         self.new_instance_requested = true;
                     }
 
                     ui.separator();
 
-                    if ui.button("Quit").clicked() {
+                    if ui.button(menu_text!("Quit", cmd, "Q")).clicked() {
                         self.close_requested = true;
                     }
                 });
                 egui::menu::menu(ui, "Window", |ui| {
-                    ui.checkbox(&mut self.request_fullscreen, "Fullscreen");
+                    ui.checkbox(
+                        &mut self.request_fullscreen,
+                        menu_text!("Fullscreen", "F11"),
+                    );
                     ui.separator();
-                    if let Some(instance) = self.open_instance() {
+                    if ui
+                        .button(menu_text!("Close Current Tab", cmd, "W"))
+                        .clicked()
+                    {
+                        self.tab_close_requested = Some(self.current_tab);
+                    }
+                    ui.separator();
+                    if let Some(instance) = self.current_tab() {
                         instance.draw_window_options(ctx, ui);
                         ui.separator();
                     }
@@ -283,11 +309,7 @@ impl FractalRSUI {
             );
 
             if res.close_tab {
-                let tab = self.tabs.remove(self.current_tab);
-                self.instances.remove(&tab.data);
-                if self.current_tab > 0 {
-                    self.current_tab -= 1;
-                }
+                self.tab_close_requested = Some(self.current_tab);
             }
         });
     }
@@ -358,7 +380,7 @@ impl FractalRSUI {
             self.new_instance_requested = false;
 
             // get options from currently open instance if any
-            let initial_settings = if let Some(instance) = self.open_instance() {
+            let initial_settings = if let Some(instance) = self.current_tab() {
                 UIInstanceInitialSettings::from_instance(instance)
             } else {
                 Default::default()
@@ -385,7 +407,7 @@ impl FractalRSUI {
         }
     }
 
-    fn open_instance(&mut self) -> Option<&mut UIInstance> {
+    fn current_tab(&mut self) -> Option<&mut UIInstance> {
         if self.tabs.is_empty() {
             None
         } else {
@@ -396,6 +418,63 @@ impl FractalRSUI {
             self.tabs
                 .get(self.current_tab)
                 .and_then(|tab| self.instances.get_mut(&tab.data))
+        }
+    }
+
+    fn handle_tab_close_requested(&mut self, ctx: &UIRenderContext) {
+        if self.tab_close_requested.is_some() && self.tab_close_requested.unwrap() < self.tabs.len()
+        {
+            let closing_tab = self.tab_close_requested.unwrap();
+            let mut close = true;
+
+            {
+                let instance = self
+                    .tabs
+                    .get(closing_tab)
+                    .and_then(|tab| self.instances.get(&tab.data));
+
+                // determine whether we need to show the 'Are you sure?' dialog
+                if instance.is_some() && instance.unwrap().dirty {
+                    close = false;
+
+                    let instance = instance.unwrap();
+                    egui::Window::new("Are you sure?")
+                        .resizable(false)
+                        .collapsible(false)
+                        .anchor(Align2::CENTER_CENTER, vec2(0.0, 0.0))
+                        .show(ctx.ctx, |ui| {
+                            ui.label(format!(
+                                "Are you sure you want to close the tab: {}",
+                                &instance.name
+                            ));
+                            ui.label("This tab has unsaved changes.");
+                            ui.add_space(20.0);
+                            ui.with_layout(
+                                Layout::right_to_left().with_cross_align(Align::Min),
+                                |ui| {
+                                    if ui.button("Close Tab").clicked() {
+                                        close = true;
+                                    }
+                                    if ui.button("Keep Tab Open").clicked() {
+                                        self.tab_close_requested = None;
+                                    }
+                                },
+                            );
+                        });
+                }
+            }
+
+            if close {
+                self.tab_close_requested = None;
+                let tab = self.tabs.remove(closing_tab);
+                self.instances.remove(&tab.data);
+
+                if self.current_tab >= closing_tab && self.current_tab > 0 {
+                    self.current_tab -= 1;
+                }
+            }
+        } else {
+            self.tab_close_requested = None;
         }
     }
 

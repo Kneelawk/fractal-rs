@@ -154,6 +154,7 @@ impl FlowModel for FractalRSGuiMain {
             ctx: &self.platform.context(),
             render_pass: &mut self.render_pass,
             keys: &self.keyboard_tracker,
+            window_size: self.window_size,
         });
 
         let (_output, paint_commands) = self.platform.end_frame(Some(&self.window));
