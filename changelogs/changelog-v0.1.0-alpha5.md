@@ -5,3 +5,4 @@
   user's home directory.
 * Added ability to select locations based on complex number instead of screen
   location.
+* Added keyboard shortcuts for closing and creating new tabs.
