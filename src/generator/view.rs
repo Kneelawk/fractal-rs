@@ -25,14 +25,6 @@ pub struct View {
     pub plane_start_y: f32,
 }
 
-/// Represents a value that may be out of bounds.
-#[derive(Debug, Copy, Clone, Eq, PartialEq)]
-pub enum ConstrainedValue<T> {
-    LessThanConstraint,
-    WithinConstraint(T),
-    GreaterThanConstraint,
-}
-
 impl View {
     /// Creates a view centered at (0 + 0i) on the complex plane with the same
     /// scaling for both x and y axis.
@@ -152,6 +144,19 @@ impl View {
         )
     }
 
+    /// Gets the local pixel coordinates for a given coordinate on the complex
+    /// plane. This value is not constrained by this view's size and can be
+    /// negative.
+    pub fn get_local_unconstrained_pixel_coordinates(
+        &self,
+        plane_coordinates: Complex<f32>,
+    ) -> (isize, isize) {
+        (
+            ((plane_coordinates.re - self.plane_start_x) / self.image_scale_x) as isize,
+            ((plane_coordinates.im - self.plane_start_y) / self.image_scale_y) as isize,
+        )
+    }
+
     /// Checks if this view is directly after the other view as a child of the
     /// parent view.
     ///
@@ -181,6 +186,27 @@ impl PartialOrd for View {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         (self.plane_start_y, self.plane_start_x)
             .partial_cmp(&(other.plane_start_y, other.plane_start_x))
+    }
+}
+
+/// Represents a value that may be out of bounds.
+#[derive(Debug, Copy, Clone, Eq, PartialEq)]
+pub enum ConstrainedValue<T> {
+    LessThanConstraint,
+    WithinConstraint(T),
+    GreaterThanConstraint,
+}
+
+impl<T> ConstrainedValue<T> {
+    /// Converts this constrained value into its inner type, the `min_value` if
+    /// this is `LessThanConstraint`, or the `max_value` if this is
+    /// `GreaterThanConstraint`.
+    pub fn into_value(self, min_value: T, max_value: T) -> T {
+        match self {
+            ConstrainedValue::LessThanConstraint => min_value,
+            ConstrainedValue::WithinConstraint(value) => value,
+            ConstrainedValue::GreaterThanConstraint => max_value,
+        }
     }
 }
 

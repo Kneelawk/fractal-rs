@@ -61,6 +61,7 @@ pub struct UIInstance {
 
     // fractal viewers
     viewer: FractalViewer,
+    deselected_position: Complex32,
 }
 
 /// Struct holding all the information needed when creating a new UIInstance.
@@ -166,6 +167,7 @@ impl UIInstance {
             c: ctx.initial_settings.c,
             iterations: ctx.initial_settings.iterations,
             viewer,
+            deselected_position: Default::default(),
         }
     }
 
@@ -258,6 +260,12 @@ impl UIInstance {
             // FIXME: This could break hilariously on some platforms but I don't see much
             //  use in supporting non-Unicode right now.
             self.output_location = file.path().to_string_lossy().to_string();
+        }
+
+        // If something's selected, let's update the deselected position for when it
+        // gets deselected.
+        if let Some(selected_position) = self.viewer.selection_pos {
+            self.deselected_position = selected_position;
         }
     }
 
@@ -437,7 +445,9 @@ impl UIInstance {
                             ui.add(
                                 DragValue::new(&mut self.c.re)
                                     .clamp_range(-10.0..=10.0)
-                                    .speed(0.0001),
+                                    .speed(0.0001)
+                                    .min_decimals(7)
+                                    .max_decimals(45),
                             );
                             ui.end_row();
 
@@ -445,7 +455,9 @@ impl UIInstance {
                             ui.add(
                                 DragValue::new(&mut self.c.im)
                                     .clamp_range(-10.0..=10.0)
-                                    .speed(0.0001),
+                                    .speed(0.0001)
+                                    .min_decimals(7)
+                                    .max_decimals(45),
                             );
                             ui.end_row();
 
@@ -506,7 +518,7 @@ impl UIInstance {
             .default_size([340.0, 500.0])
             .open(&mut self.show_viewer_controls)
             .show(&ctx.ctx, |ui| {
-                ui.label("Zoom & Center");
+                ui.label("Viewer Movement");
                 ui.horizontal(|ui| {
                     if ui.button("Zoom 1:1").clicked() {
                         self.viewer.zoom_1_to_1();
@@ -525,9 +537,41 @@ impl UIInstance {
                 ui.separator();
 
                 ui.label("Selection");
-                if ui.button("Deselect Position").clicked() {
-                    self.viewer.selection_pos = None;
-                }
+                ui.horizontal(|ui| {
+                    if ui.button("Deselect Position").clicked() {
+                        self.viewer.selection_pos = None;
+                    }
+                    if ui.button("Select Position").clicked() {
+                        self.viewer.selection_pos = Some(self.deselected_position);
+                    }
+                });
+                ui.label("Selection Position:");
+                egui::Grid::new("viewer_controls.selection.grid").show(ui, |ui| {
+                    let selection_pos = if let Some(selection_pos) = &mut self.viewer.selection_pos
+                    {
+                        selection_pos
+                    } else {
+                        &mut self.deselected_position
+                    };
+
+                    ui.label("Real:");
+                    ui.add(
+                        DragValue::new(&mut selection_pos.re)
+                            .speed(0.0001)
+                            .min_decimals(7)
+                            .max_decimals(45),
+                    );
+                    ui.end_row();
+
+                    ui.label("Imaginary:");
+                    ui.add(
+                        DragValue::new(&mut selection_pos.im)
+                            .speed(0.0001)
+                            .min_decimals(7)
+                            .max_decimals(45),
+                    );
+                    ui.end_row();
+                });
             });
     }
 

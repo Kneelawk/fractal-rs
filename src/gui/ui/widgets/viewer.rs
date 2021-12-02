@@ -3,10 +3,11 @@
 
 use crate::{generator::view::View, gpu::util::create_texture};
 use egui::{
-    paint::Mesh, Align2, Color32, PointerButton, Pos2, Rect, Response, Sense, Shape, TextStyle,
-    TextureId, Ui, Vec2, Widget,
+    paint::Mesh, vec2, Align2, Color32, PointerButton, Pos2, Rect, Response, Sense, Shape,
+    TextStyle, TextureId, Ui, Vec2, Widget,
 };
 use egui_wgpu_backend::RenderPass;
+use num_complex::Complex32;
 use std::sync::Arc;
 use wgpu::{
     Device, FilterMode, SamplerDescriptor, Texture, TextureFormat, TextureUsages, TextureView,
@@ -31,7 +32,7 @@ pub struct FractalViewer {
     pub fractal_scale: f32,
 
     // Selection Components
-    pub selection_pos: Option<Vec2>,
+    pub selection_pos: Option<Complex32>,
 }
 
 impl FractalViewer {
@@ -95,8 +96,6 @@ impl FractalViewer {
         if fractal_view.image_width != old_view.image_width
             || fractal_view.image_height != old_view.image_height
         {
-            let old_fractal_size = self.fractal_size_f;
-
             let (image_texture, image_texture_view) = create_texture(
                 device,
                 fractal_view.image_width as u32,
@@ -123,14 +122,6 @@ impl FractalViewer {
                 },
                 self.texture_id,
             )?;
-
-            // adjust selection pos when fractal size changes
-            if let Some(selection_pos) = &mut self.selection_pos {
-                selection_pos.x =
-                    (selection_pos.x * self.fractal_size_f.x / old_fractal_size.x).floor();
-                selection_pos.y =
-                    (selection_pos.y * self.fractal_size_f.y / old_fractal_size.y).floor();
-            }
         }
 
         Ok(())
@@ -203,7 +194,12 @@ impl FractalViewer {
         // handle click events
         if response.clicked() {
             if let Some(click) = response.interact_pointer_pos() {
-                self.selection_pos = Some(((click - img_start) / self.fractal_scale).floor());
+                let pixel_selection = ((click - img_start) / self.fractal_scale).floor();
+                let complex_selection = self.fractal_view.get_local_plane_coordinates((
+                    pixel_selection.x as usize,
+                    pixel_selection.y as usize,
+                ));
+                self.selection_pos = Some(complex_selection);
             }
         }
 
@@ -230,16 +226,16 @@ impl FractalViewer {
             clip_painter.add(Shape::Mesh(mesh));
 
             // draw selection pos
-            if let Some(selection_vec) = self.selection_pos {
-                // calculate the associated position on the complex plane
-                let complex_pos = self.fractal_view.get_local_plane_coordinates((
-                    selection_vec.x as usize,
-                    selection_vec.y as usize,
-                ));
+            if let Some(complex_selection) = self.selection_pos {
+                // calculate the associated pixel position of the selected complex position
+                let pixel_selection = self
+                    .fractal_view
+                    .get_local_unconstrained_pixel_coordinates(complex_selection);
+                let pixel_selection = vec2(pixel_selection.0 as f32, pixel_selection.1 as f32);
 
                 // calculate selection highlight position
                 let pixel_rect = Rect::from_min_size(
-                    img_start + selection_vec * self.fractal_scale,
+                    img_start + pixel_selection * self.fractal_scale,
                     Vec2::splat(self.fractal_scale.max(1.0)),
                 );
 
@@ -304,14 +300,14 @@ impl FractalViewer {
                     clip_painter.text(
                         pixel_rect.right_top(),
                         Align2::LEFT_BOTTOM,
-                        format!("({:.0}, {:.0})", selection_vec.x, selection_vec.y),
+                        format!("({:.0}, {:.0})", pixel_selection.x, pixel_selection.y),
                         TextStyle::Monospace,
                         POSITION_SELECTION_COLOR,
                     );
                     clip_painter.text(
                         pixel_rect.left_bottom(),
                         Align2::RIGHT_TOP,
-                        format!("({} + {}i)", complex_pos.re, complex_pos.im),
+                        format!("({} + {}i)", complex_selection.re, complex_selection.im),
                         TextStyle::Monospace,
                         POSITION_SELECTION_COLOR,
                     );
@@ -343,7 +339,7 @@ impl FractalViewer {
                                 y: clip_rect.min.y,
                             },
                             Align2::LEFT_TOP,
-                            format!("({:.0}, {:.0})", selection_vec.x, selection_vec.y),
+                            format!("({:.0}, {:.0})", pixel_selection.x, pixel_selection.y),
                             TextStyle::Monospace,
                             POSITION_SELECTION_COLOR,
                         );
@@ -353,7 +349,7 @@ impl FractalViewer {
                                 y: clip_rect.min.y,
                             },
                             Align2::RIGHT_TOP,
-                            format!("({} + {}i)", complex_pos.re, complex_pos.im),
+                            format!("({} + {}i)", complex_selection.re, complex_selection.im),
                             TextStyle::Monospace,
                             POSITION_SELECTION_COLOR,
                         );
@@ -365,7 +361,7 @@ impl FractalViewer {
                                 y: clip_rect.max.y,
                             },
                             Align2::LEFT_BOTTOM,
-                            format!("({:.0}, {:.0})", selection_vec.x, selection_vec.y),
+                            format!("({:.0}, {:.0})", pixel_selection.x, pixel_selection.y),
                             TextStyle::Monospace,
                             POSITION_SELECTION_COLOR,
                         );
@@ -375,7 +371,7 @@ impl FractalViewer {
                                 y: clip_rect.max.y,
                             },
                             Align2::RIGHT_BOTTOM,
-                            format!("({} + {}i)", complex_pos.re, complex_pos.im),
+                            format!("({} + {}i)", complex_selection.re, complex_selection.im),
                             TextStyle::Monospace,
                             POSITION_SELECTION_COLOR,
                         );
@@ -408,7 +404,7 @@ impl FractalViewer {
                                 y: pixel_rect.min.y,
                             },
                             Align2::LEFT_BOTTOM,
-                            format!("({:.0}, {:.0})", selection_vec.x, selection_vec.y),
+                            format!("({:.0}, {:.0})", pixel_selection.x, pixel_selection.y),
                             TextStyle::Monospace,
                             POSITION_SELECTION_COLOR,
                         );
@@ -418,7 +414,7 @@ impl FractalViewer {
                                 y: pixel_rect.max.y,
                             },
                             Align2::LEFT_TOP,
-                            format!("({} + {}i)", complex_pos.re, complex_pos.im),
+                            format!("({} + {}i)", complex_selection.re, complex_selection.im),
                             TextStyle::Monospace,
                             POSITION_SELECTION_COLOR,
                         );
@@ -430,7 +426,7 @@ impl FractalViewer {
                                 y: pixel_rect.min.y,
                             },
                             Align2::RIGHT_BOTTOM,
-                            format!("({:.0}, {:.0})", selection_vec.x, selection_vec.y),
+                            format!("({:.0}, {:.0})", pixel_selection.x, pixel_selection.y),
                             TextStyle::Monospace,
                             POSITION_SELECTION_COLOR,
                         );
@@ -440,7 +436,7 @@ impl FractalViewer {
                                 y: pixel_rect.max.y,
                             },
                             Align2::RIGHT_TOP,
-                            format!("({} + {}i)", complex_pos.re, complex_pos.im),
+                            format!("({} + {}i)", complex_selection.re, complex_selection.im),
                             TextStyle::Monospace,
                             POSITION_SELECTION_COLOR,
                         );
