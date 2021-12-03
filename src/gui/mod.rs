@@ -5,7 +5,7 @@ use crate::{
     gui::{
         flow::{Flow, FlowModel, FlowModelInit, FlowSignal},
         keyboard::KeyboardTracker,
-        ui::{FractalRSUI, UICreationContext, UIRenderContext},
+        ui::{FractalRSUI, UICreationContext, UIRenderContext, UIUpdateContext},
     },
 };
 use egui_wgpu_backend::{RenderPass, ScreenDescriptor};
@@ -126,7 +126,9 @@ impl FlowModel for FractalRSGuiMain {
     }
 
     fn update(&mut self, _update_delta: Duration) -> Option<FlowSignal> {
-        self.ui.update();
+        self.ui.update(&mut UIUpdateContext {
+            render_pass: &mut self.render_pass,
+        });
 
         if self.ui.close_requested {
             Some(FlowSignal::Exit)
@@ -150,9 +152,8 @@ impl FlowModel for FractalRSGuiMain {
         // Draw UI
         self.platform.begin_frame();
 
-        self.ui.draw(&mut UIRenderContext {
+        self.ui.draw(&UIRenderContext {
             ctx: &self.platform.context(),
-            render_pass: &mut self.render_pass,
             keys: &self.keyboard_tracker,
             window_size: self.window_size,
         });
