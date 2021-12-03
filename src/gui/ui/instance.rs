@@ -6,9 +6,12 @@ use crate::{
         FractalGeneratorFactory, FractalOpts,
     },
     gpu::GPUContext,
-    gui::ui::{
-        file_dialog::FileDialogWrapper, widgets::viewer::FractalViewer, UIOperationRequest,
-        UIOperations,
+    gui::{
+        keyboard::KeyboardTracker,
+        ui::{
+            file_dialog::FileDialogWrapper, widgets::viewer::FractalViewer, UIOperationRequest,
+            UIOperations,
+        },
     },
     util::result::ResultExt,
 };
@@ -20,6 +23,7 @@ use num_complex::Complex32;
 use rfd::AsyncFileDialog;
 use std::{borrow::Cow, collections::HashMap, path::PathBuf, sync::Arc};
 use tokio::runtime::Handle;
+use winit::event::VirtualKeyCode;
 
 const DEFAULT_GENERATION_MESSAGE: &str = "Not Generating";
 const DEFAULT_WRITER_MESSAGE: &str = "Not Writing Image";
@@ -332,12 +336,12 @@ impl UIInstance {
 
         // If we're wanting to start a julia set, then we need to request that.
         if self.generate_julia_from_point {
-            self.generate_julia_from_point = false;
             ctx.operations.push(UIOperationRequest::StartJuliaSet {
                 instance_id: self.target_instance,
                 c: self.deselected_position,
             });
         }
+        self.generate_julia_from_point = false;
 
         if self.target_instance != self.new_target_instance {
             // This operation will set target instance, so we don't do it here
@@ -348,31 +352,56 @@ impl UIInstance {
         }
 
         if self.detach_requested && self.parent_instance.is_some() {
-            self.detach_requested = false;
             ctx.operations.push(UIOperationRequest::Detach {
                 parent_id: self.parent_instance.unwrap(),
             });
         }
+        self.detach_requested = false;
 
         if self.switch_to_target && self.target_instance.is_some() {
-            self.switch_to_target = false;
             ctx.operations.push(UIOperationRequest::SwitchTo {
                 instance_id: self.target_instance.unwrap(),
             });
         }
+        self.switch_to_target = false;
 
         if self.switch_to_parent && self.parent_instance.is_some() {
-            self.switch_to_parent = false;
             ctx.operations.push(UIOperationRequest::SwitchTo {
                 instance_id: self.parent_instance.unwrap(),
             });
         }
+        self.switch_to_parent = false;
     }
 
     pub fn draw_window_options(&mut self, ui: &mut Ui) {
         ui.checkbox(&mut self.show_generator_controls, "Generator Controls");
         ui.checkbox(&mut self.show_viewer_controls, "Viewer Controls");
         ui.checkbox(&mut self.show_project_settings, "Project Settings");
+    }
+
+    pub fn handle_keyboard_shortcuts(&mut self, keys: &KeyboardTracker) {
+        // MacOS can't use shortcuts that are just alt + something, so we need to have a
+        // command in there too.
+        let modifier = if cfg!(target_os = "macos") {
+            keys.modifiers().command && keys.modifiers().alt
+        } else {
+            keys.modifiers().alt
+        };
+
+        // Handle Julia keyboard shortcut
+        if modifier && keys.was_pressed(VirtualKeyCode::J) {
+            // Shift+Alt+J just switches, Alt+J generates a new Julia Set.
+            if keys.modifiers().shift {
+                self.switch_to_target = true;
+            } else {
+                self.generate_julia_from_point = true;
+            }
+        }
+
+        // Handle Switch to Mandelbrot shortcut
+        if modifier && keys.was_pressed(VirtualKeyCode::M) {
+            self.switch_to_parent = true;
+        }
     }
 
     pub fn draw(&mut self, ctx: &mut UIInstanceRenderContext) {

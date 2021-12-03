@@ -333,6 +333,11 @@ impl FractalRSUI {
         if keys.was_pressed(VirtualKeyCode::Escape) {
             self.request_fullscreen = false;
         }
+
+        // Let the currently open instance also act on key combinations
+        if let Some(current_tab) = self.current_tab() {
+            current_tab.handle_keyboard_shortcuts(keys);
+        }
     }
 
     fn draw_top_bar(&mut self, ctx: &UIRenderContext) {
