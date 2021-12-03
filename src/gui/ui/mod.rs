@@ -143,6 +143,24 @@ pub enum UIOperationRequest {
         /// The C value of the julia set to generate.
         c: Complex32,
     },
+    /// This instance wants the UI to stop having it be another instance's
+    /// target.
+    Detach {
+        /// The instance id of the instance who has this instance as its target.
+        parent_id: u64,
+    },
+    /// This instance wants the UI to change what its target instance is.
+    SetTarget {
+        /// The instance id of the old target instance.
+        old_id: Option<u64>,
+        /// The instance id of the new target instance.
+        new_id: Option<u64>,
+    },
+    /// This instance wants the UI to switch to another instance's tab.
+    SwitchTo {
+        /// The instance id of the tab to switch to.
+        instance_id: u64,
+    },
 }
 
 impl FractalRSUI {
@@ -255,6 +273,7 @@ impl FractalRSUI {
 
     /// Render the current UI state to the Egui context.
     pub fn draw(&mut self, ctx: &UIRenderContext) {
+        let tab_list: Vec<_> = self.tabs.iter().map(|tab| tab.data).collect();
         let instance_infos: HashMap<_, _> = self
             .instances
             .iter()
@@ -274,6 +293,7 @@ impl FractalRSUI {
         if let Some(instance) = self.current_tab() {
             instance.draw(&mut UIInstanceRenderContext {
                 ctx: ctx.ctx,
+                tab_list: &tab_list,
                 instance_infos: &instance_infos,
             });
         } else {
@@ -546,6 +566,7 @@ impl FractalRSUI {
 
                         instance.c = c;
                         instance.mandelbrot = false;
+                        instance.parent_instance = Some(id);
                         if !instance.generation_running {
                             instance.generate_fractal = Some(UIInstanceGenerationType::Viewer);
                         }
@@ -579,10 +600,14 @@ impl FractalRSUI {
 
                         new_instance.c = c;
                         new_instance.generate_fractal = Some(UIInstanceGenerationType::Viewer);
+                        new_instance.parent_instance = Some(id);
 
-                        if let Some(parent) = self.instances.get_mut(&id) {
-                            parent.target_instance = Some(self.next_instance_id);
-                        }
+                        self.instances
+                            .get_mut(&id)
+                            .expect(
+                                "Unable to get instance sending StartJulia request (this is a bug)",
+                            )
+                            .set_target_instance(Some(self.next_instance_id));
 
                         let new_tab = SimpleTab::new(self.next_instance_id);
                         self.instances.insert(self.next_instance_id, new_instance);
@@ -592,6 +617,52 @@ impl FractalRSUI {
 
                         self.current_tab = self.tabs.len();
                         self.tabs.push(new_tab);
+                    }
+                },
+                UIOperationRequest::Detach { parent_id } => {
+                    if self.instances.contains_key(&parent_id) {
+                        // this should never be none
+                        self.instances
+                            .get_mut(&parent_id)
+                            .unwrap()
+                            .set_target_instance(None);
+                        self.instances
+                            .get_mut(&id)
+                            .expect("Unable to get instance sending Detach request (this is a bug)")
+                            .parent_instance = None;
+                    }
+                },
+                UIOperationRequest::SetTarget { old_id, new_id } => {
+                    if let Some(old_instance) = old_id.and_then(|id| self.instances.get_mut(&id)) {
+                        old_instance.parent_instance = None;
+                    }
+
+                    let mut old_parent_instance = None;
+                    if let Some(new_instance) = new_id.and_then(|id| self.instances.get_mut(&id)) {
+                        old_parent_instance = new_instance.parent_instance;
+                        new_instance.parent_instance = Some(id);
+                    }
+
+                    // Make sure no other instances are pointing to the new instance
+                    if let Some(old_parent_instance) = old_parent_instance
+                        .as_ref()
+                        .and_then(|id| self.instances.get_mut(id))
+                    {
+                        old_parent_instance.set_target_instance(None);
+                    }
+
+                    self.instances
+                        .get_mut(&id)
+                        .expect("Unable to get instance sending SetTarget request (this is a bug)")
+                        .set_target_instance(new_id);
+                },
+                UIOperationRequest::SwitchTo { instance_id } => {
+                    // TODO: figure out a more efficient way to find the tab of the selected
+                    //  instance
+                    for (index, tab) in self.tabs.iter().enumerate() {
+                        if instance_id == tab.data {
+                            self.current_tab = index;
+                        }
                     }
                 },
             }

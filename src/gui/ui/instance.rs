@@ -13,7 +13,7 @@ use crate::{
     util::result::ResultExt,
 };
 use egui::{
-    vec2, Button, Color32, ComboBox, CtxRef, DragValue, ProgressBar, TextEdit, TextStyle, Ui,
+    vec2, Button, Color32, ComboBox, CtxRef, DragValue, Label, ProgressBar, TextEdit, TextStyle, Ui,
 };
 use egui_wgpu_backend::RenderPass;
 use num_complex::Complex32;
@@ -74,7 +74,12 @@ pub struct UIInstance {
 
     // julia target stuff
     generate_julia_from_point: bool,
-    pub target_instance: Option<u64>,
+    switch_to_target: bool,
+    switch_to_parent: bool,
+    detach_requested: bool,
+    target_instance: Option<u64>,
+    new_target_instance: Option<u64>,
+    pub parent_instance: Option<u64>,
 }
 
 /// Struct holding all the information needed when creating a new UIInstance.
@@ -122,6 +127,8 @@ pub struct UIInstanceUpdateContext<'a> {
 pub struct UIInstanceRenderContext<'a> {
     /// Egui context reference.
     pub ctx: &'a CtxRef,
+    /// A list of the tabs this application has open.
+    pub tab_list: &'a [u64],
     /// A map from instance ids to instance names.
     pub instance_infos: &'a HashMap<u64, UIInstanceInfo>,
 }
@@ -215,7 +222,12 @@ impl UIInstance {
             viewer,
             deselected_position: Default::default(),
             generate_julia_from_point: false,
+            switch_to_target: false,
+            switch_to_parent: false,
+            detach_requested: false,
             target_instance: None,
+            new_target_instance: None,
+            parent_instance: None,
         }
     }
 
@@ -324,6 +336,35 @@ impl UIInstance {
             ctx.operations.push(UIOperationRequest::StartJuliaSet {
                 instance_id: self.target_instance,
                 c: self.deselected_position,
+            });
+        }
+
+        if self.target_instance != self.new_target_instance {
+            // This operation will set target instance, so we don't do it here
+            ctx.operations.push(UIOperationRequest::SetTarget {
+                old_id: self.target_instance,
+                new_id: self.new_target_instance,
+            });
+        }
+
+        if self.detach_requested && self.parent_instance.is_some() {
+            self.detach_requested = false;
+            ctx.operations.push(UIOperationRequest::Detach {
+                parent_id: self.parent_instance.unwrap(),
+            });
+        }
+
+        if self.switch_to_target && self.target_instance.is_some() {
+            self.switch_to_target = false;
+            ctx.operations.push(UIOperationRequest::SwitchTo {
+                instance_id: self.target_instance.unwrap(),
+            });
+        }
+
+        if self.switch_to_parent && self.parent_instance.is_some() {
+            self.switch_to_parent = false;
+            ctx.operations.push(UIOperationRequest::SwitchTo {
+                instance_id: self.parent_instance.unwrap(),
             });
         }
     }
@@ -557,23 +598,6 @@ impl UIInstance {
                     }
                 });
 
-                ui.add_enabled_ui(
-                    self.mandelbrot
-                        && !self
-                            .target_instance
-                            .as_ref()
-                            .and_then(|id| ctx.instance_infos.get(id).map(|info| info.running))
-                            .unwrap_or(false),
-                    |ui| {
-                        if ui
-                            .button("Generate Julia/Fatou Set from Selected Position")
-                            .clicked()
-                        {
-                            self.generate_julia_from_point = true;
-                        }
-                    },
-                );
-
                 ui.label("Selection Position:");
                 egui::Grid::new("viewer_controls.selection.grid").show(ui, |ui| {
                     let selection_pos = if let Some(selection_pos) = &mut self.viewer.selection_pos
@@ -601,6 +625,20 @@ impl UIInstance {
                     );
                     ui.end_row();
                 });
+
+                ui.add_enabled_ui(
+                    self.mandelbrot
+                        && !self
+                            .target_instance
+                            .as_ref()
+                            .and_then(|id| ctx.instance_infos.get(id).map(|info| info.running))
+                            .unwrap_or(false),
+                    |ui| {
+                        if ui.button("Generate Julia/Fatou Set at Position").clicked() {
+                            self.generate_julia_from_point = true;
+                        }
+                    },
+                );
             });
     }
 
@@ -614,32 +652,71 @@ impl UIInstance {
 
                 ui.separator();
 
-                ui.label("Tab to generate selected Julia/Fatou sets in:");
-                ComboBox::from_id_source("project_settings.target_instance")
-                    .selected_text(
-                        self.target_instance
-                            .as_ref()
-                            .and_then(|id| ctx.instance_infos.get(id).map(|info| info.name.clone()))
-                            .unwrap_or("None".to_string()),
-                    )
-                    .show_ui(ui, |ui| {
-                        if ui
-                            .add(
-                                Button::new("None")
-                                    .text_color(Color32::BLUE)
-                                    .text_style(TextStyle::Monospace),
-                            )
-                            .clicked()
-                        {
-                            self.target_instance = None;
-                        }
-
-                        for (&id, info) in ctx.instance_infos.iter() {
-                            if id != self.id && ui.button(&info.name).clicked() {
-                                self.target_instance = Some(id);
+                egui::CollapsingHeader::new("Generate To/From").show(ui, |ui| {
+                    ui.label("Tab to generate selected Julia/Fatou sets in:");
+                    ComboBox::from_id_source("project_settings.target_instance")
+                        .selected_text(
+                            self.target_instance
+                                .as_ref()
+                                .and_then(|id| {
+                                    ctx.instance_infos.get(id).map(|info| info.name.clone())
+                                })
+                                .unwrap_or("None".to_string()),
+                        )
+                        .show_ui(ui, |ui| {
+                            if ui
+                                .add(
+                                    Button::new("None")
+                                        .text_color(Color32::BLUE)
+                                        .text_style(TextStyle::Monospace),
+                                )
+                                .clicked()
+                            {
+                                self.new_target_instance = None;
                             }
+
+                            for &id in ctx.tab_list.iter() {
+                                let info = &ctx.instance_infos[&id];
+                                if id != self.id && ui.button(&info.name).clicked() {
+                                    self.new_target_instance = Some(id);
+                                }
+                            }
+                        });
+                    ui.add_enabled_ui(self.target_instance.is_some(), |ui| {
+                        if ui.button("Switch to Julia/Fatou tab").clicked() {
+                            self.switch_to_target = true;
                         }
                     });
+
+                    ui.separator();
+
+                    ui.horizontal(|ui| {
+                        ui.label("This tab is generated to by:");
+
+                        let parent = self.parent_instance.as_ref().and_then(|id| {
+                            ctx.instance_infos.get(id).map(|info| info.name.clone())
+                        });
+                        let lacks_parent = parent.is_none();
+
+                        let mut label = Label::new(parent.unwrap_or("None".to_string()));
+                        if lacks_parent {
+                            label = label
+                                .text_color(Color32::BLUE)
+                                .text_style(TextStyle::Monospace);
+                        }
+
+                        ui.add(label);
+                    });
+
+                    ui.add_enabled_ui(self.parent_instance.is_some(), |ui| {
+                        if ui.button("Disconnect from Mandelbrot tab").clicked() {
+                            self.detach_requested = true;
+                        }
+                        if ui.button("Switch to Mandelbrot tab").clicked() {
+                            self.switch_to_parent = true;
+                        }
+                    });
+                });
             });
     }
 
@@ -677,6 +754,11 @@ impl UIInstance {
                 self.edit_fractal_plane_center_y,
             )
         }
+    }
+
+    pub fn set_target_instance(&mut self, target_instance: Option<u64>) {
+        self.target_instance = target_instance;
+        self.new_target_instance = target_instance;
     }
 
     fn apply_view_settings(&mut self, ctx: &mut UIInstanceUpdateContext) {
