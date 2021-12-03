@@ -6,14 +6,19 @@ use crate::{
         FractalGeneratorFactory, FractalOpts,
     },
     gpu::GPUContext,
-    gui::ui::{file_dialog::FileDialogWrapper, widgets::viewer::FractalViewer, UIRenderContext},
+    gui::ui::{
+        file_dialog::FileDialogWrapper, widgets::viewer::FractalViewer, UIOperationRequest,
+        UIOperations,
+    },
     util::result::ResultExt,
 };
-use egui::{vec2, DragValue, ProgressBar, TextEdit, Ui};
+use egui::{
+    vec2, Button, Color32, ComboBox, CtxRef, DragValue, ProgressBar, TextEdit, TextStyle, Ui,
+};
 use egui_wgpu_backend::RenderPass;
 use num_complex::Complex32;
 use rfd::AsyncFileDialog;
-use std::{borrow::Cow, path::PathBuf, sync::Arc};
+use std::{borrow::Cow, collections::HashMap, path::PathBuf, sync::Arc};
 use tokio::runtime::Handle;
 
 const DEFAULT_GENERATION_MESSAGE: &str = "Not Generating";
@@ -27,6 +32,7 @@ pub struct UIInstance {
     pub name: String,
     /// Whether this instance has been changed since the last save.
     pub dirty: bool,
+    id: u64,
     present: GPUContext,
     manager: GeneratorManager,
 
@@ -36,8 +42,8 @@ pub struct UIInstance {
     show_project_settings: bool,
 
     // generator controls
-    generate_fractal: Option<GenerationType>,
-    generation_running: bool,
+    pub generate_fractal: Option<UIInstanceGenerationType>,
+    pub generation_running: bool,
     generation_fraction: f32,
     generation_message: Cow<'static, str>,
     writer_fraction: f32,
@@ -58,13 +64,17 @@ pub struct UIInstance {
     edit_fractal_plane_center_y: f32,
 
     // mandelbrot & julia/fatou set controls
-    mandelbrot: bool,
-    c: Complex32,
+    pub mandelbrot: bool,
+    pub c: Complex32,
     iterations: u32,
 
     // fractal viewers
     viewer: FractalViewer,
     deselected_position: Complex32,
+
+    // julia target stuff
+    generate_julia_from_point: bool,
+    pub target_instance: Option<u64>,
 }
 
 /// Struct holding all the information needed when creating a new UIInstance.
@@ -79,10 +89,13 @@ pub struct UIInstanceCreationContext<'a, S: ToString> {
     pub factory: Arc<dyn FractalGeneratorFactory + Send + Sync + 'static>,
     /// WGPU Egui Render Pass reference for managing textures.
     pub render_pass: &'a mut RenderPass,
+    /// The ID of this instance.
+    pub id: u64,
     /// UIInstance initial settings.
     pub initial_settings: UIInstanceInitialSettings,
 }
 
+/// Settings passed to an instance at creation.
 pub struct UIInstanceInitialSettings {
     /// Fractal view settings at the time of UI state creation.
     pub view: View,
@@ -95,9 +108,37 @@ pub struct UIInstanceInitialSettings {
     pub iterations: u32,
 }
 
-pub struct UIInstanceUpdateContext {
+/// Context passed to a UIInstance when updating.
+pub struct UIInstanceUpdateContext<'a> {
+    /// WGPU Egui Render Pass reference for managing textures.
+    pub render_pass: &'a mut RenderPass,
     /// The maximum size of generation chunks.
     pub chunk_size: usize,
+    /// A vec into which operation requests are inserted.
+    pub operations: &'a mut UIOperations,
+}
+
+/// Context passed to a UIInstance when rendering.
+pub struct UIInstanceRenderContext<'a> {
+    /// Egui context reference.
+    pub ctx: &'a CtxRef,
+    /// A map from instance ids to instance names.
+    pub instance_infos: &'a HashMap<u64, UIInstanceInfo>,
+}
+
+/// Info about a UIInstance.
+pub struct UIInstanceInfo {
+    /// The name of this instance.
+    pub name: String,
+    /// Whether this instance is running.
+    pub running: bool,
+}
+
+/// The type of generation the UIInstance should perform.
+#[derive(Copy, Clone)]
+pub enum UIInstanceGenerationType {
+    Viewer,
+    Image,
 }
 
 impl Default for UIInstanceInitialSettings {
@@ -126,7 +167,7 @@ impl UIInstanceInitialSettings {
 }
 
 impl UIInstance {
-    pub fn new(ctx: UIInstanceCreationContext<'_, impl ToString>) -> UIInstance {
+    pub fn new(ctx: UIInstanceCreationContext<impl ToString>) -> UIInstance {
         // obtain original values from view
         let plane_width =
             ctx.initial_settings.view.image_width as f32 * ctx.initial_settings.view.image_scale_x;
@@ -146,6 +187,7 @@ impl UIInstance {
         UIInstance {
             name: ctx.name.to_string(),
             dirty: false,
+            id: ctx.id,
             present: ctx.present,
             manager,
             show_generator_controls: true,
@@ -172,6 +214,8 @@ impl UIInstance {
             iterations: ctx.initial_settings.iterations,
             viewer,
             deselected_position: Default::default(),
+            generate_julia_from_point: false,
+            target_instance: None,
         }
     }
 
@@ -185,8 +229,10 @@ impl UIInstance {
         self.manager.set_factory(factory);
     }
 
-    pub fn update(&mut self, ctx: UIInstanceUpdateContext) {
+    pub fn update(&mut self, ctx: &mut UIInstanceUpdateContext) {
         if self.generate_fractal.is_some() {
+            self.apply_view_settings(ctx);
+
             let generation_type = self
                 .generate_fractal
                 .take()
@@ -194,8 +240,8 @@ impl UIInstance {
 
             if !self.manager.running() {
                 let view = match generation_type {
-                    GenerationType::Viewer => self.viewer_view(),
-                    GenerationType::Image => self.image_view(),
+                    UIInstanceGenerationType::Viewer => self.viewer_view(),
+                    UIInstanceGenerationType::Image => self.image_view(),
                 };
 
                 // construct the FractalOpts from UI settings
@@ -214,7 +260,7 @@ impl UIInstance {
 
                 // start the generator
                 match generation_type {
-                    GenerationType::Viewer => {
+                    UIInstanceGenerationType::Viewer => {
                         self.manager
                             .start_to_gui(
                                 opts,
@@ -228,7 +274,7 @@ impl UIInstance {
                                 already running! (This is a bug)",
                             );
                     },
-                    GenerationType::Image => {
+                    UIInstanceGenerationType::Image => {
                         self.manager
                             .start_to_image(opts, view, views, PathBuf::from(&self.output_location))
                             .expect(
@@ -271,26 +317,31 @@ impl UIInstance {
         if let Some(selected_position) = self.viewer.selection_pos {
             self.deselected_position = selected_position;
         }
+
+        // If we're wanting to start a julia set, then we need to request that.
+        if self.generate_julia_from_point {
+            self.generate_julia_from_point = false;
+            ctx.operations.push(UIOperationRequest::StartJuliaSet {
+                instance_id: self.target_instance,
+                c: self.deselected_position,
+            });
+        }
     }
 
-    pub fn draw_window_options(&mut self, _ctx: &UIRenderContext, ui: &mut Ui) {
+    pub fn draw_window_options(&mut self, ui: &mut Ui) {
         ui.checkbox(&mut self.show_generator_controls, "Generator Controls");
         ui.checkbox(&mut self.show_viewer_controls, "Viewer Controls");
         ui.checkbox(&mut self.show_project_settings, "Project Settings");
     }
 
-    pub fn draw(&mut self, ctx: &mut UIRenderContext) {
+    pub fn draw(&mut self, ctx: &mut UIInstanceRenderContext) {
         self.draw_fractal_viewers(ctx);
         self.draw_generator_controls(ctx);
         self.draw_viewer_controls(ctx);
         self.draw_project_settings(ctx);
-
-        if self.generate_fractal.is_some() {
-            self.apply_view_settings(ctx);
-        }
     }
 
-    fn draw_fractal_viewers(&mut self, ctx: &UIRenderContext) {
+    fn draw_fractal_viewers(&mut self, ctx: &UIInstanceRenderContext) {
         egui::CentralPanel::default().show(ctx.ctx, |ui| {
             let available_size = ui.available_size_before_wrap();
             ui.add_sized(
@@ -300,7 +351,7 @@ impl UIInstance {
         });
     }
 
-    fn draw_generator_controls(&mut self, ctx: &mut UIRenderContext) {
+    fn draw_generator_controls(&mut self, ctx: &mut UIInstanceRenderContext) {
         egui::Window::new("Generator Controls")
             .default_size([340.0, 500.0])
             .open(&mut self.show_generator_controls)
@@ -320,7 +371,7 @@ impl UIInstance {
                     .show(ui, |ui| {
                         ui.add_enabled_ui(!self.generation_running, |ui| {
                             if ui.button("Generate!").clicked() {
-                                self.generate_fractal = Some(GenerationType::Viewer);
+                                self.generate_fractal = Some(UIInstanceGenerationType::Viewer);
                             }
 
                             egui::Grid::new("generate_to_viewer.image_settings.grid").show(
@@ -354,7 +405,7 @@ impl UIInstance {
                         ui.add_enabled_ui(!self.generation_running, |ui| {
                             ui.add_enabled_ui(!self.output_location.is_empty(), |ui| {
                                 if ui.button("Generate!").clicked() {
-                                    self.generate_fractal = Some(GenerationType::Image);
+                                    self.generate_fractal = Some(UIInstanceGenerationType::Image);
                                 }
                             });
 
@@ -473,6 +524,125 @@ impl UIInstance {
             });
     }
 
+    fn draw_viewer_controls(&mut self, ctx: &UIInstanceRenderContext) {
+        egui::Window::new("Viewer Controls")
+            .default_size([340.0, 500.0])
+            .open(&mut self.show_viewer_controls)
+            .show(&ctx.ctx, |ui| {
+                ui.label("Viewer Movement");
+                ui.horizontal(|ui| {
+                    if ui.button("Zoom 1:1").clicked() {
+                        self.viewer.zoom_1_to_1();
+                    }
+                    if ui.button("Zoom Fit").clicked() {
+                        self.viewer.zoom_fit();
+                    }
+                    if ui.button("Zoom Fill").clicked() {
+                        self.viewer.zoom_fill();
+                    }
+                });
+                if ui.button("Center View").clicked() {
+                    self.viewer.fractal_offset = vec2(0.0, 0.0);
+                }
+
+                ui.separator();
+
+                ui.label("Selection");
+                ui.horizontal(|ui| {
+                    if ui.button("Deselect Position").clicked() {
+                        self.viewer.selection_pos = None;
+                    }
+                    if ui.button("Select Position").clicked() {
+                        self.viewer.selection_pos = Some(self.deselected_position);
+                    }
+                });
+
+                ui.add_enabled_ui(
+                    self.mandelbrot
+                        && !self
+                            .target_instance
+                            .as_ref()
+                            .and_then(|id| ctx.instance_infos.get(id).map(|info| info.running))
+                            .unwrap_or(false),
+                    |ui| {
+                        if ui
+                            .button("Generate Julia/Fatou Set from Selected Position")
+                            .clicked()
+                        {
+                            self.generate_julia_from_point = true;
+                        }
+                    },
+                );
+
+                ui.label("Selection Position:");
+                egui::Grid::new("viewer_controls.selection.grid").show(ui, |ui| {
+                    let selection_pos = if let Some(selection_pos) = &mut self.viewer.selection_pos
+                    {
+                        selection_pos
+                    } else {
+                        &mut self.deselected_position
+                    };
+
+                    ui.label("Real:");
+                    ui.add(
+                        DragValue::new(&mut selection_pos.re)
+                            .speed(0.0001)
+                            .min_decimals(7)
+                            .max_decimals(45),
+                    );
+                    ui.end_row();
+
+                    ui.label("Imaginary:");
+                    ui.add(
+                        DragValue::new(&mut selection_pos.im)
+                            .speed(0.0001)
+                            .min_decimals(7)
+                            .max_decimals(45),
+                    );
+                    ui.end_row();
+                });
+            });
+    }
+
+    fn draw_project_settings(&mut self, ctx: &UIInstanceRenderContext) {
+        egui::Window::new("Project Settings")
+            .default_size([340.0, 500.0])
+            .open(&mut self.show_project_settings)
+            .show(ctx.ctx, |ui| {
+                ui.label("Project name:");
+                ui.add(TextEdit::singleline(&mut self.name).desired_width(ui.available_width()));
+
+                ui.separator();
+
+                ui.label("Tab to generate selected Julia/Fatou sets in:");
+                ComboBox::from_id_source("project_settings.target_instance")
+                    .selected_text(
+                        self.target_instance
+                            .as_ref()
+                            .and_then(|id| ctx.instance_infos.get(id).map(|info| info.name.clone()))
+                            .unwrap_or("None".to_string()),
+                    )
+                    .show_ui(ui, |ui| {
+                        if ui
+                            .add(
+                                Button::new("None")
+                                    .text_color(Color32::BLUE)
+                                    .text_style(TextStyle::Monospace),
+                            )
+                            .clicked()
+                        {
+                            self.target_instance = None;
+                        }
+
+                        for (&id, info) in ctx.instance_infos.iter() {
+                            if id != self.id && ui.button(&info.name).clicked() {
+                                self.target_instance = Some(id);
+                            }
+                        }
+                    });
+            });
+    }
+
     pub fn viewer_view(&self) -> View {
         if self.edit_fractal_plane_centered {
             View::new_centered_uniform(
@@ -509,89 +679,11 @@ impl UIInstance {
         }
     }
 
-    fn apply_view_settings(&mut self, ctx: &mut UIRenderContext) {
-        if let Some(GenerationType::Viewer) = self.generate_fractal {
+    fn apply_view_settings(&mut self, ctx: &mut UIInstanceUpdateContext) {
+        if let Some(UIInstanceGenerationType::Viewer) = self.generate_fractal {
             self.viewer
                 .set_fractal_view(&self.present.device, ctx.render_pass, self.viewer_view())
                 .on_err(|e| error!("Error resizing fractal image: {:?}", e));
         }
     }
-
-    fn draw_viewer_controls(&mut self, ctx: &UIRenderContext) {
-        egui::Window::new("Viewer Controls")
-            .default_size([340.0, 500.0])
-            .open(&mut self.show_viewer_controls)
-            .show(&ctx.ctx, |ui| {
-                ui.label("Viewer Movement");
-                ui.horizontal(|ui| {
-                    if ui.button("Zoom 1:1").clicked() {
-                        self.viewer.zoom_1_to_1();
-                    }
-                    if ui.button("Zoom Fit").clicked() {
-                        self.viewer.zoom_fit();
-                    }
-                    if ui.button("Zoom Fill").clicked() {
-                        self.viewer.zoom_fill();
-                    }
-                });
-                if ui.button("Center View").clicked() {
-                    self.viewer.fractal_offset = vec2(0.0, 0.0);
-                }
-
-                ui.separator();
-
-                ui.label("Selection");
-                ui.horizontal(|ui| {
-                    if ui.button("Deselect Position").clicked() {
-                        self.viewer.selection_pos = None;
-                    }
-                    if ui.button("Select Position").clicked() {
-                        self.viewer.selection_pos = Some(self.deselected_position);
-                    }
-                });
-                ui.label("Selection Position:");
-                egui::Grid::new("viewer_controls.selection.grid").show(ui, |ui| {
-                    let selection_pos = if let Some(selection_pos) = &mut self.viewer.selection_pos
-                    {
-                        selection_pos
-                    } else {
-                        &mut self.deselected_position
-                    };
-
-                    ui.label("Real:");
-                    ui.add(
-                        DragValue::new(&mut selection_pos.re)
-                            .speed(0.0001)
-                            .min_decimals(7)
-                            .max_decimals(45),
-                    );
-                    ui.end_row();
-
-                    ui.label("Imaginary:");
-                    ui.add(
-                        DragValue::new(&mut selection_pos.im)
-                            .speed(0.0001)
-                            .min_decimals(7)
-                            .max_decimals(45),
-                    );
-                    ui.end_row();
-                });
-            });
-    }
-
-    fn draw_project_settings(&mut self, ctx: &UIRenderContext) {
-        egui::Window::new("Project Settings")
-            .default_size([340.0, 500.0])
-            .open(&mut self.show_project_settings)
-            .show(ctx.ctx, |ui| {
-                ui.label("Project name:");
-                ui.add(TextEdit::singleline(&mut self.name).desired_width(ui.available_width()));
-            });
-    }
-}
-
-#[derive(Copy, Clone)]
-enum GenerationType {
-    Viewer,
-    Image,
 }

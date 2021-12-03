@@ -11,8 +11,8 @@ use crate::{
         keyboard::KeyboardTracker,
         ui::{
             instance::{
-                UIInstance, UIInstanceCreationContext, UIInstanceInitialSettings,
-                UIInstanceUpdateContext,
+                UIInstance, UIInstanceCreationContext, UIInstanceGenerationType, UIInstanceInfo,
+                UIInstanceInitialSettings, UIInstanceRenderContext, UIInstanceUpdateContext,
             },
             widgets::tab_list::{tab_list, SimpleTab},
         },
@@ -23,6 +23,7 @@ use crate::{
 };
 use egui::{vec2, Align, Align2, CtxRef, DragValue, Label, Layout};
 use egui_wgpu_backend::RenderPass;
+use num_complex::Complex32;
 use std::{
     collections::HashMap,
     io,
@@ -88,6 +89,7 @@ pub struct FractalRSUI {
     new_instance_requested: bool,
     next_instance_name_index: u64,
     tab_close_requested: Option<usize>,
+    instance_operations: UIOperations,
 }
 
 /// Struct containing context passed when creating UIState.
@@ -102,16 +104,45 @@ pub struct UICreationContext<'a> {
     pub render_pass: &'a mut RenderPass,
 }
 
+pub struct UIUpdateContext<'a> {
+    /// WGPU Egui Render Pass reference for managing textures.
+    pub render_pass: &'a mut RenderPass,
+}
+
 /// Struct containing context passed to the UI render function.
 pub struct UIRenderContext<'a> {
     /// Egui context reference.
     pub ctx: &'a CtxRef,
-    /// WGPU Egui Render Pass reference for managing textures.
-    pub render_pass: &'a mut RenderPass,
     /// Tracker for currently pressed keys.
     pub keys: &'a KeyboardTracker,
     /// The current inner size of the window.
     pub window_size: PhysicalSize<u32>,
+}
+
+#[derive(Default)]
+pub struct UIOperations {
+    current_id: u64,
+    operations: Vec<(u64, UIOperationRequest)>,
+}
+
+impl UIOperations {
+    pub fn push(&mut self, operation: UIOperationRequest) {
+        self.operations.push((self.current_id, operation));
+    }
+}
+
+/// Used by a UIInstance to indicate any operations it wants the UI to perform.
+pub enum UIOperationRequest {
+    /// This instance wants the UI to start a separate instance generating a
+    /// julia set, and then to switch to that instance.
+    StartJuliaSet {
+        /// If this instance has a target instance selected, that will be here,
+        /// otherwise, create a new one and set this one's target_instance id to
+        /// the id of the one created.
+        instance_id: Option<u64>,
+        /// The C value of the julia set to generate.
+        c: Complex32,
+    },
 }
 
 impl FractalRSUI {
@@ -131,6 +162,7 @@ impl FractalRSUI {
             present: ctx.present.clone(),
             factory: factory.clone(),
             render_pass: ctx.render_pass,
+            id: next_instance_id,
             initial_settings: Default::default(),
         });
         let first_tab = SimpleTab::new(next_instance_id);
@@ -160,11 +192,12 @@ impl FractalRSUI {
             new_instance_requested: false,
             next_instance_name_index: 2,
             tab_close_requested: None,
+            instance_operations: Default::default(),
         }
     }
 
     /// Update things associated with the UI but that do not involve rendering.
-    pub fn update(&mut self) {
+    pub fn update(&mut self, ctx: &mut UIUpdateContext) {
         // check to see if our generator type has changed
         if self.current_generator_type != self.new_generator_type && self.factory_future.is_empty()
         {
@@ -207,19 +240,42 @@ impl FractalRSUI {
 
         // Update all the instances, even the ones that are not currently being
         // rendered.
-        for instance in self.instances.values_mut() {
-            instance.update(UIInstanceUpdateContext {
+        for (&id, instance) in self.instances.iter_mut() {
+            self.instance_operations.current_id = id;
+            instance.update(&mut UIInstanceUpdateContext {
+                render_pass: ctx.render_pass,
                 chunk_size: 1 << self.chunk_size_power,
+                operations: &mut self.instance_operations,
             });
         }
+
+        self.handle_instance_operations(ctx);
+        self.handle_new_instance(ctx);
     }
 
     /// Render the current UI state to the Egui context.
-    pub fn draw(&mut self, ctx: &mut UIRenderContext) {
+    pub fn draw(&mut self, ctx: &UIRenderContext) {
+        let instance_infos: HashMap<_, _> = self
+            .instances
+            .iter()
+            .map(|(&id, instance)| {
+                (
+                    id,
+                    UIInstanceInfo {
+                        name: instance.name.clone(),
+                        running: instance.generation_running,
+                    },
+                )
+            })
+            .collect();
+
         self.handle_keyboard_shortcuts(ctx);
         self.draw_top_bar(ctx);
         if let Some(instance) = self.current_tab() {
-            instance.draw(ctx);
+            instance.draw(&mut UIInstanceRenderContext {
+                ctx: ctx.ctx,
+                instance_infos: &instance_infos,
+            });
         } else {
             self.draw_empty_content(ctx);
         }
@@ -227,7 +283,6 @@ impl FractalRSUI {
         self.draw_misc_windows(ctx);
 
         self.handle_tab_close_requested(ctx);
-        self.handle_new_instance(ctx);
     }
 
     fn handle_keyboard_shortcuts(&mut self, ctx: &UIRenderContext) {
@@ -289,7 +344,7 @@ impl FractalRSUI {
                     }
                     ui.separator();
                     if let Some(instance) = self.current_tab() {
-                        instance.draw_window_options(ctx, ui);
+                        instance.draw_window_options(ui);
                         ui.separator();
                     }
                     ui.checkbox(&mut self.show_app_settings, "App Settings");
@@ -375,7 +430,7 @@ impl FractalRSUI {
             });
     }
 
-    fn handle_new_instance(&mut self, ctx: &mut UIRenderContext) {
+    fn handle_new_instance(&mut self, ctx: &mut UIUpdateContext) {
         if self.new_instance_requested {
             self.new_instance_requested = false;
 
@@ -394,13 +449,14 @@ impl FractalRSUI {
                 present: self.present.clone(),
                 factory: self.factory.clone(),
                 render_pass: ctx.render_pass,
+                id: self.next_instance_id,
                 initial_settings,
             });
 
             let new_tab = SimpleTab::new(self.next_instance_id);
             self.instances.insert(self.next_instance_id, new_instance);
             self.next_instance_name_index = self.next_instance_name_index.wrapping_add(1);
-            self.increment_instance_id();
+            increment_instance_id(&mut self.next_instance_id, &self.instances);
 
             self.current_tab = self.tabs.len();
             self.tabs.push(new_tab);
@@ -478,11 +534,75 @@ impl FractalRSUI {
         }
     }
 
-    fn increment_instance_id(&mut self) {
-        self.next_instance_id = self.next_instance_id.wrapping_add(1);
-        while self.instances.contains_key(&self.next_instance_id) {
-            self.next_instance_id = self.next_instance_id.wrapping_add(1);
+    fn handle_instance_operations(&mut self, ctx: &mut UIUpdateContext) {
+        for (id, operation) in self.instance_operations.operations.drain(..) {
+            match operation {
+                UIOperationRequest::StartJuliaSet { instance_id, c } => {
+                    if let Some(instance) = instance_id
+                        .as_ref()
+                        .and_then(|id| self.instances.get_mut(id))
+                    {
+                        let instance_id = instance_id.unwrap();
+
+                        instance.c = c;
+                        instance.mandelbrot = false;
+                        if !instance.generation_running {
+                            instance.generate_fractal = Some(UIInstanceGenerationType::Viewer);
+                        }
+
+                        // TODO: figure out a more efficient way to find the tab of the selected
+                        //  instance
+                        for (index, tab) in self.tabs.iter().enumerate() {
+                            if instance_id == tab.data {
+                                self.current_tab = index;
+                            }
+                        }
+                    } else {
+                        // Create a new instance for generating this julia set
+                        let initial_settings = UIInstanceInitialSettings {
+                            c,
+                            mandelbrot: false,
+                            ..Default::default()
+                        };
+
+                        // There's a lot of duplicated code here, but until I can use disjoint
+                        // methods, there isn't really a good way around it.
+                        let mut new_instance = UIInstance::new(UIInstanceCreationContext {
+                            name: format!("Julia {}", self.next_instance_name_index),
+                            handle: self.handle.clone(),
+                            present: self.present.clone(),
+                            factory: self.factory.clone(),
+                            render_pass: ctx.render_pass,
+                            id: self.next_instance_id,
+                            initial_settings,
+                        });
+
+                        new_instance.c = c;
+                        new_instance.generate_fractal = Some(UIInstanceGenerationType::Viewer);
+
+                        if let Some(parent) = self.instances.get_mut(&id) {
+                            parent.target_instance = Some(self.next_instance_id);
+                        }
+
+                        let new_tab = SimpleTab::new(self.next_instance_id);
+                        self.instances.insert(self.next_instance_id, new_instance);
+                        self.next_instance_name_index =
+                            self.next_instance_name_index.wrapping_add(1);
+                        increment_instance_id(&mut self.next_instance_id, &self.instances);
+
+                        self.current_tab = self.tabs.len();
+                        self.tabs.push(new_tab);
+                    }
+                },
+            }
         }
+    }
+}
+
+fn increment_instance_id(next_instance_id: &mut u64, instances: &HashMap<u64, UIInstance>) {
+    *next_instance_id = next_instance_id.wrapping_add(1);
+    while instances.contains_key(next_instance_id) {
+        *next_instance_id = next_instance_id.wrapping_add(1);
     }
 }
 
