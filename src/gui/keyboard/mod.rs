@@ -3,6 +3,7 @@
 #![allow(dead_code)]
 
 use crate::gui::keyboard::{macros::shortcut, ShortcutType::*};
+use heck::TitleCase;
 use itertools::Itertools;
 use std::{
     collections::{HashMap, HashSet},
@@ -28,7 +29,7 @@ const SHORTCUT_LIST: &[(ShortcutType, Shortcut)] = &[
 
 /// This enum contains an entry for each keyboard shortcut the application uses.
 #[allow(non_camel_case_types)]
-#[derive(Debug, Display, Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash, EnumIter)]
+#[derive(Debug, Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash, EnumIter)]
 pub enum ShortcutType {
     // App shortcuts
     App_Quit,
@@ -211,6 +212,18 @@ impl Display for ShortcutConflict {
                 )
             },
         }
+    }
+}
+
+impl Display for ShortcutType {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        let old_name = format!("{:?}", self);
+
+        write!(
+            f,
+            "{}",
+            old_name.split("_").map(|s| s.to_title_case()).format("/")
+        )
     }
 }
 

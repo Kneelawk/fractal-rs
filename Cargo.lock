@@ -744,6 +744,7 @@ dependencies = [
  "egui_wgpu_backend",
  "egui_winit_platform",
  "futures",
+ "heck",
  "itertools",
  "lazy_static",
  "log",
