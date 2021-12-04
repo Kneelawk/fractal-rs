@@ -3,6 +3,7 @@
 
 #![allow(dead_code)]
 
+use crate::gui::keyboard::{Modifiers, Shortcut};
 use std::collections::HashSet;
 use winit::event::{ElementState, KeyboardInput, ModifiersState, VirtualKeyCode};
 
@@ -11,22 +12,6 @@ pub struct KeyboardTracker {
     pressed_keys: HashSet<VirtualKeyCode>,
     released_keys: HashSet<VirtualKeyCode>,
     modifiers: Modifiers,
-}
-
-/// Tracks keyboard modifier presses.
-pub struct Modifiers {
-    /// Whether the 'Shift' key is pressed.
-    pub shift: bool,
-    /// Whether the 'Ctrl' key is pressed.
-    pub ctrl: bool,
-    /// Whether the 'Alt' key (Windows & Linux) or 'Option' key (Mac) is
-    /// pressed.
-    pub alt: bool,
-    /// Whether the Logo key (Windows key on Windows, Command key on Mac) is
-    /// pressed.
-    pub logo: bool,
-    /// Whether the OS-appropriate command/ctrl key is pressed.
-    pub command: bool,
 }
 
 impl KeyboardTracker {
@@ -39,7 +24,6 @@ impl KeyboardTracker {
                 ctrl: false,
                 alt: false,
                 logo: false,
-                command: false,
             },
         }
     }
@@ -73,23 +57,17 @@ impl KeyboardTracker {
     pub fn was_released(&self, key: VirtualKeyCode) -> bool {
         self.released_keys.contains(&key)
     }
-}
 
-impl Modifiers {
-    fn update(&mut self, state: &ModifiersState) {
-        self.shift = state.shift();
-        self.ctrl = state.ctrl();
-        self.alt = state.alt();
-        self.logo = state.logo();
-
-        #[cfg(not(target_arch = "macos"))]
-        {
-            self.command = self.ctrl;
-        }
-
-        #[cfg(target_arch = "macos")]
-        {
-            self.command = self.logo;
+    /// Makes a shortcut for the currently pressed set of keys. This shortcut is
+    /// then passed to a `ShortcutMap` to convert it into a shortcut enum.
+    pub fn make_shortcut(&self) -> Option<Shortcut> {
+        if self.pressed_keys.len() == 1 {
+            Some(Shortcut {
+                modifiers: self.modifiers,
+                key: *self.pressed_keys.iter().next().unwrap(),
+            })
+        } else {
+            None
         }
     }
 }

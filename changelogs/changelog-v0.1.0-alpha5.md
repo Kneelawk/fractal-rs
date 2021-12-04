@@ -12,3 +12,4 @@
   or `Cmd+Alt+J` on Mac), switching to a source Mandelbrot set (`Alt+M`
   or `Cmd+Alt+M`), and switching to an already generated Julia/Fatou
   Set (`Shift+Alt+J` or `Cmd+Shift+Alt+J`).
+* Added keyboard shortcut for generating a fractal (`Alt+G` or `Cmd+Alt+G`).

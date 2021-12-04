@@ -8,7 +8,7 @@ use crate::{
     },
     gpu::{GPUContext, GPUContextType},
     gui::{
-        keyboard::KeyboardTracker,
+        keyboard::{ShortcutType, ShortcutTypeExt},
         ui::{
             instance::{
                 UIInstance, UIInstanceCreationContext, UIInstanceGenerationType, UIInstanceInfo,
@@ -16,9 +16,8 @@ use crate::{
             },
             widgets::tab_list::{tab_list, SimpleTab},
         },
-        util::get_trace_path,
+        util::{get_trace_path, menu_text},
     },
-    menu_text,
     util::{future::future_wrapper::FutureWrapper, result::ResultExt, running_guard::RunningGuard},
 };
 use egui::{vec2, Align, Align2, CtxRef, DragValue, Label, Layout};
@@ -40,7 +39,7 @@ use wgpu::{
     DeviceDescriptor, Instance, Maintain, PowerPreference, RequestAdapterOptions,
     RequestDeviceError,
 };
-use winit::{dpi::PhysicalSize, event::VirtualKeyCode};
+use winit::dpi::PhysicalSize;
 
 /// Struct specifically devoted to UI rendering and state.
 pub struct FractalRSUI {
@@ -113,8 +112,8 @@ pub struct UIUpdateContext<'a> {
 pub struct UIRenderContext<'a> {
     /// Egui context reference.
     pub ctx: &'a CtxRef,
-    /// Tracker for currently pressed keys.
-    pub keys: &'a KeyboardTracker,
+    /// The currently pressed keyboard shortcut if any.
+    pub shortcut: Option<ShortcutType>,
     /// The current inner size of the window.
     pub window_size: PhysicalSize<u32>,
 }
@@ -288,7 +287,7 @@ impl FractalRSUI {
             })
             .collect();
 
-        self.handle_keyboard_shortcuts(ctx);
+        self.handle_keyboard_shortcuts(ctx.shortcut);
         self.draw_top_bar(ctx);
         if let Some(instance) = self.current_tab() {
             instance.draw(&mut UIInstanceRenderContext {
@@ -305,38 +304,36 @@ impl FractalRSUI {
         self.handle_tab_close_requested(ctx);
     }
 
-    fn handle_keyboard_shortcuts(&mut self, ctx: &UIRenderContext) {
-        let keys = ctx.keys;
-
+    fn handle_keyboard_shortcuts(&mut self, shortcut: Option<ShortcutType>) {
         // Quit keyboard shortcut
-        if keys.modifiers().command && keys.was_pressed(VirtualKeyCode::Q) {
+        if shortcut.is(ShortcutType::App_Quit) {
             self.close_requested = true;
         }
 
         // New keyboard shortcut
-        if keys.modifiers().command && keys.was_pressed(VirtualKeyCode::N) {
+        if shortcut.is(ShortcutType::App_New) {
             self.new_instance_requested = true;
         }
 
         // Close tab keyboard shortcut
-        if keys.modifiers().command && keys.was_pressed(VirtualKeyCode::W) {
+        if shortcut.is(ShortcutType::App_CloseTab) {
             self.tab_close_requested = Some(self.current_tab);
         }
 
         // Fullscreen keyboard shortcut
-        if keys.was_pressed(VirtualKeyCode::F11) {
+        if shortcut.is(ShortcutType::App_Fullscreen) {
             self.request_fullscreen = !self.request_fullscreen;
         }
 
         // I've found that I often end up trying to use ESC to leave fullscreen, so I
         // think I'll add that as a shortcut.
-        if keys.was_pressed(VirtualKeyCode::Escape) {
+        if shortcut.is(ShortcutType::App_AlternateExitFullscreen) {
             self.request_fullscreen = false;
         }
 
         // Let the currently open instance also act on key combinations
         if let Some(current_tab) = self.current_tab() {
-            current_tab.handle_keyboard_shortcuts(keys);
+            current_tab.handle_keyboard_shortcuts(shortcut);
         }
     }
 

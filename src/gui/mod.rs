@@ -4,7 +4,7 @@ use crate::{
     gpu::GPUContext,
     gui::{
         flow::{Flow, FlowModel, FlowModelInit, FlowSignal},
-        keyboard::KeyboardTracker,
+        keyboard::{tracker::KeyboardTracker, ShortcutMap},
         ui::{FractalRSUI, UICreationContext, UIRenderContext, UIUpdateContext},
     },
 };
@@ -45,6 +45,7 @@ struct FractalRSGuiMain {
     platform: Platform,
     render_pass: RenderPass,
     keyboard_tracker: KeyboardTracker,
+    shortcut_map: ShortcutMap,
     start_time: Instant,
 
     // running state
@@ -82,6 +83,11 @@ impl FlowModel for FractalRSGuiMain {
             render_pass: &mut render_pass,
         });
 
+        let (shortcut_map, conflicts) = ShortcutMap::new();
+        if !conflicts.conflicts.is_empty() {
+            warn!("Shortcut conflicts: {}", conflicts);
+        }
+
         FractalRSGuiMain {
             present,
             window,
@@ -90,6 +96,7 @@ impl FlowModel for FractalRSGuiMain {
             platform,
             render_pass,
             keyboard_tracker: KeyboardTracker::new(),
+            shortcut_map,
             start_time: Instant::now(),
             commands: vec![],
             ui,
@@ -154,7 +161,9 @@ impl FlowModel for FractalRSGuiMain {
 
         self.ui.draw(&UIRenderContext {
             ctx: &self.platform.context(),
-            keys: &self.keyboard_tracker,
+            shortcut: self
+                .shortcut_map
+                .lookup(self.keyboard_tracker.make_shortcut()),
             window_size: self.window_size,
         });
 

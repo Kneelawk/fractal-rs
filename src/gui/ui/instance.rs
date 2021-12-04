@@ -7,7 +7,7 @@ use crate::{
     },
     gpu::GPUContext,
     gui::{
-        keyboard::KeyboardTracker,
+        keyboard::{ShortcutType, ShortcutTypeExt},
         ui::{
             file_dialog::FileDialogWrapper, widgets::viewer::FractalViewer, UIOperationRequest,
             UIOperations,
@@ -23,7 +23,6 @@ use num_complex::Complex32;
 use rfd::AsyncFileDialog;
 use std::{borrow::Cow, collections::HashMap, path::PathBuf, sync::Arc};
 use tokio::runtime::Handle;
-use winit::event::VirtualKeyCode;
 
 const DEFAULT_GENERATION_MESSAGE: &str = "Not Generating";
 const DEFAULT_WRITER_MESSAGE: &str = "Not Writing Image";
@@ -379,27 +378,24 @@ impl UIInstance {
         ui.checkbox(&mut self.show_project_settings, "Project Settings");
     }
 
-    pub fn handle_keyboard_shortcuts(&mut self, keys: &KeyboardTracker) {
-        // MacOS can't use shortcuts that are just alt + something, so we need to have a
-        // command in there too.
-        let modifier = if cfg!(target_os = "macos") {
-            keys.modifiers().command && keys.modifiers().alt
-        } else {
-            keys.modifiers().alt
-        };
+    pub fn handle_keyboard_shortcuts(&mut self, shortcut: Option<ShortcutType>) {
+        // Handle Generate shortcut
+        if shortcut.is(ShortcutType::Instance_Generate) {
+            self.generate_fractal = Some(UIInstanceGenerationType::Viewer);
+        }
 
         // Handle Julia keyboard shortcut
-        if modifier && keys.was_pressed(VirtualKeyCode::J) {
-            // Shift+Alt+J just switches, Alt+J generates a new Julia Set.
-            if keys.modifiers().shift {
-                self.switch_to_target = true;
-            } else {
-                self.generate_julia_from_point = true;
-            }
+        if shortcut.is(ShortcutType::Instance_SpawnJulia) {
+            self.generate_julia_from_point = true;
+        }
+
+        // Handle Switch to Julia shortcut
+        if shortcut.is(ShortcutType::Instance_SwitchToJulia) {
+            self.switch_to_target = true;
         }
 
         // Handle Switch to Mandelbrot shortcut
-        if modifier && keys.was_pressed(VirtualKeyCode::M) {
+        if shortcut.is(ShortcutType::Instance_SwitchToMandelbrot) {
             self.switch_to_parent = true;
         }
     }

@@ -37,7 +37,6 @@ pub async fn get_trace_path(
     Ok(None)
 }
 
-#[macro_export]
 macro_rules! menu_text {
     ($name:expr, $shortcut:expr) => {
         concat!($name, "                ", $shortcut)
@@ -50,3 +49,4 @@ macro_rules! menu_text {
         }
     };
 }
+pub(crate) use menu_text;

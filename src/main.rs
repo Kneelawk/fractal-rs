@@ -13,6 +13,8 @@ extern crate log;
 #[macro_use]
 extern crate serde;
 #[macro_use]
+extern crate strum_macros;
+#[macro_use]
 extern crate thiserror;
 
 mod generator;
