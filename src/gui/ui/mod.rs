@@ -8,7 +8,7 @@ use crate::{
     },
     gpu::{GPUContext, GPUContextType},
     gui::{
-        keyboard::{ShortcutLookup, ShortcutName},
+        keyboard::{ShortcutMap, ShortcutName},
         storage::CfgUiSettings,
         ui::{
             instance::{
@@ -121,7 +121,7 @@ pub struct UIRenderContext<'a> {
     /// Egui context reference.
     pub ctx: &'a CtxRef,
     /// The currently pressed keyboard shortcut if any.
-    pub shortcuts: ShortcutLookup<'a>,
+    pub shortcuts: &'a ShortcutMap,
     /// The current inner size of the window.
     pub window_size: PhysicalSize<u32>,
 }
@@ -319,30 +319,30 @@ impl FractalRSUI {
         self.handle_tab_close_requested(ctx);
     }
 
-    fn handle_keyboard_shortcuts(&mut self, shortcuts: ShortcutLookup) {
+    fn handle_keyboard_shortcuts(&mut self, shortcuts: &ShortcutMap) {
         // Quit keyboard shortcut
-        if shortcuts.is(ShortcutName::App_Quit) {
+        if shortcuts.is_pressed(ShortcutName::App_Quit) {
             self.close_requested = true;
         }
 
         // New keyboard shortcut
-        if shortcuts.is(ShortcutName::App_New) {
+        if shortcuts.is_pressed(ShortcutName::App_New) {
             self.new_instance_requested = true;
         }
 
         // Close tab keyboard shortcut
-        if shortcuts.is(ShortcutName::App_CloseTab) {
+        if shortcuts.is_pressed(ShortcutName::App_CloseTab) {
             self.tab_close_requested = Some(self.current_tab);
         }
 
         // Fullscreen keyboard shortcut
-        if shortcuts.is(ShortcutName::App_Fullscreen) {
+        if shortcuts.is_pressed(ShortcutName::App_Fullscreen) {
             self.request_fullscreen = !self.request_fullscreen;
         }
 
         // I've found that I often end up trying to use ESC to leave fullscreen, so I
         // think I'll add that as a shortcut.
-        if shortcuts.is(ShortcutName::App_AlternateExitFullscreen) {
+        if shortcuts.is_pressed(ShortcutName::App_AlternateExitFullscreen) {
             self.request_fullscreen = false;
         }
     }

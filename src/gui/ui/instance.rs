@@ -7,7 +7,7 @@ use crate::{
     },
     gpu::GPUContext,
     gui::{
-        keyboard::{ShortcutLookup, ShortcutName},
+        keyboard::{ShortcutMap, ShortcutName},
         ui::{
             file_dialog::FileDialogWrapper, widgets::viewer::FractalViewer, UIOperationRequest,
             UIOperations,
@@ -131,7 +131,7 @@ pub struct UIInstanceRenderContext<'a> {
     /// Egui context reference.
     pub ctx: &'a CtxRef,
     /// The currently pressed keyboard shortcut if any.
-    pub shortcuts: ShortcutLookup<'a>,
+    pub shortcuts: &'a ShortcutMap,
     /// A list of the tabs this application has open.
     pub tab_list: &'a [u64],
     /// A map from instance ids to instance names.
@@ -384,12 +384,12 @@ impl UIInstance {
         let shortcuts = ctx.shortcuts;
 
         // Handle Generate shortcut
-        if shortcuts.is(ShortcutName::Instance_Generate) && !self.generation_running {
+        if shortcuts.is_pressed(ShortcutName::Instance_Generate) && !self.generation_running {
             self.generate_fractal = Some(UIInstanceGenerationType::Viewer);
         }
 
         // Handle Julia keyboard shortcut
-        if shortcuts.is(ShortcutName::Instance_SpawnJulia)
+        if shortcuts.is_pressed(ShortcutName::Instance_SpawnJulia)
             && self.mandelbrot
             && !self
                 .target_instance
@@ -401,12 +401,15 @@ impl UIInstance {
         }
 
         // Handle Switch to Julia shortcut
-        if shortcuts.is(ShortcutName::Instance_SwitchToJulia) && self.target_instance.is_some() {
+        if shortcuts.is_pressed(ShortcutName::Instance_SwitchToJulia)
+            && self.target_instance.is_some()
+        {
             self.switch_to_target = true;
         }
 
         // Handle Switch to Mandelbrot shortcut
-        if shortcuts.is(ShortcutName::Instance_SwitchToMandelbrot) && self.parent_instance.is_some()
+        if shortcuts.is_pressed(ShortcutName::Instance_SwitchToMandelbrot)
+            && self.parent_instance.is_some()
         {
             self.switch_to_parent = true;
         }

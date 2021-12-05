@@ -5,9 +5,10 @@
 use crate::gui::keyboard::{macros::shortcut, ShortcutName::*};
 use heck::TitleCase;
 use itertools::Itertools;
+use serde::{de::Visitor, Deserialize, Deserializer, Serialize, Serializer};
 use std::{
     collections::{HashMap, HashSet},
-    fmt::{Display, Formatter},
+    fmt::{Display, Formatter, Write},
 };
 use winit::event::{ModifiersState, VirtualKeyCode};
 
@@ -15,7 +16,7 @@ pub mod macros;
 pub mod tracker;
 
 /// The list of shortcuts in the app.
-const SHORTCUT_LIST: &[(ShortcutName, Shortcut)] = &[
+pub const DEFAULT_SHORTCUT_LIST: &[(ShortcutName, Shortcut)] = &[
     (App_Quit, shortcut!(Cmd - Q)),
     (App_New, shortcut!(Cmd - N)),
     (App_CloseTab, shortcut!(Cmd - W)),
@@ -29,7 +30,9 @@ const SHORTCUT_LIST: &[(ShortcutName, Shortcut)] = &[
 
 /// This enum contains an entry for each keyboard shortcut the application uses.
 #[allow(non_camel_case_types)]
-#[derive(Debug, Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash, EnumIter)]
+#[derive(
+    Debug, Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash, EnumIter, Serialize, Deserialize,
+)]
 pub enum ShortcutName {
     // App shortcuts
     App_Quit,
@@ -89,21 +92,24 @@ pub struct ShortcutMap {
     bindings: HashMap<Shortcut, Vec<ShortcutName>>,
     names: HashMap<ShortcutName, Vec<Shortcut>>,
     current_shortcuts: HashSet<ShortcutName>,
+    conflicts: ShortcutMapConflicts,
 }
 
 impl ShortcutMap {
-    pub fn from(shortcut_list: &[(ShortcutName, Shortcut)]) -> (ShortcutMap, ShortcutMapConflicts) {
+    /// Loads this shortcut map from a list of shortcut associations.
+    pub fn from(shortcut_list: &[(ShortcutName, Shortcut)]) -> ShortcutMap {
         let mut bindings: HashMap<_, Vec<ShortcutName>> = HashMap::new();
         let mut names: HashMap<_, Vec<Shortcut>> = HashMap::new();
         let mut binding_conflicts = HashMap::new();
         let mut name_conflicts = HashMap::new();
 
-        debug!(
+        info!(
             "Loading shortcuts: [\n\t{}\n]",
             shortcut_list
                 .iter()
                 .map(|(ty, sc)| format!("{} => {}", ty, sc))
                 .format(",\n\t")
+                .to_string()
         );
 
         for (name, binding) in shortcut_list {
@@ -132,35 +138,30 @@ impl ShortcutMap {
             names.entry(*name).or_insert(vec![]).push(*binding);
         }
 
-        let mut conflicts = vec![];
-        for (binding, names) in binding_conflicts {
-            conflicts.push(ShortcutConflict::Binding {
-                binding,
-                names: names.into_iter().sorted().collect(),
-            });
-        }
-        for (name, bindings) in name_conflicts {
-            conflicts.push(ShortcutConflict::Name {
-                name,
-                bindings: bindings.into_iter().sorted().collect(),
-            });
-        }
-
-        (
-            ShortcutMap {
-                bindings,
-                names,
-                current_shortcuts: Default::default(),
+        ShortcutMap {
+            bindings,
+            names,
+            current_shortcuts: Default::default(),
+            conflicts: ShortcutMapConflicts {
+                binding_conflicts,
+                name_conflicts,
             },
-            ShortcutMapConflicts { conflicts },
-        )
+        }
     }
 
-    pub fn new() -> (ShortcutMap, ShortcutMapConflicts) {
-        Self::from(SHORTCUT_LIST)
+    /// Loads this shortcut map from the default list of shortcut associations.
+    pub fn new() -> ShortcutMap {
+        Self::from(DEFAULT_SHORTCUT_LIST)
     }
 
-    pub fn lookup(&mut self, keys: &Vec<Shortcut>) -> ShortcutLookup {
+    /// Gets this map's list of shortcut conflicts.
+    pub fn get_conflicts(&self) -> &ShortcutMapConflicts {
+        &self.conflicts
+    }
+
+    /// Looks up a set of pressed keys to see what shortcut are associated with
+    /// those keys.
+    pub fn update(&mut self, keys: &[Shortcut]) {
         self.current_shortcuts.clear();
 
         for shortcut in keys {
@@ -170,33 +171,92 @@ impl ShortcutMap {
                 }
             }
         }
-
-        ShortcutLookup {
-            shortcuts: &self.current_shortcuts,
-            names: &self.names,
-        }
     }
-}
 
-/// Represents the result of a shortcut lookup operation.
-///
-/// This contains a set of all the currently pressed shortcuts, as well as a map
-/// from shortcut names the current keybindings for those names.
-#[derive(Copy, Clone)]
-pub struct ShortcutLookup<'a> {
-    shortcuts: &'a HashSet<ShortcutName>,
-    names: &'a HashMap<ShortcutName, Vec<Shortcut>>,
-}
-
-impl<'a> ShortcutLookup<'a> {
     /// Is this shortcut name currently pressed?
-    pub fn is(&self, name: ShortcutName) -> bool {
-        self.shortcuts.contains(&name)
+    pub fn is_pressed(&self, name: ShortcutName) -> bool {
+        self.current_shortcuts.contains(&name)
     }
 
     /// Gets a list of the current bindings for a given shortcut name, if any.
     pub fn keys_for(&self, name: ShortcutName) -> KeysFor {
         KeysFor(self.names.get(&name))
+    }
+
+    /// Replaces all bindings for a shortcut name with the binding given.
+    pub fn replace_association(&mut self, name: ShortcutName, binding: Shortcut) {
+        // First, remove all existing bindings
+        if let Some(existing_bindings) = self.names.get_mut(&name) {
+            for existing_binding in existing_bindings.iter_mut() {
+                let mut remove = false;
+                if let Some(existing_names) = self.bindings.get_mut(existing_binding) {
+                    existing_names.retain(|existing_name| existing_name != &name);
+                    remove = existing_names.is_empty();
+                }
+                if remove {
+                    self.bindings.remove(existing_binding);
+                }
+            }
+            existing_bindings.clear();
+        }
+        self.names.remove(&name);
+
+        // Next, remove all current conflicts involving the shortcut_name
+        self.conflicts
+            .binding_conflicts
+            .retain(|_conflict_binding, conflict_names| {
+                conflict_names.remove(&name);
+                conflict_names.len() > 1
+            });
+        self.conflicts.name_conflicts.remove(&name);
+
+        // Now add the new bindings while checking for conflicts
+        if self.bindings.contains_key(&binding) {
+            let conflicts = self
+                .conflicts
+                .binding_conflicts
+                .entry(binding)
+                .or_insert(HashSet::new());
+
+            let names = self.bindings.get(&binding).unwrap();
+            if names.len() == 1 {
+                conflicts.insert(names[0]);
+            }
+
+            conflicts.insert(name);
+        }
+        if self.names.contains_key(&name) {
+            let conflicts = self
+                .conflicts
+                .name_conflicts
+                .entry(name)
+                .or_insert(HashSet::new());
+
+            let bindings = self.names.get(&name).unwrap();
+            if bindings.len() == 1 {
+                conflicts.insert(bindings[0]);
+            }
+
+            conflicts.insert(binding);
+        }
+
+        self.bindings.entry(binding).or_insert(vec![]).push(name);
+        self.names.entry(name).or_insert(vec![]).push(binding);
+    }
+
+    /// Creates a list of shortcut associations for this map.
+    pub fn to_shortcut_list(&self) -> Vec<(ShortcutName, Shortcut)> {
+        let names: Vec<_> = self.names.keys().copied().sorted().collect();
+        let mut list = vec![];
+
+        for name in names {
+            let bindings = self.names.get(&name).unwrap().clone();
+            for binding in bindings {
+                list.push((name, binding));
+            }
+        }
+
+        list
     }
 }
 
@@ -204,25 +264,16 @@ impl<'a> ShortcutLookup<'a> {
 pub struct KeysFor<'a>(Option<&'a Vec<Shortcut>>);
 
 /// Represents an error while creating a shortcut map.
-#[derive(Debug, Error, Clone, Ord, PartialOrd, Eq, PartialEq, Hash)]
+#[derive(Debug, Error, Clone, Eq, PartialEq)]
 pub struct ShortcutMapConflicts {
-    pub conflicts: Vec<ShortcutConflict>,
+    pub binding_conflicts: HashMap<Shortcut, HashSet<ShortcutName>>,
+    pub name_conflicts: HashMap<ShortcutName, HashSet<Shortcut>>,
 }
 
-/// Represents a keyboard shortcut conflict.
-#[derive(Debug, Clone, Ord, PartialOrd, Eq, PartialEq, Hash)]
-pub enum ShortcutConflict {
-    /// Indicates that two shortcut name enums have the same keyboard shortcut
-    /// binding.
-    Binding {
-        binding: Shortcut,
-        names: Vec<ShortcutName>,
-    },
-    /// Indicates that two shortcut bindings refer to the same shortcut name.
-    Name {
-        name: ShortcutName,
-        bindings: Vec<Shortcut>,
-    },
+impl ShortcutMapConflicts {
+    pub fn is_empty(&self) -> bool {
+        self.binding_conflicts.is_empty() && self.name_conflicts.is_empty()
+    }
 }
 
 impl<'a> Display for KeysFor<'a> {
@@ -240,31 +291,20 @@ impl Display for ShortcutMapConflicts {
         write!(
             f,
             "Shortcut conflicts encountered: [\n\t{}\n]",
-            self.conflicts.iter().format(",\n\t")
-        )
-    }
-}
-
-impl Display for ShortcutConflict {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        match self {
-            ShortcutConflict::Binding { binding, names } => {
-                write!(
-                    f,
+            self.binding_conflicts
+                .iter()
+                .map(|(binding, names)| format!(
                     "Binding {} is bound to multiple shortcuts: {}",
                     binding,
                     names.iter().format(", ")
-                )
-            },
-            ShortcutConflict::Name { name, bindings } => {
-                write!(
-                    f,
+                ))
+                .chain(self.name_conflicts.iter().map(|(name, bindings)| format!(
                     "Shortcut {} is has multiple bindings: {}",
                     name,
                     bindings.iter().format(", ")
-                )
-            },
-        }
+                )))
+                .format(",\n\t")
+        )
     }
 }
 
@@ -317,15 +357,571 @@ impl Display for Shortcut {
     }
 }
 
+//
+// Serialization stuff
+//
+
+impl Shortcut {
+    /// Converts this shortcut into a string using the same formatting on all
+    /// OSes.
+    pub fn to_os_independent_string(&self) -> String {
+        let mut s = String::new();
+        if self.modifiers.ctrl {
+            write!(s, "Ctrl+").expect("Error formatting string (this is a bug)");
+        }
+        if self.modifiers.logo {
+            write!(s, "Logo+").expect("Error formatting string (this is a bug)");
+        }
+        if self.modifiers.shift {
+            write!(s, "Shift+").expect("Error formatting string (this is a bug)");
+        }
+        if self.modifiers.alt {
+            write!(s, "Alt+").expect("Error formatting string (this is a bug)");
+        }
+        write!(s, "{:?}", self.key).expect("Error formatting string (this is a bug)");
+        s
+    }
+
+    /// Parses a shortcut string and converts it into a shortcut.
+    ///
+    /// This parses a string of the format `Ctrl+Alt+Delete` or `Shift+Logo+A`.
+    /// A string is composed of a set of modifier keys and one non-modifier key.
+    /// Any keys after the non-modifier key will be ignored.
+    pub fn from_os_independent_string(s: impl AsRef<str>) -> Result<Self, ShortcutParseError> {
+        let s = s.as_ref();
+        let mut modifiers = Modifiers {
+            shift: false,
+            ctrl: false,
+            alt: false,
+            logo: false,
+        };
+
+        for segment in s.split('+') {
+            let segment = segment.trim();
+            match segment {
+                "Ctrl" => modifiers.ctrl = true,
+                "Logo" => modifiers.logo = true,
+                "Shift" => modifiers.shift = true,
+                "Alt" => modifiers.alt = true,
+                non_modifier => {
+                    return if let Some(key) = parse_virtual_keycode(non_modifier) {
+                        Ok(Shortcut { modifiers, key })
+                    } else {
+                        Err(ShortcutParseError::InvalidKey(non_modifier.to_string()))
+                    }
+                },
+            }
+        }
+
+        Err(ShortcutParseError::NoNonModifier)
+    }
+}
+
+/// If an error is produced while parsing a string.
+#[derive(Debug, Error, Ord, PartialOrd, Eq, PartialEq)]
+pub enum ShortcutParseError {
+    #[error("Encountered unknown key: '{}'", .0)]
+    InvalidKey(String),
+    #[error("No non-modifier key detected")]
+    NoNonModifier,
+}
+
+impl Serialize for Shortcut {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        serializer.serialize_str(&self.to_os_independent_string())
+    }
+}
+
+impl<'de> Deserialize<'de> for Shortcut {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        deserializer.deserialize_str(ShortcutVisitor)
+    }
+}
+
+/// Visitor for deserializing [`Shortcut`]s.
+struct ShortcutVisitor;
+
+impl<'de> Visitor<'de> for ShortcutVisitor {
+    type Value = Shortcut;
+
+    fn expecting(&self, formatter: &mut Formatter) -> std::fmt::Result {
+        write!(
+            formatter,
+            "Expecting shortcut string in the form `Ctrl+Alt+A`"
+        )
+    }
+
+    fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
+    where
+        E: serde::de::Error,
+    {
+        match Shortcut::from_os_independent_string(v) {
+            Ok(shortcut) => Ok(shortcut),
+            Err(e) => Err(E::custom(format!("error parsing shortcut string: {}", e))),
+        }
+    }
+}
+
+/// Converts a string into a [`winit::event::VirtualKeyCode`].
+fn parse_virtual_keycode(s: &str) -> Option<VirtualKeyCode> {
+    match s {
+        // The '1' key over the letters.
+        "Key1" => Some(VirtualKeyCode::Key1),
+        // The '2' key over the letters.
+        "Key2" => Some(VirtualKeyCode::Key2),
+        // The '3' key over the letters.
+        "Key3" => Some(VirtualKeyCode::Key3),
+        // The '4' key over the letters.
+        "Key4" => Some(VirtualKeyCode::Key4),
+        // The '5' key over the letters.
+        "Key5" => Some(VirtualKeyCode::Key5),
+        // The '6' key over the letters.
+        "Key6" => Some(VirtualKeyCode::Key6),
+        // The '7' key over the letters.
+        "Key7" => Some(VirtualKeyCode::Key7),
+        // The '8' key over the letters.
+        "Key8" => Some(VirtualKeyCode::Key8),
+        // The '9' key over the letters.
+        "Key9" => Some(VirtualKeyCode::Key9),
+        // The '0' key over the 'O' and 'P' keys.
+        "Key0" => Some(VirtualKeyCode::Key0),
+
+        "A" => Some(VirtualKeyCode::A),
+        "B" => Some(VirtualKeyCode::B),
+        "C" => Some(VirtualKeyCode::C),
+        "D" => Some(VirtualKeyCode::D),
+        "E" => Some(VirtualKeyCode::E),
+        "F" => Some(VirtualKeyCode::F),
+        "G" => Some(VirtualKeyCode::G),
+        "H" => Some(VirtualKeyCode::H),
+        "I" => Some(VirtualKeyCode::I),
+        "J" => Some(VirtualKeyCode::J),
+        "K" => Some(VirtualKeyCode::K),
+        "L" => Some(VirtualKeyCode::L),
+        "M" => Some(VirtualKeyCode::M),
+        "N" => Some(VirtualKeyCode::N),
+        "O" => Some(VirtualKeyCode::O),
+        "P" => Some(VirtualKeyCode::P),
+        "Q" => Some(VirtualKeyCode::Q),
+        "R" => Some(VirtualKeyCode::R),
+        "S" => Some(VirtualKeyCode::S),
+        "T" => Some(VirtualKeyCode::T),
+        "U" => Some(VirtualKeyCode::U),
+        "V" => Some(VirtualKeyCode::V),
+        "W" => Some(VirtualKeyCode::W),
+        "X" => Some(VirtualKeyCode::X),
+        "Y" => Some(VirtualKeyCode::Y),
+        "Z" => Some(VirtualKeyCode::Z),
+
+        // The Escape key, next to F1.
+        "Escape" => Some(VirtualKeyCode::Escape),
+
+        "F1" => Some(VirtualKeyCode::F1),
+        "F2" => Some(VirtualKeyCode::F2),
+        "F3" => Some(VirtualKeyCode::F3),
+        "F4" => Some(VirtualKeyCode::F4),
+        "F5" => Some(VirtualKeyCode::F5),
+        "F6" => Some(VirtualKeyCode::F6),
+        "F7" => Some(VirtualKeyCode::F7),
+        "F8" => Some(VirtualKeyCode::F8),
+        "F9" => Some(VirtualKeyCode::F9),
+        "F10" => Some(VirtualKeyCode::F10),
+        "F11" => Some(VirtualKeyCode::F11),
+        "F12" => Some(VirtualKeyCode::F12),
+        "F13" => Some(VirtualKeyCode::F13),
+        "F14" => Some(VirtualKeyCode::F14),
+        "F15" => Some(VirtualKeyCode::F15),
+        "F16" => Some(VirtualKeyCode::F16),
+        "F17" => Some(VirtualKeyCode::F17),
+        "F18" => Some(VirtualKeyCode::F18),
+        "F19" => Some(VirtualKeyCode::F19),
+        "F20" => Some(VirtualKeyCode::F20),
+        "F21" => Some(VirtualKeyCode::F21),
+        "F22" => Some(VirtualKeyCode::F22),
+        "F23" => Some(VirtualKeyCode::F23),
+        "F24" => Some(VirtualKeyCode::F24),
+
+        // Print Screen/SysRq.
+        "Snapshot" => Some(VirtualKeyCode::Snapshot),
+        // Scroll Lock.
+        "Scroll" => Some(VirtualKeyCode::Scroll),
+        // Pause/Break key, next to Scroll lock.
+        "Pause" => Some(VirtualKeyCode::Pause),
+
+        // `Insert`, next to Backspace.
+        "Insert" => Some(VirtualKeyCode::Insert),
+        "Home" => Some(VirtualKeyCode::Home),
+        "Delete" => Some(VirtualKeyCode::Delete),
+        "End" => Some(VirtualKeyCode::End),
+        "PageDown" => Some(VirtualKeyCode::PageDown),
+        "PageUp" => Some(VirtualKeyCode::PageUp),
+
+        "Left" => Some(VirtualKeyCode::Left),
+        "Up" => Some(VirtualKeyCode::Up),
+        "Right" => Some(VirtualKeyCode::Right),
+        "Down" => Some(VirtualKeyCode::Down),
+
+        // The Backspace key, right over Enter.
+        // TODO: rename
+        "Back" => Some(VirtualKeyCode::Back),
+        // The Enter key.
+        "Return" => Some(VirtualKeyCode::Return),
+        // The space bar.
+        "Space" => Some(VirtualKeyCode::Space),
+
+        // The "Compose" key on Linux.
+        "Compose" => Some(VirtualKeyCode::Compose),
+
+        "Caret" => Some(VirtualKeyCode::Caret),
+
+        "Numlock" => Some(VirtualKeyCode::Numlock),
+        "Numpad0" => Some(VirtualKeyCode::Numpad0),
+        "Numpad1" => Some(VirtualKeyCode::Numpad1),
+        "Numpad2" => Some(VirtualKeyCode::Numpad2),
+        "Numpad3" => Some(VirtualKeyCode::Numpad3),
+        "Numpad4" => Some(VirtualKeyCode::Numpad4),
+        "Numpad5" => Some(VirtualKeyCode::Numpad5),
+        "Numpad6" => Some(VirtualKeyCode::Numpad6),
+        "Numpad7" => Some(VirtualKeyCode::Numpad7),
+        "Numpad8" => Some(VirtualKeyCode::Numpad8),
+        "Numpad9" => Some(VirtualKeyCode::Numpad9),
+        "NumpadAdd" => Some(VirtualKeyCode::NumpadAdd),
+        "NumpadDivide" => Some(VirtualKeyCode::NumpadDivide),
+        "NumpadDecimal" => Some(VirtualKeyCode::NumpadDecimal),
+        "NumpadComma" => Some(VirtualKeyCode::NumpadComma),
+        "NumpadEnter" => Some(VirtualKeyCode::NumpadEnter),
+        "NumpadEquals" => Some(VirtualKeyCode::NumpadEquals),
+        "NumpadMultiply" => Some(VirtualKeyCode::NumpadMultiply),
+        "NumpadSubtract" => Some(VirtualKeyCode::NumpadSubtract),
+
+        "AbntC1" => Some(VirtualKeyCode::AbntC1),
+        "AbntC2" => Some(VirtualKeyCode::AbntC2),
+        "Apostrophe" => Some(VirtualKeyCode::Apostrophe),
+        "Apps" => Some(VirtualKeyCode::Apps),
+        "Asterisk" => Some(VirtualKeyCode::Asterisk),
+        "At" => Some(VirtualKeyCode::At),
+        "Ax" => Some(VirtualKeyCode::Ax),
+        "Backslash" => Some(VirtualKeyCode::Backslash),
+        "Calculator" => Some(VirtualKeyCode::Calculator),
+        "Capital" => Some(VirtualKeyCode::Capital),
+        "Colon" => Some(VirtualKeyCode::Colon),
+        "Comma" => Some(VirtualKeyCode::Comma),
+        "Convert" => Some(VirtualKeyCode::Convert),
+        "Equals" => Some(VirtualKeyCode::Equals),
+        "Grave" => Some(VirtualKeyCode::Grave),
+        "Kana" => Some(VirtualKeyCode::Kana),
+        "Kanji" => Some(VirtualKeyCode::Kanji),
+        "LAlt" => Some(VirtualKeyCode::LAlt),
+        "LBracket" => Some(VirtualKeyCode::LBracket),
+        "LControl" => Some(VirtualKeyCode::LControl),
+        "LShift" => Some(VirtualKeyCode::LShift),
+        "LWin" => Some(VirtualKeyCode::LWin),
+        "Mail" => Some(VirtualKeyCode::Mail),
+        "MediaSelect" => Some(VirtualKeyCode::MediaSelect),
+        "MediaStop" => Some(VirtualKeyCode::MediaStop),
+        "Minus" => Some(VirtualKeyCode::Minus),
+        "Mute" => Some(VirtualKeyCode::Mute),
+        "MyComputer" => Some(VirtualKeyCode::MyComputer),
+        // also called "Next"
+        "NavigateForward" => Some(VirtualKeyCode::NavigateForward),
+        // also called "Prior"
+        "NavigateBackward" => Some(VirtualKeyCode::NavigateBackward),
+        "NextTrack" => Some(VirtualKeyCode::NextTrack),
+        "NoConvert" => Some(VirtualKeyCode::NoConvert),
+        "OEM102" => Some(VirtualKeyCode::OEM102),
+        "Period" => Some(VirtualKeyCode::Period),
+        "PlayPause" => Some(VirtualKeyCode::PlayPause),
+        "Plus" => Some(VirtualKeyCode::Plus),
+        "Power" => Some(VirtualKeyCode::Power),
+        "PrevTrack" => Some(VirtualKeyCode::PrevTrack),
+        "RAlt" => Some(VirtualKeyCode::RAlt),
+        "RBracket" => Some(VirtualKeyCode::RBracket),
+        "RControl" => Some(VirtualKeyCode::RControl),
+        "RShift" => Some(VirtualKeyCode::RShift),
+        "RWin" => Some(VirtualKeyCode::RWin),
+        "Semicolon" => Some(VirtualKeyCode::Semicolon),
+        "Slash" => Some(VirtualKeyCode::Slash),
+        "Sleep" => Some(VirtualKeyCode::Sleep),
+        "Stop" => Some(VirtualKeyCode::Stop),
+        "Sysrq" => Some(VirtualKeyCode::Sysrq),
+        "Tab" => Some(VirtualKeyCode::Tab),
+        "Underline" => Some(VirtualKeyCode::Underline),
+        "Unlabeled" => Some(VirtualKeyCode::Unlabeled),
+        "VolumeDown" => Some(VirtualKeyCode::VolumeDown),
+        "VolumeUp" => Some(VirtualKeyCode::VolumeUp),
+        "Wake" => Some(VirtualKeyCode::Wake),
+        "WebBack" => Some(VirtualKeyCode::WebBack),
+        "WebFavorites" => Some(VirtualKeyCode::WebFavorites),
+        "WebForward" => Some(VirtualKeyCode::WebForward),
+        "WebHome" => Some(VirtualKeyCode::WebHome),
+        "WebRefresh" => Some(VirtualKeyCode::WebRefresh),
+        "WebSearch" => Some(VirtualKeyCode::WebSearch),
+        "WebStop" => Some(VirtualKeyCode::WebStop),
+        "Yen" => Some(VirtualKeyCode::Yen),
+        "Copy" => Some(VirtualKeyCode::Copy),
+        "Paste" => Some(VirtualKeyCode::Paste),
+        "Cut" => Some(VirtualKeyCode::Cut),
+
+        // fallback case
+        &_ => None,
+    }
+}
+
+//
+// Tests
+//
+
 #[cfg(test)]
 mod test {
-    use crate::gui::keyboard::ShortcutMap;
+    use crate::{
+        gui::keyboard::{
+            macros::shortcut, Shortcut, ShortcutMap, ShortcutMapConflicts, ShortcutName::*,
+        },
+        util::{hash_map, hash_set},
+    };
 
     #[test]
     fn test_no_conflicts() {
-        let (_map, conflicts) = ShortcutMap::new();
-        if !conflicts.conflicts.is_empty() {
+        let map = ShortcutMap::new();
+        let conflicts = map.get_conflicts();
+        if !conflicts.is_empty() {
             panic!("Conflicts: {}", conflicts);
         }
+    }
+
+    #[test]
+    fn test_shortcut_to_string() {
+        assert_eq!(
+            "Ctrl+Alt+Delete".to_string(),
+            shortcut!(Ctrl - Alt - Delete).to_os_independent_string(),
+            "Left: correct, right: testing",
+        );
+        assert_eq!(
+            "Logo+Shift+A".to_string(),
+            shortcut!(Shift - Logo - A).to_os_independent_string(),
+            "Left: correct, right: testing",
+        );
+    }
+
+    #[test]
+    fn test_shortcut_from_string() {
+        assert_eq!(
+            Ok(shortcut!(Ctrl - Alt - Delete)),
+            Shortcut::from_os_independent_string("Ctrl+Alt+Delete"),
+            "Left: correct, right: testing"
+        );
+        assert_eq!(
+            Ok(shortcut!(Shift - Logo - A)),
+            Shortcut::from_os_independent_string("Shift+Logo+A"),
+            "Left: correct, right: testing"
+        );
+    }
+
+    #[test]
+    fn test_shortcut_map_normal_load() {
+        let mut map = ShortcutMap::from(&[
+            (App_New, shortcut!(Ctrl - N)),
+            (App_Quit, shortcut!(Ctrl - Q)),
+        ]);
+
+        assert!(
+            map.get_conflicts().is_empty(),
+            "Map conflicts should be empty. Conflicts: {}",
+            map.get_conflicts()
+        );
+
+        map.update(&[shortcut!(Ctrl - N)]);
+        assert!(map.is_pressed(App_New), "App_New should be pressed");
+        assert!(!map.is_pressed(App_Quit), "App_Quit should not be pressed");
+
+        map.update(&[shortcut!(Ctrl - Q)]);
+        assert!(map.is_pressed(App_Quit), "App_Quit should be pressed");
+        assert!(!map.is_pressed(App_New), "App_New should not be pressed");
+
+        map.update(&[]);
+        assert!(!map.is_pressed(App_New), "App_New should not be pressed");
+        assert!(!map.is_pressed(App_Quit), "App_Quit should not be pressed");
+    }
+
+    #[test]
+    fn test_shortcut_map_conflicting_load() {
+        let mut map = ShortcutMap::from(&[
+            (App_New, shortcut!(Ctrl - N)),
+            (App_Quit, shortcut!(Ctrl - N)),
+        ]);
+
+        assert!(
+            !map.get_conflicts().is_empty(),
+            "Map conflicts should not be empty."
+        );
+        assert_eq!(
+            map.get_conflicts(),
+            &ShortcutMapConflicts {
+                binding_conflicts: hash_map!(shortcut!(Ctrl-N) => hash_set!(App_New, App_Quit)),
+                name_conflicts: Default::default()
+            },
+            "Conflicts should be binding conflicts for 'Ctrl+N' between App_New and App_Quit"
+        );
+
+        map.update(&[shortcut!(Ctrl - N)]);
+        assert!(map.is_pressed(App_New), "App_New should be pressed");
+        assert!(map.is_pressed(App_Quit), "App_Quit should be pressed");
+
+        map.update(&[shortcut!(Ctrl - Q)]);
+        assert!(!map.is_pressed(App_Quit), "App_Quit should not be pressed");
+        assert!(!map.is_pressed(App_New), "App_New should not be pressed");
+
+        map.update(&[]);
+        assert!(!map.is_pressed(App_New), "App_New should not be pressed");
+        assert!(!map.is_pressed(App_Quit), "App_Quit should not be pressed");
+    }
+
+    #[test]
+    fn test_shortcut_map_resolve_conflicts() {
+        let mut map = ShortcutMap::from(&[
+            (App_New, shortcut!(Ctrl - N)),
+            (App_Quit, shortcut!(Ctrl - N)),
+        ]);
+
+        assert!(
+            !map.get_conflicts().is_empty(),
+            "Map conflicts should not be empty."
+        );
+        assert_eq!(
+            map.get_conflicts(),
+            &ShortcutMapConflicts {
+                binding_conflicts: hash_map!(shortcut!(Ctrl-N) => hash_set!(App_New, App_Quit)),
+                name_conflicts: Default::default()
+            },
+            "Conflicts should be binding conflicts for 'Ctrl+N' between App_New and App_Quit"
+        );
+
+        map.replace_association(App_Quit, shortcut!(Ctrl - Q));
+
+        assert!(
+            map.get_conflicts().is_empty(),
+            "Map conflicts should be empty. Conflicts: {}",
+            map.get_conflicts()
+        );
+
+        map.update(&[shortcut!(Ctrl - N)]);
+        assert!(map.is_pressed(App_New), "App_New should be pressed");
+        assert!(!map.is_pressed(App_Quit), "App_Quit should not be pressed");
+
+        map.update(&[shortcut!(Ctrl - Q)]);
+        assert!(map.is_pressed(App_Quit), "App_Quit should be pressed");
+        assert!(!map.is_pressed(App_New), "App_New should not be pressed");
+
+        map.update(&[]);
+        assert!(!map.is_pressed(App_New), "App_New should not be pressed");
+        assert!(!map.is_pressed(App_Quit), "App_Quit should not be pressed");
+    }
+
+    #[test]
+    fn test_shortcut_map_not_resolve_conflicts() {
+        let mut map = ShortcutMap::from(&[
+            (App_New, shortcut!(Ctrl - N)),
+            (App_Quit, shortcut!(Ctrl - N)),
+            (App_CloseTab, shortcut!(Ctrl - N)),
+        ]);
+
+        assert!(
+            !map.get_conflicts().is_empty(),
+            "Map conflicts should not be empty."
+        );
+        assert_eq!(
+            map.get_conflicts(),
+            &ShortcutMapConflicts {
+                binding_conflicts: hash_map!(shortcut!(Ctrl-N) => hash_set!(App_New, App_Quit, App_CloseTab)),
+                name_conflicts: Default::default()
+            },
+            "Conflicts should be binding conflicts for 'Ctrl+N' between App_New, App_Quit, and App_CloseTab"
+        );
+
+        map.replace_association(App_Quit, shortcut!(Ctrl - Q));
+
+        assert!(
+            !map.get_conflicts().is_empty(),
+            "Map conflicts should not be empty."
+        );
+        assert_eq!(
+            map.get_conflicts(),
+            &ShortcutMapConflicts {
+                binding_conflicts: hash_map!(shortcut!(Ctrl-N) => hash_set!(App_New, App_CloseTab)),
+                name_conflicts: Default::default()
+            },
+            "Conflicts should be binding conflicts for 'Ctrl+N' between App_New and App_CloseTab"
+        );
+
+        map.update(&[shortcut!(Ctrl - N)]);
+        assert!(map.is_pressed(App_New), "App_New should be pressed");
+        assert!(
+            map.is_pressed(App_CloseTab),
+            "App_CloseTab should be pressed"
+        );
+        assert!(!map.is_pressed(App_Quit), "App_Quit should not be pressed");
+
+        map.update(&[shortcut!(Ctrl - Q)]);
+        assert!(map.is_pressed(App_Quit), "App_Quit should be pressed");
+        assert!(!map.is_pressed(App_New), "App_New should not be pressed");
+        assert!(
+            !map.is_pressed(App_CloseTab),
+            "App_CloseTab should not be pressed"
+        );
+
+        map.update(&[]);
+        assert!(!map.is_pressed(App_New), "App_New should not be pressed");
+        assert!(!map.is_pressed(App_Quit), "App_Quit should not be pressed");
+        assert!(
+            !map.is_pressed(App_CloseTab),
+            "App_CloseTab should not be pressed"
+        );
+    }
+
+    #[test]
+    fn test_shortcut_map_create_conflicts() {
+        let mut map = ShortcutMap::from(&[
+            (App_New, shortcut!(Ctrl - N)),
+            (App_Quit, shortcut!(Ctrl - Q)),
+        ]);
+
+        assert!(
+            map.get_conflicts().is_empty(),
+            "Map conflicts should be empty. Conflicts: {}",
+            map.get_conflicts()
+        );
+
+        map.replace_association(App_Quit, shortcut!(Ctrl - N));
+
+        assert!(
+            !map.get_conflicts().is_empty(),
+            "Map conflicts should not be empty."
+        );
+        assert_eq!(
+            map.get_conflicts(),
+            &ShortcutMapConflicts {
+                binding_conflicts: hash_map!(shortcut!(Ctrl-N) => hash_set!(App_New, App_Quit)),
+                name_conflicts: Default::default()
+            },
+            "Conflicts should be binding conflicts for 'Ctrl+N' between App_New and App_Quit"
+        );
+
+        map.update(&[shortcut!(Ctrl - N)]);
+        assert!(map.is_pressed(App_New), "App_New should be pressed");
+        assert!(map.is_pressed(App_Quit), "App_Quit should be pressed");
+
+        map.update(&[shortcut!(Ctrl - Q)]);
+        assert!(!map.is_pressed(App_Quit), "App_Quit should not be pressed");
+        assert!(!map.is_pressed(App_New), "App_New should not be pressed");
+
+        map.update(&[]);
+        assert!(!map.is_pressed(App_New), "App_New should not be pressed");
+        assert!(!map.is_pressed(App_Quit), "App_Quit should not be pressed");
     }
 }

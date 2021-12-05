@@ -93,9 +93,9 @@ impl FlowModel for FractalRSGuiMain {
             render_pass: &mut render_pass,
         });
 
-        let (shortcut_map, conflicts) = ShortcutMap::new();
-        if !conflicts.conflicts.is_empty() {
-            warn!("Shortcut conflicts: {}", conflicts);
+        let shortcut_map = ShortcutMap::new();
+        if !shortcut_map.get_conflicts().is_empty() {
+            warn!("Shortcut conflicts: {}", shortcut_map.get_conflicts());
         }
 
         FractalRSGuiMain {
@@ -166,14 +166,15 @@ impl FlowModel for FractalRSGuiMain {
         self.platform
             .update_time(self.start_time.elapsed().as_secs_f64());
 
+        self.shortcut_map
+            .update(self.keyboard_tracker.make_shortcuts());
+
         // Draw UI
         self.platform.begin_frame();
 
         self.ui.draw(&UIRenderContext {
             ctx: &self.platform.context(),
-            shortcuts: self
-                .shortcut_map
-                .lookup(self.keyboard_tracker.make_shortcuts()),
+            shortcuts: &self.shortcut_map,
             window_size: self.window_size,
         });
 
