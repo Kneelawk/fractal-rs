@@ -21,6 +21,7 @@ use crate::{
         },
         util::get_trace_path,
     },
+    storage::{CfgFractalGeneratorType, CfgGeneral},
     util::{future::future_wrapper::FutureWrapper, result::ResultExt, running_guard::RunningGuard},
 };
 use egui::{vec2, Align, Align2, CtxRef, DragValue, Label, Layout};
@@ -189,6 +190,11 @@ impl FractalRSUI {
         instances.insert(next_instance_id, first_instance);
         next_instance_id += 1;
 
+        let (generator_type, chunk_size_power) = {
+            let cfg = CfgGeneral::read();
+            (cfg.fractal_generator_type, cfg.fractal_chunk_size_power)
+        };
+
         FractalRSUI {
             handle: ctx.handle,
             present: ctx.present,
@@ -197,9 +203,9 @@ impl FractalRSUI {
             request_fullscreen: false,
             show_app_settings: false,
             show_ui_settings: false,
-            current_generator_type: GeneratorType::PresentGPU,
-            new_generator_type: GeneratorType::PresentGPU,
-            chunk_size_power: 8,
+            current_generator_type: generator_type.into(),
+            new_generator_type: generator_type.into(),
+            chunk_size_power,
             instance: ctx.instance,
             factory_future: Default::default(),
             factory,
@@ -671,6 +677,12 @@ impl FractalRSUI {
             }
         }
     }
+
+    pub fn store_settings(&self) {
+        let mut cfg = CfgGeneral::write();
+        cfg.fractal_generator_type = self.current_generator_type.into();
+        cfg.fractal_chunk_size_power = self.chunk_size_power;
+    }
 }
 
 fn increment_instance_id(next_instance_id: &mut u64, instances: &HashMap<u64, UIInstance>) {
@@ -685,6 +697,26 @@ enum GeneratorType {
     CPU,
     PresentGPU,
     DedicatedGPU,
+}
+
+impl From<CfgFractalGeneratorType> for GeneratorType {
+    fn from(source: CfgFractalGeneratorType) -> Self {
+        match source {
+            CfgFractalGeneratorType::Cpu => Self::CPU,
+            CfgFractalGeneratorType::Gpu => Self::PresentGPU,
+            CfgFractalGeneratorType::GpuDedicated => Self::DedicatedGPU,
+        }
+    }
+}
+
+impl From<GeneratorType> for CfgFractalGeneratorType {
+    fn from(source: GeneratorType) -> Self {
+        match source {
+            GeneratorType::CPU => Self::Cpu,
+            GeneratorType::PresentGPU => Self::Gpu,
+            GeneratorType::DedicatedGPU => Self::GpuDedicated,
+        }
+    }
 }
 
 async fn create_gpu_factory(

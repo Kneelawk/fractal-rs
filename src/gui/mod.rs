@@ -8,6 +8,7 @@ use crate::{
         keyboard::{tracker::KeyboardTracker, ShortcutMap},
         ui::{FractalRSUI, UICreationContext, UIRenderContext, UIUpdateContext},
     },
+    storage::CfgGeneral,
 };
 use egui_wgpu_backend::{RenderPass, ScreenDescriptor};
 use egui_winit_platform::{Platform, PlatformDescriptor};
@@ -225,5 +226,14 @@ impl FlowModel for FractalRSGuiMain {
         self.present.queue.submit(self.commands.drain(..));
     }
 
-    fn shutdown(self) {}
+    fn shutdown(self) {
+        // Let's store our settings before we shut down.
+        self.ui.store_settings();
+
+        // Save the settings back to a file.
+        let cfg_general_res = CfgGeneral::store();
+
+        // Once we've attempted to save everything, we can start throwing errors.
+        cfg_general_res.expect("Error saving general config");
+    }
 }

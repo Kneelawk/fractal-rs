@@ -17,10 +17,13 @@ extern crate strum_macros;
 #[macro_use]
 extern crate thiserror;
 
+use crate::storage::CfgGeneral;
+
 mod generator;
 mod gpu;
 mod gui;
 mod logging;
+mod storage;
 mod util;
 
 fn main() {
@@ -30,6 +33,9 @@ fn main() {
     // setup the logger
     logging::init();
     info!("Hello from fractal-rs-2");
+
+    info!("Loading settings and configs...");
+    CfgGeneral::load().expect("Error loading general config");
 
     gui::start_gui_application();
 }
