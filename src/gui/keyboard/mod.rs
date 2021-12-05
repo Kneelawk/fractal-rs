@@ -2,12 +2,12 @@
 
 #![allow(dead_code)]
 
-use crate::gui::keyboard::{macros::shortcut, ShortcutType::*};
+use crate::gui::keyboard::{macros::shortcut, ShortcutName::*};
 use heck::TitleCase;
 use itertools::Itertools;
 use std::{
     collections::{HashMap, HashSet},
-    fmt::{Display, Formatter, Write},
+    fmt::{Display, Formatter},
 };
 use winit::event::{ModifiersState, VirtualKeyCode};
 
@@ -15,7 +15,7 @@ pub mod macros;
 pub mod tracker;
 
 /// The list of shortcuts in the app.
-const SHORTCUT_LIST: &[(ShortcutType, Shortcut)] = &[
+const SHORTCUT_LIST: &[(ShortcutName, Shortcut)] = &[
     (App_Quit, shortcut!(Cmd - Q)),
     (App_New, shortcut!(Cmd - N)),
     (App_CloseTab, shortcut!(Cmd - W)),
@@ -30,7 +30,7 @@ const SHORTCUT_LIST: &[(ShortcutType, Shortcut)] = &[
 /// This enum contains an entry for each keyboard shortcut the application uses.
 #[allow(non_camel_case_types)]
 #[derive(Debug, Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash, EnumIter)]
-pub enum ShortcutType {
+pub enum ShortcutName {
     // App shortcuts
     App_Quit,
     App_New,
@@ -86,13 +86,15 @@ pub struct Shortcut {
 
 /// This struct holds a mapping from keyboard shortcuts to shortcut enum values.
 pub struct ShortcutMap {
-    map: HashMap<Shortcut, ShortcutType>,
+    bindings: HashMap<Shortcut, Vec<ShortcutName>>,
+    names: HashMap<ShortcutName, Vec<Shortcut>>,
+    current_shortcuts: HashSet<ShortcutName>,
 }
 
 impl ShortcutMap {
-    pub fn from(shortcut_list: &[(ShortcutType, Shortcut)]) -> (ShortcutMap, ShortcutMapConflicts) {
-        let mut map = HashMap::new();
-        let mut names = HashMap::new();
+    pub fn from(shortcut_list: &[(ShortcutName, Shortcut)]) -> (ShortcutMap, ShortcutMapConflicts) {
+        let mut bindings: HashMap<_, Vec<ShortcutName>> = HashMap::new();
+        let mut names: HashMap<_, Vec<Shortcut>> = HashMap::new();
         let mut binding_conflicts = HashMap::new();
         let mut name_conflicts = HashMap::new();
 
@@ -105,19 +107,29 @@ impl ShortcutMap {
         );
 
         for (name, binding) in shortcut_list {
-            if map.contains_key(binding) {
+            if bindings.contains_key(binding) {
                 let conflicts = binding_conflicts.entry(*binding).or_insert(HashSet::new());
-                conflicts.insert(*map.get(binding).unwrap());
+
+                let names = bindings.get(binding).unwrap();
+                if names.len() == 1 {
+                    conflicts.insert(names[0]);
+                }
+
                 conflicts.insert(*name);
             }
             if names.contains_key(name) {
                 let conflicts = name_conflicts.entry(*name).or_insert(HashSet::new());
-                conflicts.insert(*names.get(name).unwrap());
+
+                let bindings = names.get(name).unwrap();
+                if bindings.len() == 1 {
+                    conflicts.insert(bindings[0]);
+                }
+
                 conflicts.insert(*binding);
             }
 
-            map.insert(*binding, *name);
-            names.insert(*name, *binding);
+            bindings.entry(*binding).or_insert(vec![]).push(*name);
+            names.entry(*name).or_insert(vec![]).push(*binding);
         }
 
         let mut conflicts = vec![];
@@ -134,52 +146,93 @@ impl ShortcutMap {
             });
         }
 
-        (ShortcutMap { map }, ShortcutMapConflicts { conflicts })
+        (
+            ShortcutMap {
+                bindings,
+                names,
+                current_shortcuts: Default::default(),
+            },
+            ShortcutMapConflicts { conflicts },
+        )
     }
 
     pub fn new() -> (ShortcutMap, ShortcutMapConflicts) {
         Self::from(SHORTCUT_LIST)
     }
 
-    pub fn lookup(&self, keys: Option<Shortcut>) -> Option<ShortcutType> {
-        keys.and_then(|shortcut| self.map.get(&shortcut).map(|ty| *ty))
-    }
-}
+    pub fn lookup(&mut self, keys: &Vec<Shortcut>) -> ShortcutLookup {
+        self.current_shortcuts.clear();
 
-pub trait ShortcutTypeExt {
-    fn is(&self, ty: ShortcutType) -> bool;
-}
+        for shortcut in keys {
+            if let Some(shortcuts) = self.bindings.get(&shortcut) {
+                for shortcut in shortcuts {
+                    self.current_shortcuts.insert(*shortcut);
+                }
+            }
+        }
 
-impl ShortcutTypeExt for Option<ShortcutType> {
-    fn is(&self, ty: ShortcutType) -> bool {
-        if let Some(self_ty) = self {
-            *self_ty == ty
-        } else {
-            false
+        ShortcutLookup {
+            shortcuts: &self.current_shortcuts,
+            names: &self.names,
         }
     }
 }
 
+/// Represents the result of a shortcut lookup operation.
+///
+/// This contains a set of all the currently pressed shortcuts, as well as a map
+/// from shortcut names the current keybindings for those names.
+#[derive(Copy, Clone)]
+pub struct ShortcutLookup<'a> {
+    shortcuts: &'a HashSet<ShortcutName>,
+    names: &'a HashMap<ShortcutName, Vec<Shortcut>>,
+}
+
+impl<'a> ShortcutLookup<'a> {
+    /// Is this shortcut name currently pressed?
+    pub fn is(&self, name: ShortcutName) -> bool {
+        self.shortcuts.contains(&name)
+    }
+
+    /// Gets a list of the current bindings for a given shortcut name, if any.
+    pub fn keys_for(&self, name: ShortcutName) -> KeysFor {
+        KeysFor(self.names.get(&name))
+    }
+}
+
+/// Represents a list of the current bindings for a given shortcut name, if any.
+pub struct KeysFor<'a>(Option<&'a Vec<Shortcut>>);
+
 /// Represents an error while creating a shortcut map.
-#[derive(Debug, Error)]
+#[derive(Debug, Error, Clone, Ord, PartialOrd, Eq, PartialEq, Hash)]
 pub struct ShortcutMapConflicts {
     pub conflicts: Vec<ShortcutConflict>,
 }
 
 /// Represents a keyboard shortcut conflict.
-#[derive(Debug)]
+#[derive(Debug, Clone, Ord, PartialOrd, Eq, PartialEq, Hash)]
 pub enum ShortcutConflict {
     /// Indicates that two shortcut name enums have the same keyboard shortcut
     /// binding.
     Binding {
         binding: Shortcut,
-        names: Vec<ShortcutType>,
+        names: Vec<ShortcutName>,
     },
     /// Indicates that two shortcut bindings refer to the same shortcut name.
     Name {
-        name: ShortcutType,
+        name: ShortcutName,
         bindings: Vec<Shortcut>,
     },
+}
+
+impl<'a> Display for KeysFor<'a> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        if let Some(bindings) = self.0 {
+            write!(f, "{}", bindings.iter().format(", "))
+        } else {
+            write!(f, "")
+        }
+    }
 }
 
 impl Display for ShortcutMapConflicts {
@@ -215,7 +268,7 @@ impl Display for ShortcutConflict {
     }
 }
 
-impl Display for ShortcutType {
+impl Display for ShortcutName {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         let old_name = format!("{:?}", self);
 
@@ -229,31 +282,38 @@ impl Display for ShortcutType {
 
 impl Display for Shortcut {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        let mut s = String::new();
-
-        if self.modifiers.ctrl {
-            write!(s, "Ctrl + ")?;
+        #[cfg(target_os = "macos")]
+        {
+            if self.modifiers.ctrl {
+                write!(f, "^-")?;
+            }
+            if self.modifiers.logo {
+                write!(f, "\u{2318}-")?;
+            }
+            if self.modifiers.shift {
+                write!(f, "\u{21E7}-")?;
+            }
+            if self.modifiers.alt {
+                write!(f, "\u{2325}-")?;
+            }
+            return write!(f, "{:?}", self.key);
         }
-
-        if self.modifiers.logo {
-            #[cfg(target_os = "macos")]
-            write!(s, "Cmd + ")?;
-
-            #[cfg(not(target_os = "macos"))]
-            write!(s, "Win + ")?;
+        #[cfg(not(target_os = "macos"))]
+        {
+            if self.modifiers.ctrl {
+                write!(f, "Ctrl+")?;
+            }
+            if self.modifiers.logo {
+                write!(f, "Logo+")?;
+            }
+            if self.modifiers.shift {
+                write!(f, "Shift+")?;
+            }
+            if self.modifiers.alt {
+                write!(f, "Alt+")?;
+            }
+            return write!(f, "{:?}", self.key);
         }
-
-        if self.modifiers.shift {
-            write!(s, "Shift + ")?;
-        }
-
-        if self.modifiers.alt {
-            write!(s, "Alt + ")?;
-        }
-
-        write!(s, "{:?}", self.key)?;
-
-        write!(f, "{}", s)
     }
 }
 

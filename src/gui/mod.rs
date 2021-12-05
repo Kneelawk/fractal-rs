@@ -4,6 +4,7 @@ use crate::{
     gpu::GPUContext,
     gui::{
         flow::{Flow, FlowModel, FlowModelInit, FlowSignal},
+        fonts::font_definitions,
         keyboard::{tracker::KeyboardTracker, ShortcutMap},
         ui::{FractalRSUI, UICreationContext, UIRenderContext, UIUpdateContext},
     },
@@ -22,6 +23,7 @@ use winit::{
 };
 
 mod flow;
+mod fonts;
 mod keyboard;
 mod ui;
 mod util;
@@ -69,7 +71,7 @@ impl FlowModel for FractalRSGuiMain {
             physical_width: window_size.width,
             physical_height: window_size.height,
             scale_factor,
-            font_definitions: Default::default(),
+            font_definitions: font_definitions(),
             style: Default::default(),
         });
 
@@ -161,9 +163,9 @@ impl FlowModel for FractalRSGuiMain {
 
         self.ui.draw(&UIRenderContext {
             ctx: &self.platform.context(),
-            shortcut: self
+            shortcuts: self
                 .shortcut_map
-                .lookup(self.keyboard_tracker.make_shortcut()),
+                .lookup(self.keyboard_tracker.make_shortcuts()),
             window_size: self.window_size,
         });
 

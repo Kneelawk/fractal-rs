@@ -4,6 +4,7 @@
 #![allow(dead_code)]
 
 use crate::gui::keyboard::{Modifiers, Shortcut};
+use itertools::Itertools;
 use std::collections::HashSet;
 use winit::event::{ElementState, KeyboardInput, ModifiersState, VirtualKeyCode};
 
@@ -12,6 +13,7 @@ pub struct KeyboardTracker {
     pressed_keys: HashSet<VirtualKeyCode>,
     released_keys: HashSet<VirtualKeyCode>,
     modifiers: Modifiers,
+    current_shortcuts: Vec<Shortcut>,
 }
 
 impl KeyboardTracker {
@@ -25,6 +27,7 @@ impl KeyboardTracker {
                 alt: false,
                 logo: false,
             },
+            current_shortcuts: vec![],
         }
     }
 
@@ -58,16 +61,18 @@ impl KeyboardTracker {
         self.released_keys.contains(&key)
     }
 
-    /// Makes a shortcut for the currently pressed set of keys. This shortcut is
-    /// then passed to a `ShortcutMap` to convert it into a shortcut enum.
-    pub fn make_shortcut(&self) -> Option<Shortcut> {
-        if self.pressed_keys.len() == 1 {
-            Some(Shortcut {
+    /// Makes a list of shortcuts for the currently pressed set of keys. This
+    /// shortcut is then passed to a `ShortcutMap` to convert it into a set of
+    /// shortcut names.
+    pub fn make_shortcuts(&mut self) -> &Vec<Shortcut> {
+        self.current_shortcuts.clear();
+        for key in self.pressed_keys.iter().sorted() {
+            self.current_shortcuts.push(Shortcut {
                 modifiers: self.modifiers,
-                key: *self.pressed_keys.iter().next().unwrap(),
-            })
-        } else {
-            None
+                key: *key,
+            });
         }
+
+        &self.current_shortcuts
     }
 }

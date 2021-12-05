@@ -8,15 +8,18 @@ use crate::{
     },
     gpu::{GPUContext, GPUContextType},
     gui::{
-        keyboard::{ShortcutType, ShortcutTypeExt},
+        keyboard::{ShortcutLookup, ShortcutName},
         ui::{
             instance::{
                 UIInstance, UIInstanceCreationContext, UIInstanceGenerationType, UIInstanceInfo,
                 UIInstanceInitialSettings, UIInstanceRenderContext, UIInstanceUpdateContext,
             },
-            widgets::tab_list::{tab_list, SimpleTab},
+            widgets::{
+                tab_list::{tab_list, SimpleTab},
+                util::{shortcut_button, shortcut_checkbox},
+            },
         },
-        util::{get_trace_path, menu_text},
+        util::get_trace_path,
     },
     util::{future::future_wrapper::FutureWrapper, result::ResultExt, running_guard::RunningGuard},
 };
@@ -113,7 +116,7 @@ pub struct UIRenderContext<'a> {
     /// Egui context reference.
     pub ctx: &'a CtxRef,
     /// The currently pressed keyboard shortcut if any.
-    pub shortcut: Option<ShortcutType>,
+    pub shortcuts: ShortcutLookup<'a>,
     /// The current inner size of the window.
     pub window_size: PhysicalSize<u32>,
 }
@@ -287,11 +290,12 @@ impl FractalRSUI {
             })
             .collect();
 
-        self.handle_keyboard_shortcuts(ctx.shortcut);
+        self.handle_keyboard_shortcuts(ctx.shortcuts);
         self.draw_top_bar(ctx);
         if let Some(instance) = self.current_tab() {
             instance.draw(&mut UIInstanceRenderContext {
                 ctx: ctx.ctx,
+                shortcuts: ctx.shortcuts,
                 tab_list: &tab_list,
                 instance_infos: &instance_infos,
             });
@@ -304,30 +308,30 @@ impl FractalRSUI {
         self.handle_tab_close_requested(ctx);
     }
 
-    fn handle_keyboard_shortcuts(&mut self, shortcut: Option<ShortcutType>) {
+    fn handle_keyboard_shortcuts(&mut self, shortcut: ShortcutLookup) {
         // Quit keyboard shortcut
-        if shortcut.is(ShortcutType::App_Quit) {
+        if shortcut.is(ShortcutName::App_Quit) {
             self.close_requested = true;
         }
 
         // New keyboard shortcut
-        if shortcut.is(ShortcutType::App_New) {
+        if shortcut.is(ShortcutName::App_New) {
             self.new_instance_requested = true;
         }
 
         // Close tab keyboard shortcut
-        if shortcut.is(ShortcutType::App_CloseTab) {
+        if shortcut.is(ShortcutName::App_CloseTab) {
             self.tab_close_requested = Some(self.current_tab);
         }
 
         // Fullscreen keyboard shortcut
-        if shortcut.is(ShortcutType::App_Fullscreen) {
+        if shortcut.is(ShortcutName::App_Fullscreen) {
             self.request_fullscreen = !self.request_fullscreen;
         }
 
         // I've found that I often end up trying to use ESC to leave fullscreen, so I
         // think I'll add that as a shortcut.
-        if shortcut.is(ShortcutType::App_AlternateExitFullscreen) {
+        if shortcut.is(ShortcutName::App_AlternateExitFullscreen) {
             self.request_fullscreen = false;
         }
 
@@ -342,24 +346,26 @@ impl FractalRSUI {
         egui::TopBottomPanel::top("Menu Bar").show(ctx.ctx, |ui| {
             egui::menu::bar(ui, |ui| {
                 egui::menu::menu(ui, "File", |ui| {
-                    if ui.button(menu_text!("New", cmd, "N")).clicked() {
+                    if ui.add(shortcut_button!("New", ctx, App_New)).clicked() {
                         self.new_instance_requested = true;
                     }
 
                     ui.separator();
 
-                    if ui.button(menu_text!("Quit", cmd, "Q")).clicked() {
+                    if ui.add(shortcut_button!("Quit", ctx, App_Quit)).clicked() {
                         self.close_requested = true;
                     }
                 });
                 egui::menu::menu(ui, "Window", |ui| {
-                    ui.checkbox(
+                    ui.add(shortcut_checkbox!(
                         &mut self.request_fullscreen,
-                        menu_text!("Fullscreen", "F11"),
-                    );
+                        "Fullscreen",
+                        ctx,
+                        App_Fullscreen
+                    ));
                     ui.separator();
                     if ui
-                        .button(menu_text!("Close Current Tab", cmd, "W"))
+                        .add(shortcut_button!("Close Current Tab", ctx, App_CloseTab))
                         .clicked()
                     {
                         self.tab_close_requested = Some(self.current_tab);

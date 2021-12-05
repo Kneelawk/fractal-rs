@@ -7,7 +7,7 @@ use crate::{
     },
     gpu::GPUContext,
     gui::{
-        keyboard::{ShortcutType, ShortcutTypeExt},
+        keyboard::{ShortcutLookup, ShortcutName},
         ui::{
             file_dialog::FileDialogWrapper, widgets::viewer::FractalViewer, UIOperationRequest,
             UIOperations,
@@ -130,6 +130,8 @@ pub struct UIInstanceUpdateContext<'a> {
 pub struct UIInstanceRenderContext<'a> {
     /// Egui context reference.
     pub ctx: &'a CtxRef,
+    /// The currently pressed keyboard shortcut if any.
+    pub shortcuts: ShortcutLookup<'a>,
     /// A list of the tabs this application has open.
     pub tab_list: &'a [u64],
     /// A map from instance ids to instance names.
@@ -378,24 +380,24 @@ impl UIInstance {
         ui.checkbox(&mut self.show_project_settings, "Project Settings");
     }
 
-    pub fn handle_keyboard_shortcuts(&mut self, shortcut: Option<ShortcutType>) {
+    pub fn handle_keyboard_shortcuts(&mut self, shortcut: ShortcutLookup) {
         // Handle Generate shortcut
-        if shortcut.is(ShortcutType::Instance_Generate) {
+        if shortcut.is(ShortcutName::Instance_Generate) {
             self.generate_fractal = Some(UIInstanceGenerationType::Viewer);
         }
 
         // Handle Julia keyboard shortcut
-        if shortcut.is(ShortcutType::Instance_SpawnJulia) {
+        if shortcut.is(ShortcutName::Instance_SpawnJulia) {
             self.generate_julia_from_point = true;
         }
 
         // Handle Switch to Julia shortcut
-        if shortcut.is(ShortcutType::Instance_SwitchToJulia) {
+        if shortcut.is(ShortcutName::Instance_SwitchToJulia) {
             self.switch_to_target = true;
         }
 
         // Handle Switch to Mandelbrot shortcut
-        if shortcut.is(ShortcutType::Instance_SwitchToMandelbrot) {
+        if shortcut.is(ShortcutName::Instance_SwitchToMandelbrot) {
             self.switch_to_parent = true;
         }
     }
@@ -436,7 +438,14 @@ impl UIInstance {
                     .default_open(true)
                     .show(ui, |ui| {
                         ui.add_enabled_ui(!self.generation_running, |ui| {
-                            if ui.button("Generate!").clicked() {
+                            if ui
+                                .button("Generate!")
+                                .on_hover_text(format!(
+                                    "Shortcut: {}",
+                                    ctx.shortcuts.keys_for(ShortcutName::Instance_Generate)
+                                ))
+                                .clicked()
+                            {
                                 self.generate_fractal = Some(UIInstanceGenerationType::Viewer);
                             }
 
@@ -659,7 +668,14 @@ impl UIInstance {
                             .and_then(|id| ctx.instance_infos.get(id).map(|info| info.running))
                             .unwrap_or(false),
                     |ui| {
-                        if ui.button("Generate Julia/Fatou Set at Position").clicked() {
+                        if ui
+                            .button("Generate Julia/Fatou Set at Position")
+                            .on_hover_text(format!(
+                                "Shortcut: {}",
+                                ctx.shortcuts.keys_for(ShortcutName::Instance_SpawnJulia)
+                            ))
+                            .clicked()
+                        {
                             self.generate_julia_from_point = true;
                         }
                     },
@@ -708,7 +724,14 @@ impl UIInstance {
                             }
                         });
                     ui.add_enabled_ui(self.target_instance.is_some(), |ui| {
-                        if ui.button("Switch to Julia/Fatou tab").clicked() {
+                        if ui
+                            .button("Switch to Julia/Fatou tab")
+                            .on_hover_text(format!(
+                                "Shortcut: {}",
+                                ctx.shortcuts.keys_for(ShortcutName::Instance_SwitchToJulia)
+                            ))
+                            .clicked()
+                        {
                             self.switch_to_target = true;
                         }
                     });
@@ -737,7 +760,15 @@ impl UIInstance {
                         if ui.button("Disconnect from Mandelbrot tab").clicked() {
                             self.detach_requested = true;
                         }
-                        if ui.button("Switch to Mandelbrot tab").clicked() {
+                        if ui
+                            .button("Switch to Mandelbrot tab")
+                            .on_hover_text(format!(
+                                "Shortcut: {}",
+                                ctx.shortcuts
+                                    .keys_for(ShortcutName::Instance_SwitchToMandelbrot)
+                            ))
+                            .clicked()
+                        {
                             self.switch_to_parent = true;
                         }
                     });
