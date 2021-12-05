@@ -50,6 +50,8 @@ pub enum CfgFractalGeneratorType {
 }
 
 impl CfgGeneral {
+    /// Load this config from the filesystem into the singleton. This returns an
+    /// error if an error occurred.
     pub fn load() -> Result<(), CfgError> {
         let general_path = config_dir().join(FILE_NAME);
 
@@ -70,18 +72,22 @@ impl CfgGeneral {
         Ok(())
     }
 
+    /// Gets `read` access to the singleton.
     pub fn read() -> MappedRwLockReadGuard<'static, CfgGeneral> {
         RwLockReadGuard::map(SINGLETON.read(), |option| {
             option.as_ref().expect("CfgGeneral has not been loaded")
         })
     }
 
+    /// Gets `write` access to the singleton.
     pub fn write() -> MappedRwLockWriteGuard<'static, CfgGeneral> {
         RwLockWriteGuard::map(SINGLETON.write(), |option| {
             option.as_mut().expect("CfgGeneral has not been loaded")
         })
     }
 
+    /// Stores this config from the singleton into the filesystem. This returns
+    /// an error if an error occurred.
     pub fn store() -> Result<(), CfgError> {
         let lock = Self::read();
         let general_cfg: &CfgGeneral = &lock;
@@ -98,7 +104,7 @@ impl Default for CfgGeneral {
     fn default() -> Self {
         Self {
             fractal_generator_type: Default::default(),
-            fractal_chunk_size_power: 8,
+            fractal_chunk_size_power: default_fractal_chunk_size_power(),
         }
     }
 }
