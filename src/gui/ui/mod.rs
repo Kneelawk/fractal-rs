@@ -9,6 +9,7 @@ use crate::{
     gpu::{GPUContext, GPUContextType},
     gui::{
         keyboard::{ShortcutLookup, ShortcutName},
+        storage::CfgUiSettings,
         ui::{
             instance::{
                 UIInstance, UIInstanceCreationContext, UIInstanceGenerationType, UIInstanceInfo,
@@ -21,6 +22,7 @@ use crate::{
         },
         util::get_trace_path,
     },
+    storage::{CfgFractalGeneratorType, CfgGeneral, CfgSingleton},
     util::{future::future_wrapper::FutureWrapper, result::ResultExt, running_guard::RunningGuard},
 };
 use egui::{vec2, Align, Align2, CtxRef, DragValue, Label, Layout};
@@ -65,6 +67,9 @@ pub struct FractalRSUI {
     current_generator_type: GeneratorType,
     new_generator_type: GeneratorType,
     chunk_size_power: usize,
+    start_fullscreen: bool,
+    initial_window_width: u32,
+    initial_window_height: u32,
 
     // generator stuff
     instance: Arc<Instance>,
@@ -189,6 +194,9 @@ impl FractalRSUI {
         instances.insert(next_instance_id, first_instance);
         next_instance_id += 1;
 
+        let general = CfgGeneral::read_clone();
+        let ui_settings = CfgUiSettings::read_clone();
+
         FractalRSUI {
             handle: ctx.handle,
             present: ctx.present,
@@ -197,9 +205,12 @@ impl FractalRSUI {
             request_fullscreen: false,
             show_app_settings: false,
             show_ui_settings: false,
-            current_generator_type: GeneratorType::PresentGPU,
-            new_generator_type: GeneratorType::PresentGPU,
-            chunk_size_power: 8,
+            current_generator_type: general.fractal_generator_type.into(),
+            new_generator_type: general.fractal_generator_type.into(),
+            chunk_size_power: general.fractal_chunk_size_power,
+            start_fullscreen: ui_settings.start_fullscreen,
+            initial_window_width: ui_settings.initial_window_width,
+            initial_window_height: ui_settings.initial_window_height,
             instance: ctx.instance,
             factory_future: Default::default(),
             factory,
@@ -401,45 +412,72 @@ impl FractalRSUI {
             .default_size([340.0, 500.0])
             .open(&mut self.show_app_settings)
             .show(ctx.ctx, |ui| {
-                ui.add(Label::new("Generator Type:").heading());
-                ui.radio_value(
-                    &mut self.new_generator_type,
-                    GeneratorType::CPU,
-                    "CPU (Slow)",
-                );
-                ui.radio_value(
-                    &mut self.new_generator_type,
-                    GeneratorType::PresentGPU,
-                    "Display GPU (Faster)",
-                );
-                ui.radio_value(
-                    &mut self.new_generator_type,
-                    GeneratorType::DedicatedGPU,
-                    "Dedicated GPU (Fastest)",
-                );
-                ui.label(
-                    "Note 1: While the GPU generator is significantly faster on most \
-                    platforms, it may not run on all platforms. Some Linux/Mesa combinations can \
-                    lead to application hangs when using the GPU-based generator.",
-                );
-                ui.label(
-                    "Note 2: The Dedicated GPU option does not actually require you have \
-                    multiple GPUs. All this option does is have the generator use a separate \
-                    logical device from the display. This device has a much higher poll-rate, \
-                    meaning that it can generate faster, but having it enabled causes the \
-                    application to use more CPU.",
-                );
+                egui::CollapsingHeader::new("Generator Settings")
+                    .default_open(true)
+                    .show(ui, |ui| {
+                        ui.add(Label::new("Generator Type:").heading());
+                        ui.radio_value(
+                            &mut self.new_generator_type,
+                            GeneratorType::CPU,
+                            "CPU (Slow)",
+                        );
+                        ui.radio_value(
+                            &mut self.new_generator_type,
+                            GeneratorType::PresentGPU,
+                            "Display GPU (Faster)",
+                        );
+                        ui.radio_value(
+                            &mut self.new_generator_type,
+                            GeneratorType::DedicatedGPU,
+                            "Dedicated GPU (Fastest)",
+                        );
+                        ui.label(
+                            "Note 1: While the GPU generator is significantly faster on most \
+                            platforms, it may not run on all platforms. Some Linux/Mesa \
+                            combinations can lead to application hangs when using the GPU-based \
+                            generator.",
+                        );
+                        ui.label(
+                            "Note 2: The Dedicated GPU option does not actually require you \
+                            have multiple GPUs. All this option does is have the generator use a \
+                            separate logical device from the display. This device has a much \
+                            higher poll-rate, meaning that it can generate faster, but having it \
+                            enabled causes the application to use more CPU.",
+                        );
 
-                ui.add(Label::new("Chunk Size:").heading());
-                ui.horizontal(|ui| {
-                    ui.add(Label::new("2^").monospace());
-                    ui.add(DragValue::new(&mut self.chunk_size_power).clamp_range(4..=13));
-                });
-                ui.label(
-                    "Note that while larger values are generally faster, some drivers may \
-                    crash with values that are too large. Most devices handle 2^8 relatively well. \
-                    My GTX1060 timed out when rendering a mandelbrot set at 2^13.",
-                );
+                        ui.add(Label::new("Chunk Size:").heading());
+                        ui.horizontal(|ui| {
+                            ui.add(Label::new("2^").monospace());
+                            ui.add(DragValue::new(&mut self.chunk_size_power).clamp_range(4..=13));
+                        });
+                        ui.label(
+                            "Note that while larger values are generally faster, some drivers \
+                            may crash with values that are too large. Most devices handle 2^8 \
+                            relatively well. My GTX1060 timed out when rendering a mandelbrot set \
+                            at 2^13.",
+                        );
+                    });
+
+                egui::CollapsingHeader::new("Window Settings")
+                    .default_open(true)
+                    .show(ui, |ui| {
+                        ui.checkbox(&mut self.start_fullscreen, "Start Fullscreen");
+
+                        egui::Grid::new("app_settings.window_settings.grid").show(ui, |ui| {
+                            ui.label("Initial Window Width:");
+                            ui.add(
+                                DragValue::new(&mut self.initial_window_width)
+                                    .clamp_range(16..=8192),
+                            );
+                            ui.end_row();
+
+                            ui.label("Initial Window Height:");
+                            ui.add(
+                                DragValue::new(&mut self.initial_window_height)
+                                    .clamp_range(16..=8192),
+                            );
+                        });
+                    });
             });
     }
 
@@ -671,6 +709,20 @@ impl FractalRSUI {
             }
         }
     }
+
+    pub fn store_settings(&self) {
+        {
+            let mut cfg = CfgGeneral::write();
+            cfg.fractal_generator_type = self.current_generator_type.into();
+            cfg.fractal_chunk_size_power = self.chunk_size_power;
+        }
+        {
+            let mut cfg = CfgUiSettings::write();
+            cfg.start_fullscreen = self.start_fullscreen;
+            cfg.initial_window_width = self.initial_window_width;
+            cfg.initial_window_height = self.initial_window_height;
+        }
+    }
 }
 
 fn increment_instance_id(next_instance_id: &mut u64, instances: &HashMap<u64, UIInstance>) {
@@ -685,6 +737,26 @@ enum GeneratorType {
     CPU,
     PresentGPU,
     DedicatedGPU,
+}
+
+impl From<CfgFractalGeneratorType> for GeneratorType {
+    fn from(source: CfgFractalGeneratorType) -> Self {
+        match source {
+            CfgFractalGeneratorType::Cpu => Self::CPU,
+            CfgFractalGeneratorType::Gpu => Self::PresentGPU,
+            CfgFractalGeneratorType::GpuDedicated => Self::DedicatedGPU,
+        }
+    }
+}
+
+impl From<GeneratorType> for CfgFractalGeneratorType {
+    fn from(source: GeneratorType) -> Self {
+        match source {
+            GeneratorType::CPU => Self::Cpu,
+            GeneratorType::PresentGPU => Self::Gpu,
+            GeneratorType::DedicatedGPU => Self::GpuDedicated,
+        }
+    }
 }
 
 async fn create_gpu_factory(
