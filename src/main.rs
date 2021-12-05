@@ -17,7 +17,7 @@ extern crate strum_macros;
 #[macro_use]
 extern crate thiserror;
 
-use crate::storage::CfgGeneral;
+use crate::storage::{CfgGeneral, CfgSingleton};
 
 mod generator;
 mod gpu;

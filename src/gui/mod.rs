@@ -6,9 +6,10 @@ use crate::{
         flow::{Flow, FlowModel, FlowModelInit, FlowSignal},
         fonts::font_definitions,
         keyboard::{tracker::KeyboardTracker, ShortcutMap},
+        storage::CfgUiSettings,
         ui::{FractalRSUI, UICreationContext, UIRenderContext, UIUpdateContext},
     },
-    storage::CfgGeneral,
+    storage::{CfgGeneral, CfgSingleton},
 };
 use egui_wgpu_backend::{RenderPass, ScreenDescriptor};
 use egui_winit_platform::{Platform, PlatformDescriptor};
@@ -26,14 +27,20 @@ use winit::{
 mod flow;
 mod fonts;
 mod keyboard;
+mod storage;
 mod ui;
 mod util;
 
 /// Launches the application as a GUI application.
 pub fn start_gui_application() -> ! {
+    CfgUiSettings::load().expect("Error loading ui settings config");
+
+    let cfg = CfgUiSettings::read_clone();
+
     Flow::new()
-        .width(1600)
-        .height(900)
+        .width(cfg.initial_window_width)
+        .height(cfg.initial_window_height)
+        .fullscreen(cfg.start_fullscreen)
         .title("Fractal-RS 2")
         .start::<FractalRSGuiMain>()
         .expect("Error starting Flow!")
@@ -232,8 +239,10 @@ impl FlowModel for FractalRSGuiMain {
 
         // Save the settings back to a file.
         let cfg_general_res = CfgGeneral::store();
+        let cfg_ui_settings_res = CfgUiSettings::store();
 
         // Once we've attempted to save everything, we can start throwing errors.
         cfg_general_res.expect("Error saving general config");
+        cfg_ui_settings_res.expect("Error saving ui config");
     }
 }
