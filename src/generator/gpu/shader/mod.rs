@@ -32,8 +32,7 @@ pub async fn load_shaders(opts: FractalOpts) -> anyhow::Result<ShaderSource<'sta
 
     info!("Compiling WGSL...");
     let mut wgsl_str = String::new();
-    let flags = back::wgsl::WriterFlags::EXPLICIT_TYPES;
-    let mut writer = back::wgsl::Writer::new(&mut wgsl_str, flags);
+    let mut writer = back::wgsl::Writer::new(&mut wgsl_str);
     writer.write(&module, &module_info).unwrap();
     writer.finish();
 

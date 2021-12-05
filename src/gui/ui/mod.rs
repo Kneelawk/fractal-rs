@@ -293,7 +293,7 @@ impl FractalRSUI {
         self.handle_keyboard_shortcuts(ctx.shortcuts);
         self.draw_top_bar(ctx);
         if let Some(instance) = self.current_tab() {
-            instance.draw(&mut UIInstanceRenderContext {
+            instance.draw(&UIInstanceRenderContext {
                 ctx: ctx.ctx,
                 shortcuts: ctx.shortcuts,
                 tab_list: &tab_list,
@@ -308,36 +308,31 @@ impl FractalRSUI {
         self.handle_tab_close_requested(ctx);
     }
 
-    fn handle_keyboard_shortcuts(&mut self, shortcut: ShortcutLookup) {
+    fn handle_keyboard_shortcuts(&mut self, shortcuts: ShortcutLookup) {
         // Quit keyboard shortcut
-        if shortcut.is(ShortcutName::App_Quit) {
+        if shortcuts.is(ShortcutName::App_Quit) {
             self.close_requested = true;
         }
 
         // New keyboard shortcut
-        if shortcut.is(ShortcutName::App_New) {
+        if shortcuts.is(ShortcutName::App_New) {
             self.new_instance_requested = true;
         }
 
         // Close tab keyboard shortcut
-        if shortcut.is(ShortcutName::App_CloseTab) {
+        if shortcuts.is(ShortcutName::App_CloseTab) {
             self.tab_close_requested = Some(self.current_tab);
         }
 
         // Fullscreen keyboard shortcut
-        if shortcut.is(ShortcutName::App_Fullscreen) {
+        if shortcuts.is(ShortcutName::App_Fullscreen) {
             self.request_fullscreen = !self.request_fullscreen;
         }
 
         // I've found that I often end up trying to use ESC to leave fullscreen, so I
         // think I'll add that as a shortcut.
-        if shortcut.is(ShortcutName::App_AlternateExitFullscreen) {
+        if shortcuts.is(ShortcutName::App_AlternateExitFullscreen) {
             self.request_fullscreen = false;
-        }
-
-        // Let the currently open instance also act on key combinations
-        if let Some(current_tab) = self.current_tab() {
-            current_tab.handle_keyboard_shortcuts(shortcut);
         }
     }
 

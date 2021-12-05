@@ -380,29 +380,41 @@ impl UIInstance {
         ui.checkbox(&mut self.show_project_settings, "Project Settings");
     }
 
-    pub fn handle_keyboard_shortcuts(&mut self, shortcut: ShortcutLookup) {
+    pub fn handle_keyboard_shortcuts(&mut self, ctx: &UIInstanceRenderContext) {
+        let shortcuts = ctx.shortcuts;
+
         // Handle Generate shortcut
-        if shortcut.is(ShortcutName::Instance_Generate) {
+        if shortcuts.is(ShortcutName::Instance_Generate) && !self.generation_running {
             self.generate_fractal = Some(UIInstanceGenerationType::Viewer);
         }
 
         // Handle Julia keyboard shortcut
-        if shortcut.is(ShortcutName::Instance_SpawnJulia) {
+        if shortcuts.is(ShortcutName::Instance_SpawnJulia)
+            && self.mandelbrot
+            && !self
+                .target_instance
+                .as_ref()
+                .and_then(|id| ctx.instance_infos.get(id).map(|info| info.running))
+                .unwrap_or(false)
+        {
             self.generate_julia_from_point = true;
         }
 
         // Handle Switch to Julia shortcut
-        if shortcut.is(ShortcutName::Instance_SwitchToJulia) {
+        if shortcuts.is(ShortcutName::Instance_SwitchToJulia) && self.target_instance.is_some() {
             self.switch_to_target = true;
         }
 
         // Handle Switch to Mandelbrot shortcut
-        if shortcut.is(ShortcutName::Instance_SwitchToMandelbrot) {
+        if shortcuts.is(ShortcutName::Instance_SwitchToMandelbrot) && self.parent_instance.is_some()
+        {
             self.switch_to_parent = true;
         }
     }
 
-    pub fn draw(&mut self, ctx: &mut UIInstanceRenderContext) {
+    pub fn draw(&mut self, ctx: &UIInstanceRenderContext) {
+        self.handle_keyboard_shortcuts(ctx);
+
         self.draw_fractal_viewers(ctx);
         self.draw_generator_controls(ctx);
         self.draw_viewer_controls(ctx);
@@ -419,7 +431,7 @@ impl UIInstance {
         });
     }
 
-    fn draw_generator_controls(&mut self, ctx: &mut UIInstanceRenderContext) {
+    fn draw_generator_controls(&mut self, ctx: &UIInstanceRenderContext) {
         egui::Window::new("Generator Controls")
             .default_size([340.0, 500.0])
             .open(&mut self.show_generator_controls)
