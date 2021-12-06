@@ -8,7 +8,7 @@ use crate::{
     },
     gpu::{GPUContext, GPUContextType},
     gui::{
-        keyboard::{ShortcutMap, ShortcutName},
+        keyboard::{tree::ShortcutTreeNode, ShortcutMap, ShortcutName},
         storage::CfgUiSettings,
         ui::{
             instance::{
@@ -114,6 +114,7 @@ pub struct UICreationContext<'a> {
 pub struct UIUpdateContext<'a> {
     /// WGPU Egui Render Pass reference for managing textures.
     pub render_pass: &'a mut RenderPass,
+    pub shortcuts: &'a mut ShortcutMap,
 }
 
 /// Struct containing context passed to the UI render function.
@@ -477,6 +478,13 @@ impl FractalRSUI {
                                     .clamp_range(16..=8192),
                             );
                         });
+                    });
+
+                egui::CollapsingHeader::new("Keyboard Shortcuts")
+                    .default_open(false)
+                    .show(ui, |ui| {
+                        let mut change_request = None;
+                        ShortcutTreeNode::ui(ui, ctx.shortcuts, &mut change_request);
                     });
             });
     }

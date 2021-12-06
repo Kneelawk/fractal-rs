@@ -147,6 +147,7 @@ impl FlowModel for FractalRSGuiMain {
     fn update(&mut self, _update_delta: Duration) -> Option<FlowSignal> {
         self.ui.update(&mut UIUpdateContext {
             render_pass: &mut self.render_pass,
+            shortcuts: &mut self.shortcut_map,
         });
 
         if self.ui.close_requested {

@@ -18,6 +18,7 @@ use winit::event::{ModifiersState, VirtualKeyCode};
 pub mod macros;
 pub mod storage;
 pub mod tracker;
+pub mod tree;
 
 /// The list of shortcuts in the app.
 pub const DEFAULT_SHORTCUT_LIST: &[(ShortcutName, Shortcut)] = &[
@@ -192,8 +193,8 @@ impl ShortcutMap {
     }
 
     /// Gets a list of the current bindings for a given shortcut name, if any.
-    pub fn keys_for(&self, name: ShortcutName) -> KeysFor {
-        KeysFor(self.names.get(&name))
+    pub fn keys_for(&self, name: &ShortcutName) -> KeysFor {
+        KeysFor(self.names.get(name))
     }
 
     /// Replaces all bindings for a shortcut name with the binding given.
