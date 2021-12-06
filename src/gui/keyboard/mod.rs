@@ -97,11 +97,16 @@ pub struct ShortcutMap {
     names: HashMap<ShortcutName, Vec<Shortcut>>,
     current_shortcuts: HashSet<ShortcutName>,
     conflicts: ShortcutMapConflicts,
+    defaults: Vec<(ShortcutName, Shortcut)>,
+    modifications: HashSet<ShortcutName>,
 }
 
 impl ShortcutMap {
     /// Loads this shortcut map from a list of shortcut associations.
-    pub fn from(shortcut_list: &[(ShortcutName, Shortcut)]) -> ShortcutMap {
+    pub fn from_list_and_defaults(
+        shortcut_list: &[(ShortcutName, Shortcut)],
+        defaults: &[(ShortcutName, Shortcut)],
+    ) -> ShortcutMap {
         let mut bindings: HashMap<_, Vec<ShortcutName>> = HashMap::new();
         let mut names: HashMap<_, Vec<Shortcut>> = HashMap::new();
         let mut binding_conflicts = HashMap::new();
@@ -117,30 +122,17 @@ impl ShortcutMap {
         );
 
         for (name, binding) in shortcut_list {
-            if bindings.contains_key(binding) {
-                let conflicts = binding_conflicts.entry(*binding).or_insert(HashSet::new());
-
-                let names = bindings.get(binding).unwrap();
-                if names.len() == 1 {
-                    conflicts.insert(names[0]);
-                }
-
-                conflicts.insert(*name);
-            }
-            if names.contains_key(name) {
-                let conflicts = name_conflicts.entry(*name).or_insert(HashSet::new());
-
-                let bindings = names.get(name).unwrap();
-                if bindings.len() == 1 {
-                    conflicts.insert(bindings[0]);
-                }
-
-                conflicts.insert(*binding);
-            }
-
-            bindings.entry(*binding).or_insert(vec![]).push(*name);
-            names.entry(*name).or_insert(vec![]).push(*binding);
+            Self::impl_add_association(
+                &mut bindings,
+                &mut names,
+                &mut binding_conflicts,
+                &mut name_conflicts,
+                *name,
+                *binding,
+            );
         }
+
+        let modifications = Self::calculate_modifications(&names, defaults);
 
         ShortcutMap {
             bindings,
@@ -150,12 +142,18 @@ impl ShortcutMap {
                 binding_conflicts,
                 name_conflicts,
             },
+            defaults: defaults.to_vec(),
+            modifications,
         }
+    }
+
+    pub fn from_list(shortcut_list: &[(ShortcutName, Shortcut)]) -> ShortcutMap {
+        Self::from_list_and_defaults(shortcut_list, DEFAULT_SHORTCUT_LIST)
     }
 
     /// Loads this shortcut map from the default list of shortcut associations.
     pub fn new() -> ShortcutMap {
-        Self::from(DEFAULT_SHORTCUT_LIST)
+        Self::from_list(DEFAULT_SHORTCUT_LIST)
     }
 
     /// Loads this shortcut map from the keyboard shortcuts config singleton.
@@ -166,7 +164,7 @@ impl ShortcutMap {
     /// loaded.
     pub fn load() -> ShortcutMap {
         let cfg = CfgKeybinds::read();
-        Self::from(&cfg.bindings)
+        Self::from_list(&cfg.bindings)
     }
 
     /// Gets this map's list of shortcut conflicts.
@@ -199,64 +197,67 @@ impl ShortcutMap {
     }
 
     /// Replaces all bindings for a shortcut name with the binding given.
-    pub fn replace_association(&mut self, name: ShortcutName, binding: Shortcut) {
-        // First, remove all existing bindings
-        if let Some(existing_bindings) = self.names.get_mut(&name) {
-            for existing_binding in existing_bindings.iter_mut() {
-                let mut remove = false;
-                if let Some(existing_names) = self.bindings.get_mut(existing_binding) {
-                    existing_names.retain(|existing_name| existing_name != &name);
-                    remove = existing_names.is_empty();
-                }
-                if remove {
-                    self.bindings.remove(existing_binding);
-                }
+    pub fn replace_associations(&mut self, name: ShortcutName, binding: Shortcut) {
+        // replace the association
+        Self::impl_remove_name(
+            &mut self.bindings,
+            &mut self.names,
+            &mut self.conflicts.binding_conflicts,
+            &mut self.conflicts.name_conflicts,
+            &name,
+        );
+        Self::impl_add_association(
+            &mut self.bindings,
+            &mut self.names,
+            &mut self.conflicts.binding_conflicts,
+            &mut self.conflicts.name_conflicts,
+            name,
+            binding,
+        );
+
+        // recalculate the modifications
+        self.modifications = Self::calculate_modifications(&self.names, &self.defaults);
+    }
+
+    /// Resets a the bindings for a given shortcut name to their default values.
+    pub fn reset_associations(&mut self, name: ShortcutName) {
+        // remove the association
+        Self::impl_remove_name(
+            &mut self.bindings,
+            &mut self.names,
+            &mut self.conflicts.binding_conflicts,
+            &mut self.conflicts.name_conflicts,
+            &name,
+        );
+
+        // apply default associations
+        let defaults: Vec<_> = self.defaults.iter().copied().collect();
+        for (default_name, default_binding) in defaults {
+            if default_name == name {
+                Self::impl_add_association(
+                    &mut self.bindings,
+                    &mut self.names,
+                    &mut self.conflicts.binding_conflicts,
+                    &mut self.conflicts.name_conflicts,
+                    default_name,
+                    default_binding,
+                );
             }
-            existing_bindings.clear();
-        }
-        self.names.remove(&name);
-
-        // Next, remove all current conflicts involving the shortcut_name
-        self.conflicts
-            .binding_conflicts
-            .retain(|_conflict_binding, conflict_names| {
-                conflict_names.remove(&name);
-                conflict_names.len() > 1
-            });
-        self.conflicts.name_conflicts.remove(&name);
-
-        // Now add the new bindings while checking for conflicts
-        if self.bindings.contains_key(&binding) {
-            let conflicts = self
-                .conflicts
-                .binding_conflicts
-                .entry(binding)
-                .or_insert(HashSet::new());
-
-            let names = self.bindings.get(&binding).unwrap();
-            if names.len() == 1 {
-                conflicts.insert(names[0]);
-            }
-
-            conflicts.insert(name);
-        }
-        if self.names.contains_key(&name) {
-            let conflicts = self
-                .conflicts
-                .name_conflicts
-                .entry(name)
-                .or_insert(HashSet::new());
-
-            let bindings = self.names.get(&name).unwrap();
-            if bindings.len() == 1 {
-                conflicts.insert(bindings[0]);
-            }
-
-            conflicts.insert(binding);
         }
 
-        self.bindings.entry(binding).or_insert(vec![]).push(name);
-        self.names.entry(name).or_insert(vec![]).push(binding);
+        self.modifications = Self::calculate_modifications(&self.names, &self.defaults);
+    }
+
+    /// Returns whether a shortcut's bindings have been modified from their
+    /// defaults.
+    pub fn is_shortcut_modified(&self, name: &ShortcutName) -> bool {
+        self.modifications.contains(name)
+    }
+
+    /// Returns whether any shortcuts' bindings have been modified from their
+    /// defaults.
+    pub fn is_modified(&self) -> bool {
+        !self.modifications.is_empty()
     }
 
     /// Creates a list of shortcut associations for this map.
@@ -284,10 +285,132 @@ impl ShortcutMap {
         let list = self.to_shortcut_list();
         CfgKeybinds::write().bindings = list;
     }
+
+    /// Removes all bindings for a given shortcut name. This version does not do
+    /// modification recalculation.
+    fn impl_remove_name(
+        bindings: &mut HashMap<Shortcut, Vec<ShortcutName>>,
+        names: &mut HashMap<ShortcutName, Vec<Shortcut>>,
+        binding_conflicts: &mut HashMap<Shortcut, HashSet<ShortcutName>>,
+        name_conflicts: &mut HashMap<ShortcutName, HashSet<Shortcut>>,
+        name: &ShortcutName,
+    ) {
+        // First, remove all existing bindings
+        if let Some(existing_bindings) = names.get_mut(name) {
+            for existing_binding in existing_bindings.iter_mut() {
+                let mut remove = false;
+                if let Some(existing_names) = bindings.get_mut(existing_binding) {
+                    existing_names.retain(|existing_name| existing_name != name);
+                    remove = existing_names.is_empty();
+                }
+                if remove {
+                    bindings.remove(existing_binding);
+                }
+            }
+            existing_bindings.clear();
+        }
+        names.remove(name);
+
+        // Next, remove all current conflicts involving the shortcut_name
+        binding_conflicts.retain(|_conflict_binding, conflict_names| {
+            conflict_names.remove(name);
+            conflict_names.len() > 1
+        });
+        name_conflicts.remove(name);
+    }
+
+    /// Adds a binding for a given shortcut name. This version does not do
+    /// modification recalculation.
+    fn impl_add_association(
+        bindings: &mut HashMap<Shortcut, Vec<ShortcutName>>,
+        names: &mut HashMap<ShortcutName, Vec<Shortcut>>,
+        binding_conflicts: &mut HashMap<Shortcut, HashSet<ShortcutName>>,
+        name_conflicts: &mut HashMap<ShortcutName, HashSet<Shortcut>>,
+        name: ShortcutName,
+        binding: Shortcut,
+    ) {
+        // First, we check for conflicts
+        if bindings.contains_key(&binding) {
+            let conflicts = binding_conflicts.entry(binding).or_insert(HashSet::new());
+
+            let names = bindings.get(&binding).unwrap();
+            if names.len() == 1 {
+                conflicts.insert(names[0]);
+            }
+
+            conflicts.insert(name);
+        }
+        if names.contains_key(&name) {
+            let conflicts = name_conflicts.entry(name).or_insert(HashSet::new());
+
+            let bindings = names.get(&name).unwrap();
+            if bindings.len() == 1 {
+                conflicts.insert(bindings[0]);
+            }
+
+            conflicts.insert(binding);
+        }
+
+        // Then we add the association to the bindings maps
+        bindings.entry(binding).or_insert(vec![]).push(name);
+        names.entry(name).or_insert(vec![]).push(binding);
+    }
+
+    //
+    // Modifications stuff
+    //
+
+    /// Calculates all the shortcut names with modified bindings.
+    fn calculate_modifications(
+        names: &HashMap<ShortcutName, Vec<Shortcut>>,
+        defaults: &[(ShortcutName, Shortcut)],
+    ) -> HashSet<ShortcutName> {
+        let mut modifications = HashSet::new();
+        let mut names: HashMap<_, _> = names
+            .iter()
+            .map(|(name, bindings)| (*name, bindings.iter().copied().collect::<HashSet<_>>()))
+            .collect();
+
+        for (default_name, default_binding) in defaults {
+            let mut remove = false;
+
+            if let Some(bindings) = names.get_mut(default_name) {
+                debug_assert!(!bindings.is_empty(), "Encountered name with empty bindings set (name should have been removed) (this is a bug)");
+
+                // mark names that have a binding, just not the correct one
+                if !bindings.contains(default_binding) {
+                    modifications.insert(*default_name);
+                }
+
+                // remove the correct binding
+                bindings.remove(default_binding);
+                remove = bindings.is_empty();
+            } else {
+                // mark any names that don't have a binding
+                modifications.insert(*default_name);
+            }
+
+            // remove names with no bindings left
+            if remove {
+                names.remove(default_name);
+            }
+        }
+
+        // mark names with bindings left over as modified
+        for name in names.keys() {
+            modifications.insert(*name);
+        }
+
+        modifications
+    }
 }
 
 /// Represents a list of the current bindings for a given shortcut name, if any.
 pub struct KeysFor<'a>(Option<&'a Vec<Shortcut>>);
+
+//
+// Conflicts stuff
+//
 
 /// Represents an error while creating a shortcut map.
 #[derive(Debug, Error, Clone, Eq, PartialEq)]
@@ -301,6 +424,10 @@ impl ShortcutMapConflicts {
         self.binding_conflicts.is_empty() && self.name_conflicts.is_empty()
     }
 }
+
+//
+// Display stuff
+//
 
 impl<'a> Display for KeysFor<'a> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
@@ -708,6 +835,7 @@ mod test {
     use crate::{
         gui::keyboard::{
             macros::shortcut, Shortcut, ShortcutMap, ShortcutMapConflicts, ShortcutName::*,
+            DEFAULT_SHORTCUT_LIST,
         },
         util::{hash_map, hash_set},
     };
@@ -751,7 +879,7 @@ mod test {
 
     #[test]
     fn test_shortcut_map_normal_load() {
-        let mut map = ShortcutMap::from(&[
+        let mut map = ShortcutMap::from_list(&[
             (App_New, shortcut!(Ctrl - N)),
             (App_Quit, shortcut!(Ctrl - Q)),
         ]);
@@ -777,7 +905,7 @@ mod test {
 
     #[test]
     fn test_shortcut_map_conflicting_load() {
-        let mut map = ShortcutMap::from(&[
+        let mut map = ShortcutMap::from_list(&[
             (App_New, shortcut!(Ctrl - N)),
             (App_Quit, shortcut!(Ctrl - N)),
         ]);
@@ -810,7 +938,7 @@ mod test {
 
     #[test]
     fn test_shortcut_map_resolve_conflicts() {
-        let mut map = ShortcutMap::from(&[
+        let mut map = ShortcutMap::from_list(&[
             (App_New, shortcut!(Ctrl - N)),
             (App_Quit, shortcut!(Ctrl - N)),
         ]);
@@ -828,7 +956,7 @@ mod test {
             "Conflicts should be binding conflicts for 'Ctrl+N' between App_New and App_Quit"
         );
 
-        map.replace_association(App_Quit, shortcut!(Ctrl - Q));
+        map.replace_associations(App_Quit, shortcut!(Ctrl - Q));
 
         assert!(
             map.get_conflicts().is_empty(),
@@ -851,7 +979,7 @@ mod test {
 
     #[test]
     fn test_shortcut_map_not_resolve_conflicts() {
-        let mut map = ShortcutMap::from(&[
+        let mut map = ShortcutMap::from_list(&[
             (App_New, shortcut!(Ctrl - N)),
             (App_Quit, shortcut!(Ctrl - N)),
             (App_CloseTab, shortcut!(Ctrl - N)),
@@ -870,7 +998,7 @@ mod test {
             "Conflicts should be binding conflicts for 'Ctrl+N' between App_New, App_Quit, and App_CloseTab"
         );
 
-        map.replace_association(App_Quit, shortcut!(Ctrl - Q));
+        map.replace_associations(App_Quit, shortcut!(Ctrl - Q));
 
         assert!(
             !map.get_conflicts().is_empty(),
@@ -912,7 +1040,7 @@ mod test {
 
     #[test]
     fn test_shortcut_map_create_conflicts() {
-        let mut map = ShortcutMap::from(&[
+        let mut map = ShortcutMap::from_list(&[
             (App_New, shortcut!(Ctrl - N)),
             (App_Quit, shortcut!(Ctrl - Q)),
         ]);
@@ -923,7 +1051,7 @@ mod test {
             map.get_conflicts()
         );
 
-        map.replace_association(App_Quit, shortcut!(Ctrl - N));
+        map.replace_associations(App_Quit, shortcut!(Ctrl - N));
 
         assert!(
             !map.get_conflicts().is_empty(),
@@ -949,5 +1077,94 @@ mod test {
         map.update(&[]);
         assert!(!map.is_pressed(App_New), "App_New should not be pressed");
         assert!(!map.is_pressed(App_Quit), "App_Quit should not be pressed");
+    }
+
+    #[test]
+    fn test_shortcut_map_not_modified() {
+        let map = ShortcutMap::from_list_and_defaults(DEFAULT_SHORTCUT_LIST, DEFAULT_SHORTCUT_LIST);
+
+        assert!(
+            !map.is_modified(),
+            "A default map should not have any modifications"
+        );
+    }
+
+    #[test]
+    fn test_shortcut_map_starting_modified() {
+        let map = ShortcutMap::from_list_and_defaults(
+            &[
+                (App_New, shortcut!(Ctrl - N)),
+                (App_Quit, shortcut!(Ctrl - W)),
+            ],
+            &[
+                (App_New, shortcut!(Ctrl - N)),
+                (App_Quit, shortcut!(Ctrl - Q)),
+            ],
+        );
+
+        assert!(
+            map.is_modified(),
+            "The shortcut map should have been modified"
+        );
+
+        assert!(
+            map.is_shortcut_modified(&App_Quit),
+            "App_Quit should have been modified"
+        );
+        assert!(
+            !map.is_shortcut_modified(&App_New),
+            "App-New should not have been modified"
+        );
+    }
+
+    #[test]
+    fn test_shortcut_map_becoming_modified() {
+        let mut map = ShortcutMap::from_list_and_defaults(
+            &[
+                (App_New, shortcut!(Ctrl - N)),
+                (App_Quit, shortcut!(Ctrl - Q)),
+            ],
+            &[
+                (App_New, shortcut!(Ctrl - N)),
+                (App_Quit, shortcut!(Ctrl - Q)),
+            ],
+        );
+
+        map.replace_associations(App_Quit, shortcut!(Ctrl - W));
+
+        assert!(
+            map.is_modified(),
+            "The shortcut map should have been modified"
+        );
+
+        assert!(
+            map.is_shortcut_modified(&App_Quit),
+            "App_Quit should have been modified"
+        );
+        assert!(
+            !map.is_shortcut_modified(&App_New),
+            "App-New should not have been modified"
+        );
+    }
+
+    #[test]
+    fn test_shortcut_map_modified_reset() {
+        let mut map = ShortcutMap::from_list_and_defaults(
+            &[
+                (App_New, shortcut!(Ctrl - N)),
+                (App_Quit, shortcut!(Ctrl - W)),
+            ],
+            &[
+                (App_New, shortcut!(Ctrl - N)),
+                (App_Quit, shortcut!(Ctrl - Q)),
+            ],
+        );
+
+        map.reset_associations(App_Quit);
+
+        assert!(
+            !map.is_modified(),
+            "A default map should not have any modifications"
+        );
     }
 }
