@@ -2,7 +2,10 @@
 
 #![allow(dead_code)]
 
-use crate::gui::keyboard::{macros::shortcut, ShortcutName::*};
+use crate::{
+    gui::keyboard::{macros::shortcut, storage::CfgKeybinds, ShortcutName::*},
+    storage::CfgSingleton,
+};
 use heck::TitleCase;
 use itertools::Itertools;
 use serde::{de::Visitor, Deserialize, Deserializer, Serialize, Serializer};
@@ -13,6 +16,7 @@ use std::{
 use winit::event::{ModifiersState, VirtualKeyCode};
 
 pub mod macros;
+pub mod storage;
 pub mod tracker;
 
 /// The list of shortcuts in the app.
@@ -154,6 +158,17 @@ impl ShortcutMap {
         Self::from(DEFAULT_SHORTCUT_LIST)
     }
 
+    /// Loads this shortcut map from the keyboard shortcuts config singleton.
+    /// Note that the config singleton must have been loaded already.
+    ///
+    /// # Panics
+    /// This method panics if the keybinds config singleton has not yet been
+    /// loaded.
+    pub fn load() -> ShortcutMap {
+        let cfg = CfgKeybinds::read();
+        Self::from(&cfg.bindings)
+    }
+
     /// Gets this map's list of shortcut conflicts.
     pub fn get_conflicts(&self) -> &ShortcutMapConflicts {
         &self.conflicts
@@ -257,6 +272,17 @@ impl ShortcutMap {
         }
 
         list
+    }
+
+    /// Stores the current set of keyboard shortcuts into the keybinds
+    /// configuration singleton.
+    ///
+    /// # Panics
+    /// This method panics if the keybinds config singleton has not yet been
+    /// loaded.
+    pub fn store(&self) {
+        let list = self.to_shortcut_list();
+        CfgKeybinds::write().bindings = list;
     }
 }
 
