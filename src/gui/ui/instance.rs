@@ -384,12 +384,12 @@ impl UIInstance {
         let shortcuts = ctx.shortcuts;
 
         // Handle Generate shortcut
-        if shortcuts.is_pressed(ShortcutName::Instance_Generate) && !self.generation_running {
+        if shortcuts.is_pressed(ShortcutName::Tab_Generate) && !self.generation_running {
             self.generate_fractal = Some(UIInstanceGenerationType::Viewer);
         }
 
         // Handle Julia keyboard shortcut
-        if shortcuts.is_pressed(ShortcutName::Instance_SpawnJulia)
+        if shortcuts.is_pressed(ShortcutName::Tab_SpawnJulia)
             && self.mandelbrot
             && !self
                 .target_instance
@@ -401,14 +401,14 @@ impl UIInstance {
         }
 
         // Handle Switch to Julia shortcut
-        if shortcuts.is_pressed(ShortcutName::Instance_SwitchToJulia)
+        if shortcuts.is_pressed(ShortcutName::Tab_SwitchToJulia)
             && self.target_instance.is_some()
         {
             self.switch_to_target = true;
         }
 
         // Handle Switch to Mandelbrot shortcut
-        if shortcuts.is_pressed(ShortcutName::Instance_SwitchToMandelbrot)
+        if shortcuts.is_pressed(ShortcutName::Tab_SwitchToMandelbrot)
             && self.parent_instance.is_some()
         {
             self.switch_to_parent = true;
@@ -457,7 +457,7 @@ impl UIInstance {
                                 .button("Generate!")
                                 .on_hover_text(format!(
                                     "Shortcut: {}",
-                                    ctx.shortcuts.keys_for(ShortcutName::Instance_Generate)
+                                    ctx.shortcuts.keys_for(ShortcutName::Tab_Generate)
                                 ))
                                 .clicked()
                             {
@@ -687,7 +687,7 @@ impl UIInstance {
                             .button("Generate Julia/Fatou Set at Position")
                             .on_hover_text(format!(
                                 "Shortcut: {}",
-                                ctx.shortcuts.keys_for(ShortcutName::Instance_SpawnJulia)
+                                ctx.shortcuts.keys_for(ShortcutName::Tab_SpawnJulia)
                             ))
                             .clicked()
                         {
@@ -743,7 +743,7 @@ impl UIInstance {
                             .button("Switch to Julia/Fatou tab")
                             .on_hover_text(format!(
                                 "Shortcut: {}",
-                                ctx.shortcuts.keys_for(ShortcutName::Instance_SwitchToJulia)
+                                ctx.shortcuts.keys_for(ShortcutName::Tab_SwitchToJulia)
                             ))
                             .clicked()
                         {
@@ -780,7 +780,7 @@ impl UIInstance {
                             .on_hover_text(format!(
                                 "Shortcut: {}",
                                 ctx.shortcuts
-                                    .keys_for(ShortcutName::Instance_SwitchToMandelbrot)
+                                    .keys_for(ShortcutName::Tab_SwitchToMandelbrot)
                             ))
                             .clicked()
                         {

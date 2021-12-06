@@ -26,10 +26,10 @@ pub const DEFAULT_SHORTCUT_LIST: &[(ShortcutName, Shortcut)] = &[
     (App_CloseTab, shortcut!(Cmd - W)),
     (App_Fullscreen, shortcut!(F11)),
     (App_AlternateExitFullscreen, shortcut!(Escape)),
-    (Instance_Generate, shortcut!(MacAlt - G)),
-    (Instance_SpawnJulia, shortcut!(MacAlt - J)),
-    (Instance_SwitchToJulia, shortcut!(Shift - MacAlt - J)),
-    (Instance_SwitchToMandelbrot, shortcut!(MacAlt - M)),
+    (Tab_Generate, shortcut!(MacAlt - G)),
+    (Tab_SpawnJulia, shortcut!(MacAlt - J)),
+    (Tab_SwitchToJulia, shortcut!(Shift - MacAlt - J)),
+    (Tab_SwitchToMandelbrot, shortcut!(MacAlt - M)),
 ];
 
 /// This enum contains an entry for each keyboard shortcut the application uses.
@@ -46,10 +46,10 @@ pub enum ShortcutName {
     App_AlternateExitFullscreen,
 
     // Instance shortcuts
-    Instance_Generate,
-    Instance_SpawnJulia,
-    Instance_SwitchToJulia,
-    Instance_SwitchToMandelbrot,
+    Tab_Generate,
+    Tab_SpawnJulia,
+    Tab_SwitchToJulia,
+    Tab_SwitchToMandelbrot,
 }
 
 /// Tracks keyboard modifier presses.
