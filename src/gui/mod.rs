@@ -242,6 +242,7 @@ impl FlowModel for FractalRSGuiMain {
     fn shutdown(self) {
         // Let's store our settings before we shut down.
         self.ui.store_settings();
+        self.shortcut_map.store();
 
         // Save the settings back to a file.
         let cfg_general_res = CfgGeneral::store();
