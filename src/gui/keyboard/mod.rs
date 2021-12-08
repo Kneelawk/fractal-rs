@@ -100,6 +100,7 @@ pub struct ShortcutMap {
     conflicts: ShortcutMapConflicts,
     defaults: Vec<(ShortcutName, Shortcut)>,
     modifications: HashSet<ShortcutName>,
+    enabled: bool,
 }
 
 impl ShortcutMap {
@@ -149,6 +150,7 @@ impl ShortcutMap {
             conflicts,
             defaults: defaults.to_vec(),
             modifications,
+            enabled: true,
         }
     }
 
@@ -193,7 +195,15 @@ impl ShortcutMap {
 
     /// Is this shortcut name currently pressed?
     pub fn is_pressed(&self, name: ShortcutName) -> bool {
-        self.current_shortcuts.contains(&name)
+        self.current_shortcuts.contains(&name) && self.enabled
+    }
+
+    /// Sets whether this shortcut map will show key-presses. If this is set to
+    /// false, then [`is_pressed`] will always return `false`.
+    ///
+    /// [`is_pressed`]: Self::is_pressed()
+    pub fn set_enabled(&mut self, enabled: bool) {
+        self.enabled = enabled;
     }
 
     /// Gets a list of the current bindings for a given shortcut name, if any.
@@ -278,6 +288,14 @@ impl ShortcutMap {
                 list.push((name, binding));
             }
         }
+
+        info!(
+            "Storing shortcuts: [\n\t{}\n]",
+            list.iter()
+                .map(|(ty, sc)| format!("{} => {}", ty, sc))
+                .format(",\n\t")
+                .to_string()
+        );
 
         list
     }
@@ -867,8 +885,7 @@ fn parse_virtual_keycode(s: &str) -> Option<VirtualKeyCode> {
 mod test {
     use crate::{
         gui::keyboard::{
-            macros::shortcut, Shortcut, ShortcutMap, ShortcutMapConflicts, ShortcutName::*,
-            DEFAULT_SHORTCUT_LIST,
+            macros::shortcut, Shortcut, ShortcutMap, ShortcutName::*, DEFAULT_SHORTCUT_LIST,
         },
         util::{hash_map, hash_set},
     };
@@ -969,6 +986,57 @@ mod test {
         map.update(&[]);
         assert!(!map.is_pressed(App_New), "App_New should not be pressed");
         assert!(!map.is_pressed(App_Quit), "App_Quit should not be pressed");
+    }
+
+    #[test]
+    fn test_shortcut_map_replace_associations() {
+        let mut map = ShortcutMap::from_list(&[(Tab_Generate, shortcut!(Alt - G))]);
+
+        map.update(&[shortcut!(Alt - G)]);
+        assert!(
+            map.is_pressed(Tab_Generate),
+            "Tab_Generate should be pressed"
+        );
+        map.update(&[shortcut!(Alt - F)]);
+        assert!(
+            !map.is_pressed(Tab_Generate),
+            "Tab_Generate should not be pressed"
+        );
+
+        assert_eq!(
+            map.names.get(&Tab_Generate),
+            Some(&vec![shortcut!(Alt - G)]),
+            "Tab_Generate name should have only a Alt+G binding"
+        );
+        assert_eq!(
+            map.bindings.get(&shortcut!(Alt - G)),
+            Some(&vec![Tab_Generate]),
+            "Alt+G should only be bound to Tab_Generate"
+        );
+
+        map.replace_associations(Tab_Generate, shortcut!(Alt - F));
+
+        map.update(&[shortcut!(Alt - F)]);
+        assert!(
+            map.is_pressed(Tab_Generate),
+            "Tab_Generate should be pressed"
+        );
+        map.update(&[shortcut!(Alt - G)]);
+        assert!(
+            !map.is_pressed(Tab_Generate),
+            "Tab_Generate should not be pressed"
+        );
+
+        assert_eq!(
+            map.names.get(&Tab_Generate),
+            Some(&vec![shortcut!(Alt - F)]),
+            "Tab_Generate name should have only a Alt+F binding"
+        );
+        assert_eq!(
+            map.bindings.get(&shortcut!(Alt - F)),
+            Some(&vec![Tab_Generate]),
+            "Alt+F should only be bound to Tab_Generate"
+        );
     }
 
     #[test]

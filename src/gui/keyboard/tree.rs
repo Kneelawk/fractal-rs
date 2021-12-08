@@ -132,7 +132,13 @@ impl ShortcutTreeNode {
                             },
                             ShortcutTreeNode::Leaf { shortcut } => {
                                 ui.label(child_name);
-                                if ui.button(shortcuts.keys_for(shortcut)).clicked() {
+                                if ui
+                                    .add(
+                                        egui::Button::new(shortcuts.keys_for(shortcut))
+                                            .text_style(egui::TextStyle::Monospace),
+                                    )
+                                    .clicked()
+                                {
                                     *change_request = Some(*shortcut);
                                 }
 

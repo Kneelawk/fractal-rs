@@ -33,6 +33,21 @@ impl KeyboardTracker {
 
     pub fn keyboard_input(&mut self, input: &KeyboardInput) {
         if let Some(keycode) = input.virtual_keycode {
+            // ignore modifier keys here because we handle them differently
+            if matches!(
+                keycode,
+                VirtualKeyCode::LAlt
+                    | VirtualKeyCode::RAlt
+                    | VirtualKeyCode::LControl
+                    | VirtualKeyCode::RControl
+                    | VirtualKeyCode::LShift
+                    | VirtualKeyCode::RShift
+                    | VirtualKeyCode::LWin
+                    | VirtualKeyCode::RWin
+            ) {
+                return;
+            }
+
             match input.state {
                 ElementState::Pressed => self.pressed_keys.insert(keycode),
                 ElementState::Released => self.released_keys.insert(keycode),

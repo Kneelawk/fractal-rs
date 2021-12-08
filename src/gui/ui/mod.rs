@@ -27,7 +27,7 @@ use crate::{
     storage::{CfgFractalGeneratorType, CfgGeneral, CfgSingleton},
     util::{future::future_wrapper::FutureWrapper, result::ResultExt, running_guard::RunningGuard},
 };
-use egui::{vec2, Align, Align2, CtxRef, DragValue, Label, Layout};
+use egui::{vec2, Align, Align2, Button, CtxRef, DragValue, Label, Layout, TextStyle};
 use egui_wgpu_backend::RenderPass;
 use num_complex::Complex32;
 use std::{
@@ -75,6 +75,7 @@ pub struct FractalRSUI {
 
     // shortcuts
     shortcut_change_request: Option<ShortcutName>,
+    current_shortcut_binding: Option<Shortcut>,
     shortcut_new_binding: Option<Shortcut>,
     shortcut_reset_request: Option<ShortcutName>,
 
@@ -121,6 +122,7 @@ pub struct UICreationContext<'a> {
 pub struct UIUpdateContext<'a> {
     /// WGPU Egui Render Pass reference for managing textures.
     pub render_pass: &'a mut RenderPass,
+    /// The current shortcut map.
     pub shortcuts: &'a mut ShortcutMap,
 }
 
@@ -223,6 +225,7 @@ impl FractalRSUI {
             initial_window_width: ui_settings.initial_window_width,
             initial_window_height: ui_settings.initial_window_height,
             shortcut_change_request: None,
+            current_shortcut_binding: None,
             shortcut_new_binding: None,
             shortcut_reset_request: None,
             instance: ctx.instance,
@@ -281,6 +284,29 @@ impl FractalRSUI {
                 self.factory = factory;
                 self.gpu_poll = Some(gpu_poll);
             }
+        }
+
+        // Only let shortcut handlers handle shortcuts if we're not currently setting a
+        // shortcut binding.
+        ctx.shortcuts.set_enabled(
+            self.shortcut_change_request.is_none() || self.shortcut_new_binding.is_some(),
+        );
+
+        // Handle reset requests
+        if let Some(reset_request) = self.shortcut_reset_request {
+            ctx.shortcuts.reset_associations(reset_request);
+            self.shortcut_reset_request = None;
+        }
+
+        // Once a new shortcut binding has been chosen, we'll apply it.
+        if let (Some(change_request), Some(new_binding)) =
+            (self.shortcut_change_request, self.shortcut_new_binding)
+        {
+            ctx.shortcuts
+                .replace_associations(change_request, new_binding);
+            self.shortcut_change_request = None;
+            self.shortcut_new_binding = None;
+            self.current_shortcut_binding = None;
         }
 
         // Update all the instances, even the ones that are not currently being
@@ -737,7 +763,51 @@ impl FractalRSUI {
     }
 
     fn handle_change_shortcut(&mut self, ctx: &UIRenderContext) {
-        if let Some(change_requested) = &self.shortcut_change_request {}
+        if let Some(change_requested) = self.shortcut_change_request {
+            let pressed = ctx.key_tracker.get_shortcuts();
+            if self.current_shortcut_binding.is_none() && !pressed.is_empty() {
+                self.current_shortcut_binding = Some(pressed[0]);
+            }
+
+            egui::Window::new("New Keyboard Shortcut")
+                .resizable(false)
+                .collapsible(false)
+                .anchor(Align2::CENTER_CENTER, vec2(0.0, 0.0))
+                .show(ctx.ctx, |ui| {
+                    ui.label(format!(
+                        "Type a new keyboard shortcut for {}:",
+                        change_requested
+                    ));
+                    ui.horizontal(|ui| {
+                        ui.label("Shortcut:");
+                        let button_text = if let Some(shortcut) = self.current_shortcut_binding {
+                            shortcut.to_string()
+                        } else {
+                            "".to_string()
+                        };
+                        ui.add_sized(
+                            vec2(100.0, ui.spacing().interact_size.y),
+                            Button::new(button_text).text_style(TextStyle::Monospace),
+                        );
+
+                        if ui.button("Clear").clicked() {
+                            self.current_shortcut_binding = None;
+                        }
+                    });
+
+                    ui.add_space(20.0);
+
+                    ui.with_layout(Layout::right_to_left().with_cross_align(Align::Min), |ui| {
+                        if ui.button("Apply New Shortcut").clicked() {
+                            self.shortcut_new_binding = self.current_shortcut_binding;
+                        }
+                        if ui.button("Cancel").clicked() {
+                            self.shortcut_change_request = None;
+                            self.current_shortcut_binding = None;
+                        }
+                    });
+                });
+        }
     }
 
     pub fn store_settings(&self) {
