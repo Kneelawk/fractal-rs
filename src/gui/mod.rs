@@ -169,8 +169,9 @@ impl FlowModel for FractalRSGuiMain {
         self.platform
             .update_time(self.start_time.elapsed().as_secs_f64());
 
+        self.keyboard_tracker.update_shortcuts();
         self.shortcut_map
-            .update(self.keyboard_tracker.make_shortcuts());
+            .update(self.keyboard_tracker.get_shortcuts());
 
         // Draw UI
         self.platform.begin_frame();
@@ -178,6 +179,7 @@ impl FlowModel for FractalRSGuiMain {
         self.ui.draw(&UIRenderContext {
             ctx: &self.platform.context(),
             shortcuts: &self.shortcut_map,
+            key_tracker: &self.keyboard_tracker,
             window_size: self.window_size,
         });
 

@@ -1,7 +1,8 @@
 //! This module contains the mechanism for representing a shortcut tree.
 
 use crate::gui::keyboard::{ShortcutMap, ShortcutName};
-use egui::Ui;
+use egui::{Color32, Ui};
+use itertools::Itertools;
 use std::{collections::HashMap, ops::Deref};
 use strum::IntoEnumIterator;
 
@@ -62,7 +63,12 @@ impl ShortcutTreeNode {
         root
     }
 
-    pub fn ui(ui: &mut Ui, shortcuts: &ShortcutMap, change_request: &mut Option<ShortcutName>) {
+    pub fn ui(
+        ui: &mut Ui,
+        shortcuts: &ShortcutMap,
+        change_request: &mut Option<ShortcutName>,
+        reset_request: &mut Option<ShortcutName>,
+    ) {
         if let ShortcutTreeNode::Parent {
             child_names,
             children,
@@ -82,6 +88,7 @@ impl ShortcutTreeNode {
                         child_name,
                         shortcuts,
                         change_request,
+                        reset_request,
                     );
                 } else {
                     ui.label(child_name);
@@ -97,6 +104,7 @@ impl ShortcutTreeNode {
         name: impl ToString,
         shortcuts: &ShortcutMap,
         change_request: &mut Option<ShortcutName>,
+        reset_request: &mut Option<ShortcutName>,
     ) {
         egui::CollapsingHeader::new(name.to_string())
             .default_open(false)
@@ -119,6 +127,7 @@ impl ShortcutTreeNode {
                                     child_name,
                                     shortcuts,
                                     change_request,
+                                    reset_request,
                                 );
                             },
                             ShortcutTreeNode::Leaf { shortcut } => {
@@ -126,6 +135,25 @@ impl ShortcutTreeNode {
                                 if ui.button(shortcuts.keys_for(shortcut)).clicked() {
                                     *change_request = Some(*shortcut);
                                 }
+
+                                if let Some(conflicts) = shortcuts
+                                    .get_conflicts()
+                                    .binding_conflicts_for_name(shortcut)
+                                {
+                                    ui.add(egui::Label::new("\u{1F5D9}").text_color(Color32::RED))
+                                        .on_hover_text(format!(
+                                            "Conflicts with: {}",
+                                            conflicts.iter().format(", ")
+                                        ));
+                                } else {
+                                    ui.add(egui::Label::new("\u{2714}").text_color(Color32::GREEN));
+                                }
+
+                                ui.add_enabled_ui(shortcuts.is_shortcut_modified(shortcut), |ui| {
+                                    if ui.button("Reset").clicked() {
+                                        *reset_request = Some(*shortcut);
+                                    }
+                                });
                             },
                         }
                         ui.end_row();

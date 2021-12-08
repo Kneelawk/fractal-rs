@@ -133,16 +133,20 @@ impl ShortcutMap {
             );
         }
 
+        let mut conflicts = ShortcutMapConflicts {
+            binding_conflicts,
+            name_conflicts,
+            binding_conflicts_by_name: Default::default(),
+        };
+        conflicts.update_reverse_maps();
+
         let modifications = Self::calculate_modifications(&names, defaults);
 
         ShortcutMap {
             bindings,
             names,
             current_shortcuts: Default::default(),
-            conflicts: ShortcutMapConflicts {
-                binding_conflicts,
-                name_conflicts,
-            },
+            conflicts,
             defaults: defaults.to_vec(),
             modifications,
         }
@@ -218,6 +222,7 @@ impl ShortcutMap {
 
         // recalculate the modifications
         self.modifications = Self::calculate_modifications(&self.names, &self.defaults);
+        self.conflicts.update_reverse_maps();
     }
 
     /// Resets a the bindings for a given shortcut name to their default values.
@@ -247,6 +252,7 @@ impl ShortcutMap {
         }
 
         self.modifications = Self::calculate_modifications(&self.names, &self.defaults);
+        self.conflicts.update_reverse_maps();
     }
 
     /// Returns whether a shortcut's bindings have been modified from their
@@ -414,15 +420,41 @@ pub struct KeysFor<'a>(Option<&'a Vec<Shortcut>>);
 //
 
 /// Represents an error while creating a shortcut map.
-#[derive(Debug, Error, Clone, Eq, PartialEq)]
+#[derive(Debug, Error, Clone)]
 pub struct ShortcutMapConflicts {
-    pub binding_conflicts: HashMap<Shortcut, HashSet<ShortcutName>>,
-    pub name_conflicts: HashMap<ShortcutName, HashSet<Shortcut>>,
+    binding_conflicts: HashMap<Shortcut, HashSet<ShortcutName>>,
+    name_conflicts: HashMap<ShortcutName, HashSet<Shortcut>>,
+    binding_conflicts_by_name: HashMap<ShortcutName, Vec<ShortcutName>>,
 }
 
 impl ShortcutMapConflicts {
     pub fn is_empty(&self) -> bool {
         self.binding_conflicts.is_empty() && self.name_conflicts.is_empty()
+    }
+
+    fn update_reverse_maps(&mut self) {
+        self.binding_conflicts_by_name.clear();
+
+        for (_, conflicts) in self.binding_conflicts.iter() {
+            let conflicts_sorted: Vec<_> = conflicts.iter().sorted().collect();
+            for conflict in conflicts.iter() {
+                self.binding_conflicts_by_name.insert(
+                    *conflict,
+                    conflicts_sorted
+                        .iter()
+                        .copied()
+                        .copied()
+                        .filter(|name| name != conflict)
+                        .collect(),
+                );
+            }
+        }
+    }
+
+    pub fn binding_conflicts_for_name(&self, name: &ShortcutName) -> Option<&[ShortcutName]> {
+        self.binding_conflicts_by_name
+            .get(name)
+            .map(|v| v.as_slice())
     }
 }
 
@@ -916,12 +948,14 @@ mod test {
             "Map conflicts should not be empty."
         );
         assert_eq!(
-            map.get_conflicts(),
-            &ShortcutMapConflicts {
-                binding_conflicts: hash_map!(shortcut!(Ctrl-N) => hash_set!(App_New, App_Quit)),
-                name_conflicts: Default::default()
-            },
+            map.get_conflicts().binding_conflicts,
+            hash_map!(shortcut!(Ctrl-N) => hash_set!(App_New, App_Quit)),
             "Conflicts should be binding conflicts for 'Ctrl+N' between App_New and App_Quit"
+        );
+        assert_eq!(
+            map.get_conflicts().name_conflicts,
+            Default::default(),
+            "There should not be any name conflicts."
         );
 
         map.update(&[shortcut!(Ctrl - N)]);
@@ -949,12 +983,14 @@ mod test {
             "Map conflicts should not be empty."
         );
         assert_eq!(
-            map.get_conflicts(),
-            &ShortcutMapConflicts {
-                binding_conflicts: hash_map!(shortcut!(Ctrl-N) => hash_set!(App_New, App_Quit)),
-                name_conflicts: Default::default()
-            },
+            map.get_conflicts().binding_conflicts,
+            hash_map!(shortcut!(Ctrl-N) => hash_set!(App_New, App_Quit)),
             "Conflicts should be binding conflicts for 'Ctrl+N' between App_New and App_Quit"
+        );
+        assert_eq!(
+            map.get_conflicts().name_conflicts,
+            Default::default(),
+            "There should not be any name conflicts."
         );
 
         map.replace_associations(App_Quit, shortcut!(Ctrl - Q));
@@ -991,12 +1027,14 @@ mod test {
             "Map conflicts should not be empty."
         );
         assert_eq!(
-            map.get_conflicts(),
-            &ShortcutMapConflicts {
-                binding_conflicts: hash_map!(shortcut!(Ctrl-N) => hash_set!(App_New, App_Quit, App_CloseTab)),
-                name_conflicts: Default::default()
-            },
+            map.get_conflicts().binding_conflicts,
+            hash_map!(shortcut!(Ctrl-N) => hash_set!(App_New, App_Quit, App_CloseTab)),
             "Conflicts should be binding conflicts for 'Ctrl+N' between App_New, App_Quit, and App_CloseTab"
+        );
+        assert_eq!(
+            map.get_conflicts().name_conflicts,
+            Default::default(),
+            "There should not be any name conflicts."
         );
 
         map.replace_associations(App_Quit, shortcut!(Ctrl - Q));
@@ -1006,12 +1044,14 @@ mod test {
             "Map conflicts should not be empty."
         );
         assert_eq!(
-            map.get_conflicts(),
-            &ShortcutMapConflicts {
-                binding_conflicts: hash_map!(shortcut!(Ctrl-N) => hash_set!(App_New, App_CloseTab)),
-                name_conflicts: Default::default()
-            },
+            map.get_conflicts().binding_conflicts,
+            hash_map!(shortcut!(Ctrl-N) => hash_set!(App_New, App_CloseTab)),
             "Conflicts should be binding conflicts for 'Ctrl+N' between App_New and App_CloseTab"
+        );
+        assert_eq!(
+            map.get_conflicts().name_conflicts,
+            Default::default(),
+            "There should not be any name conflicts."
         );
 
         map.update(&[shortcut!(Ctrl - N)]);
@@ -1059,12 +1099,14 @@ mod test {
             "Map conflicts should not be empty."
         );
         assert_eq!(
-            map.get_conflicts(),
-            &ShortcutMapConflicts {
-                binding_conflicts: hash_map!(shortcut!(Ctrl-N) => hash_set!(App_New, App_Quit)),
-                name_conflicts: Default::default()
-            },
+            map.get_conflicts().binding_conflicts,
+            hash_map!(shortcut!(Ctrl-N) => hash_set!(App_New, App_Quit)),
             "Conflicts should be binding conflicts for 'Ctrl+N' between App_New and App_Quit"
+        );
+        assert_eq!(
+            map.get_conflicts().name_conflicts,
+            Default::default(),
+            "There should not be any name conflicts."
         );
 
         map.update(&[shortcut!(Ctrl - N)]);

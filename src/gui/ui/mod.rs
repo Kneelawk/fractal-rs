@@ -8,7 +8,9 @@ use crate::{
     },
     gpu::{GPUContext, GPUContextType},
     gui::{
-        keyboard::{tree::ShortcutTreeNode, ShortcutMap, ShortcutName},
+        keyboard::{
+            tracker::KeyboardTracker, tree::ShortcutTreeNode, Shortcut, ShortcutMap, ShortcutName,
+        },
         storage::CfgUiSettings,
         ui::{
             instance::{
@@ -71,6 +73,11 @@ pub struct FractalRSUI {
     initial_window_width: u32,
     initial_window_height: u32,
 
+    // shortcuts
+    shortcut_change_request: Option<ShortcutName>,
+    shortcut_new_binding: Option<Shortcut>,
+    shortcut_reset_request: Option<ShortcutName>,
+
     // generator stuff
     instance: Arc<Instance>,
     factory_future: FutureWrapper<
@@ -121,8 +128,11 @@ pub struct UIUpdateContext<'a> {
 pub struct UIRenderContext<'a> {
     /// Egui context reference.
     pub ctx: &'a CtxRef,
-    /// The currently pressed keyboard shortcut if any.
+    /// The current shortcut map.
     pub shortcuts: &'a ShortcutMap,
+    /// The current keyboard shortcut tracker, containing info about all key
+    /// combinations currently pressed.
+    pub key_tracker: &'a KeyboardTracker,
     /// The current inner size of the window.
     pub window_size: PhysicalSize<u32>,
 }
@@ -212,6 +222,9 @@ impl FractalRSUI {
             start_fullscreen: ui_settings.start_fullscreen,
             initial_window_width: ui_settings.initial_window_width,
             initial_window_height: ui_settings.initial_window_height,
+            shortcut_change_request: None,
+            shortcut_new_binding: None,
+            shortcut_reset_request: None,
             instance: ctx.instance,
             factory_future: Default::default(),
             factory,
@@ -318,6 +331,7 @@ impl FractalRSUI {
         self.draw_misc_windows(ctx);
 
         self.handle_tab_close_requested(ctx);
+        self.handle_change_shortcut(ctx);
     }
 
     fn handle_keyboard_shortcuts(&mut self, shortcuts: &ShortcutMap) {
@@ -483,8 +497,12 @@ impl FractalRSUI {
                 egui::CollapsingHeader::new("Keyboard Shortcuts")
                     .default_open(false)
                     .show(ui, |ui| {
-                        let mut change_request = None;
-                        ShortcutTreeNode::ui(ui, ctx.shortcuts, &mut change_request);
+                        ShortcutTreeNode::ui(
+                            ui,
+                            ctx.shortcuts,
+                            &mut self.shortcut_change_request,
+                            &mut self.shortcut_reset_request,
+                        );
                     });
             });
     }
@@ -716,6 +734,10 @@ impl FractalRSUI {
                 },
             }
         }
+    }
+
+    fn handle_change_shortcut(&mut self, ctx: &UIRenderContext) {
+        if let Some(change_requested) = &self.shortcut_change_request {}
     }
 
     pub fn store_settings(&self) {

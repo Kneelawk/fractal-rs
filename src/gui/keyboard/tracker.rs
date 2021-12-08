@@ -61,10 +61,8 @@ impl KeyboardTracker {
         self.released_keys.contains(&key)
     }
 
-    /// Makes a list of shortcuts for the currently pressed set of keys. This
-    /// shortcut is then passed to a `ShortcutMap` to convert it into a set of
-    /// shortcut names.
-    pub fn make_shortcuts(&mut self) -> &[Shortcut] {
+    /// Updates this tracker's list of the currently pressed keys.
+    pub fn update_shortcuts(&mut self) {
         self.current_shortcuts.clear();
         for key in self.pressed_keys.iter().sorted() {
             self.current_shortcuts.push(Shortcut {
@@ -72,7 +70,10 @@ impl KeyboardTracker {
                 key: *key,
             });
         }
+    }
 
+    /// Gets this tracker's list of currently pressed keys.
+    pub fn get_shortcuts(&self) -> &[Shortcut] {
         &self.current_shortcuts
     }
 }

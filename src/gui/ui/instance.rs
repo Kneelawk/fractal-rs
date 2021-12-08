@@ -401,9 +401,7 @@ impl UIInstance {
         }
 
         // Handle Switch to Julia shortcut
-        if shortcuts.is_pressed(ShortcutName::Tab_SwitchToJulia)
-            && self.target_instance.is_some()
-        {
+        if shortcuts.is_pressed(ShortcutName::Tab_SwitchToJulia) && self.target_instance.is_some() {
             self.switch_to_target = true;
         }
 
