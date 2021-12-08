@@ -78,6 +78,7 @@ pub struct FractalRSUI {
     current_shortcut_binding: Option<Shortcut>,
     shortcut_new_binding: Option<Shortcut>,
     shortcut_reset_request: Option<ShortcutName>,
+    reset_all_shortcuts: bool,
 
     // generator stuff
     instance: Arc<Instance>,
@@ -228,6 +229,7 @@ impl FractalRSUI {
             current_shortcut_binding: None,
             shortcut_new_binding: None,
             shortcut_reset_request: None,
+            reset_all_shortcuts: false,
             instance: ctx.instance,
             factory_future: Default::default(),
             factory,
@@ -319,6 +321,12 @@ impl FractalRSUI {
                 operations: &mut self.instance_operations,
             });
         }
+
+        // Reset all the keyboard shortcut if requested.
+        if self.reset_all_shortcuts && ctx.shortcuts.is_modified() {
+            *ctx.shortcuts = ShortcutMap::new();
+        }
+        self.reset_all_shortcuts = false;
 
         self.handle_instance_operations(ctx);
         self.handle_new_instance(ctx);
@@ -529,6 +537,12 @@ impl FractalRSUI {
                             &mut self.shortcut_change_request,
                             &mut self.shortcut_reset_request,
                         );
+
+                        ui.add_enabled_ui(ctx.shortcuts.is_modified(), |ui| {
+                            if ui.button("Reset All Shortcuts").clicked() {
+                                self.reset_all_shortcuts = true;
+                            }
+                        });
                     });
             });
     }
