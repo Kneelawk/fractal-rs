@@ -5,7 +5,7 @@ use crate::{
     gui::{
         flow::{Flow, FlowModel, FlowModelInit, FlowSignal},
         fonts::font_definitions,
-        keyboard::{tracker::KeyboardTracker, ShortcutMap},
+        keyboard::{storage::CfgKeybinds, tracker::KeyboardTracker, ShortcutMap},
         storage::CfgUiSettings,
         ui::{FractalRSUI, UICreationContext, UIRenderContext, UIUpdateContext},
     },
@@ -33,7 +33,9 @@ mod util;
 
 /// Launches the application as a GUI application.
 pub fn start_gui_application() -> ! {
+    info!("Loading GUI-specific settings...");
     CfgUiSettings::load().expect("Error loading ui settings config");
+    CfgKeybinds::load().expect("Error loading keybinds settings config");
 
     let cfg = CfgUiSettings::read_clone();
 
@@ -93,9 +95,9 @@ impl FlowModel for FractalRSGuiMain {
             render_pass: &mut render_pass,
         });
 
-        let (shortcut_map, conflicts) = ShortcutMap::new();
-        if !conflicts.conflicts.is_empty() {
-            warn!("Shortcut conflicts: {}", conflicts);
+        let shortcut_map = ShortcutMap::load();
+        if !shortcut_map.get_conflicts().is_empty() {
+            warn!("Shortcut conflicts: {}", shortcut_map.get_conflicts());
         }
 
         FractalRSGuiMain {
@@ -145,6 +147,7 @@ impl FlowModel for FractalRSGuiMain {
     fn update(&mut self, _update_delta: Duration) -> Option<FlowSignal> {
         self.ui.update(&mut UIUpdateContext {
             render_pass: &mut self.render_pass,
+            shortcuts: &mut self.shortcut_map,
         });
 
         if self.ui.close_requested {
@@ -166,14 +169,17 @@ impl FlowModel for FractalRSGuiMain {
         self.platform
             .update_time(self.start_time.elapsed().as_secs_f64());
 
+        self.keyboard_tracker.update_shortcuts();
+        self.shortcut_map
+            .update(self.keyboard_tracker.get_shortcuts());
+
         // Draw UI
         self.platform.begin_frame();
 
         self.ui.draw(&UIRenderContext {
             ctx: &self.platform.context(),
-            shortcuts: self
-                .shortcut_map
-                .lookup(self.keyboard_tracker.make_shortcuts()),
+            shortcuts: &self.shortcut_map,
+            key_tracker: &self.keyboard_tracker,
             window_size: self.window_size,
         });
 
@@ -236,13 +242,16 @@ impl FlowModel for FractalRSGuiMain {
     fn shutdown(self) {
         // Let's store our settings before we shut down.
         self.ui.store_settings();
+        self.shortcut_map.store();
 
         // Save the settings back to a file.
         let cfg_general_res = CfgGeneral::store();
         let cfg_ui_settings_res = CfgUiSettings::store();
+        let cfg_keybinds_res = CfgKeybinds::store();
 
         // Once we've attempted to save everything, we can start throwing errors.
         cfg_general_res.expect("Error saving general config");
         cfg_ui_settings_res.expect("Error saving ui config");
+        cfg_keybinds_res.expect("Error saving keybinds config");
     }
 }

@@ -34,7 +34,7 @@ fn main() {
     logging::init();
     info!("Hello from fractal-rs-2");
 
-    info!("Loading settings and configs...");
+    info!("Loading general settings...");
     CfgGeneral::load().expect("Error loading general config");
 
     gui::start_gui_application();

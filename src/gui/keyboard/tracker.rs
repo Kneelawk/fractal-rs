@@ -33,6 +33,21 @@ impl KeyboardTracker {
 
     pub fn keyboard_input(&mut self, input: &KeyboardInput) {
         if let Some(keycode) = input.virtual_keycode {
+            // ignore modifier keys here because we handle them differently
+            if matches!(
+                keycode,
+                VirtualKeyCode::LAlt
+                    | VirtualKeyCode::RAlt
+                    | VirtualKeyCode::LControl
+                    | VirtualKeyCode::RControl
+                    | VirtualKeyCode::LShift
+                    | VirtualKeyCode::RShift
+                    | VirtualKeyCode::LWin
+                    | VirtualKeyCode::RWin
+            ) {
+                return;
+            }
+
             match input.state {
                 ElementState::Pressed => self.pressed_keys.insert(keycode),
                 ElementState::Released => self.released_keys.insert(keycode),
@@ -61,10 +76,8 @@ impl KeyboardTracker {
         self.released_keys.contains(&key)
     }
 
-    /// Makes a list of shortcuts for the currently pressed set of keys. This
-    /// shortcut is then passed to a `ShortcutMap` to convert it into a set of
-    /// shortcut names.
-    pub fn make_shortcuts(&mut self) -> &Vec<Shortcut> {
+    /// Updates this tracker's list of the currently pressed keys.
+    pub fn update_shortcuts(&mut self) {
         self.current_shortcuts.clear();
         for key in self.pressed_keys.iter().sorted() {
             self.current_shortcuts.push(Shortcut {
@@ -72,7 +85,10 @@ impl KeyboardTracker {
                 key: *key,
             });
         }
+    }
 
+    /// Gets this tracker's list of currently pressed keys.
+    pub fn get_shortcuts(&self) -> &[Shortcut] {
         &self.current_shortcuts
     }
 }

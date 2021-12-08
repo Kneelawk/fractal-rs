@@ -5,7 +5,7 @@ macro_rules! shortcut_button {
         crate::gui::ui::widgets::shortcut_button::ShortcutButton::new(
             $text,
             $ctx.shortcuts
-                .keys_for(crate::gui::keyboard::ShortcutName::$shortcut),
+                .keys_for(&crate::gui::keyboard::ShortcutName::$shortcut),
         )
     };
 }
@@ -17,7 +17,7 @@ macro_rules! shortcut_checkbox {
             $cond,
             $text,
             $ctx.shortcuts
-                .keys_for(crate::gui::keyboard::ShortcutName::$shortcut),
+                .keys_for(&crate::gui::keyboard::ShortcutName::$shortcut),
         )
     };
 }

@@ -8,7 +8,9 @@ use crate::{
     },
     gpu::{GPUContext, GPUContextType},
     gui::{
-        keyboard::{ShortcutLookup, ShortcutName},
+        keyboard::{
+            tracker::KeyboardTracker, tree::ShortcutTreeNode, Shortcut, ShortcutMap, ShortcutName,
+        },
         storage::CfgUiSettings,
         ui::{
             instance::{
@@ -25,7 +27,7 @@ use crate::{
     storage::{CfgFractalGeneratorType, CfgGeneral, CfgSingleton},
     util::{future::future_wrapper::FutureWrapper, result::ResultExt, running_guard::RunningGuard},
 };
-use egui::{vec2, Align, Align2, CtxRef, DragValue, Label, Layout};
+use egui::{vec2, Align, Align2, Button, CtxRef, DragValue, Label, Layout, TextStyle};
 use egui_wgpu_backend::RenderPass;
 use num_complex::Complex32;
 use std::{
@@ -71,6 +73,13 @@ pub struct FractalRSUI {
     initial_window_width: u32,
     initial_window_height: u32,
 
+    // shortcuts
+    shortcut_change_request: Option<ShortcutName>,
+    current_shortcut_binding: Option<Shortcut>,
+    shortcut_new_binding: Option<Shortcut>,
+    shortcut_reset_request: Option<ShortcutName>,
+    reset_all_shortcuts: bool,
+
     // generator stuff
     instance: Arc<Instance>,
     factory_future: FutureWrapper<
@@ -114,14 +123,19 @@ pub struct UICreationContext<'a> {
 pub struct UIUpdateContext<'a> {
     /// WGPU Egui Render Pass reference for managing textures.
     pub render_pass: &'a mut RenderPass,
+    /// The current shortcut map.
+    pub shortcuts: &'a mut ShortcutMap,
 }
 
 /// Struct containing context passed to the UI render function.
 pub struct UIRenderContext<'a> {
     /// Egui context reference.
     pub ctx: &'a CtxRef,
-    /// The currently pressed keyboard shortcut if any.
-    pub shortcuts: ShortcutLookup<'a>,
+    /// The current shortcut map.
+    pub shortcuts: &'a ShortcutMap,
+    /// The current keyboard shortcut tracker, containing info about all key
+    /// combinations currently pressed.
+    pub key_tracker: &'a KeyboardTracker,
     /// The current inner size of the window.
     pub window_size: PhysicalSize<u32>,
 }
@@ -211,6 +225,11 @@ impl FractalRSUI {
             start_fullscreen: ui_settings.start_fullscreen,
             initial_window_width: ui_settings.initial_window_width,
             initial_window_height: ui_settings.initial_window_height,
+            shortcut_change_request: None,
+            current_shortcut_binding: None,
+            shortcut_new_binding: None,
+            shortcut_reset_request: None,
+            reset_all_shortcuts: false,
             instance: ctx.instance,
             factory_future: Default::default(),
             factory,
@@ -269,6 +288,29 @@ impl FractalRSUI {
             }
         }
 
+        // Only let shortcut handlers handle shortcuts if we're not currently setting a
+        // shortcut binding.
+        ctx.shortcuts.set_enabled(
+            self.shortcut_change_request.is_none() || self.shortcut_new_binding.is_some(),
+        );
+
+        // Handle reset requests
+        if let Some(reset_request) = self.shortcut_reset_request {
+            ctx.shortcuts.reset_associations(reset_request);
+            self.shortcut_reset_request = None;
+        }
+
+        // Once a new shortcut binding has been chosen, we'll apply it.
+        if let (Some(change_request), Some(new_binding)) =
+            (self.shortcut_change_request, self.shortcut_new_binding)
+        {
+            ctx.shortcuts
+                .replace_associations(change_request, new_binding);
+            self.shortcut_change_request = None;
+            self.shortcut_new_binding = None;
+            self.current_shortcut_binding = None;
+        }
+
         // Update all the instances, even the ones that are not currently being
         // rendered.
         for (&id, instance) in self.instances.iter_mut() {
@@ -279,6 +321,12 @@ impl FractalRSUI {
                 operations: &mut self.instance_operations,
             });
         }
+
+        // Reset all the keyboard shortcut if requested.
+        if self.reset_all_shortcuts && ctx.shortcuts.is_modified() {
+            *ctx.shortcuts = ShortcutMap::new();
+        }
+        self.reset_all_shortcuts = false;
 
         self.handle_instance_operations(ctx);
         self.handle_new_instance(ctx);
@@ -317,32 +365,33 @@ impl FractalRSUI {
         self.draw_misc_windows(ctx);
 
         self.handle_tab_close_requested(ctx);
+        self.handle_change_shortcut(ctx);
     }
 
-    fn handle_keyboard_shortcuts(&mut self, shortcuts: ShortcutLookup) {
+    fn handle_keyboard_shortcuts(&mut self, shortcuts: &ShortcutMap) {
         // Quit keyboard shortcut
-        if shortcuts.is(ShortcutName::App_Quit) {
+        if shortcuts.is_pressed(ShortcutName::App_Quit) {
             self.close_requested = true;
         }
 
         // New keyboard shortcut
-        if shortcuts.is(ShortcutName::App_New) {
+        if shortcuts.is_pressed(ShortcutName::App_New) {
             self.new_instance_requested = true;
         }
 
         // Close tab keyboard shortcut
-        if shortcuts.is(ShortcutName::App_CloseTab) {
+        if shortcuts.is_pressed(ShortcutName::App_CloseTab) {
             self.tab_close_requested = Some(self.current_tab);
         }
 
         // Fullscreen keyboard shortcut
-        if shortcuts.is(ShortcutName::App_Fullscreen) {
+        if shortcuts.is_pressed(ShortcutName::App_Fullscreen) {
             self.request_fullscreen = !self.request_fullscreen;
         }
 
         // I've found that I often end up trying to use ESC to leave fullscreen, so I
         // think I'll add that as a shortcut.
-        if shortcuts.is(ShortcutName::App_AlternateExitFullscreen) {
+        if shortcuts.is_pressed(ShortcutName::App_AlternateExitFullscreen) {
             self.request_fullscreen = false;
         }
     }
@@ -476,6 +525,23 @@ impl FractalRSUI {
                                 DragValue::new(&mut self.initial_window_height)
                                     .clamp_range(16..=8192),
                             );
+                        });
+                    });
+
+                egui::CollapsingHeader::new("Keyboard Shortcuts")
+                    .default_open(false)
+                    .show(ui, |ui| {
+                        ShortcutTreeNode::ui(
+                            ui,
+                            ctx.shortcuts,
+                            &mut self.shortcut_change_request,
+                            &mut self.shortcut_reset_request,
+                        );
+
+                        ui.add_enabled_ui(ctx.shortcuts.is_modified(), |ui| {
+                            if ui.button("Reset All Shortcuts").clicked() {
+                                self.reset_all_shortcuts = true;
+                            }
                         });
                     });
             });
@@ -707,6 +773,54 @@ impl FractalRSUI {
                     }
                 },
             }
+        }
+    }
+
+    fn handle_change_shortcut(&mut self, ctx: &UIRenderContext) {
+        if let Some(change_requested) = self.shortcut_change_request {
+            let pressed = ctx.key_tracker.get_shortcuts();
+            if self.current_shortcut_binding.is_none() && !pressed.is_empty() {
+                self.current_shortcut_binding = Some(pressed[0]);
+            }
+
+            egui::Window::new("New Keyboard Shortcut")
+                .resizable(false)
+                .collapsible(false)
+                .anchor(Align2::CENTER_CENTER, vec2(0.0, 0.0))
+                .show(ctx.ctx, |ui| {
+                    ui.label(format!(
+                        "Type a new keyboard shortcut for {}:",
+                        change_requested
+                    ));
+                    ui.horizontal(|ui| {
+                        ui.label("Shortcut:");
+                        let button_text = if let Some(shortcut) = self.current_shortcut_binding {
+                            shortcut.to_string()
+                        } else {
+                            "".to_string()
+                        };
+                        ui.add_sized(
+                            vec2(100.0, ui.spacing().interact_size.y),
+                            Button::new(button_text).text_style(TextStyle::Monospace),
+                        );
+
+                        if ui.button("Clear").clicked() {
+                            self.current_shortcut_binding = None;
+                        }
+                    });
+
+                    ui.add_space(20.0);
+
+                    ui.with_layout(Layout::right_to_left().with_cross_align(Align::Min), |ui| {
+                        if ui.button("Apply New Shortcut").clicked() {
+                            self.shortcut_new_binding = self.current_shortcut_binding;
+                        }
+                        if ui.button("Cancel").clicked() {
+                            self.shortcut_change_request = None;
+                            self.current_shortcut_binding = None;
+                        }
+                    });
+                });
         }
     }
 
