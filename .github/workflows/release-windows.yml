@@ -23,12 +23,16 @@ jobs:
         uses: actions-rs/cargo@v1
         with:
           command: install
-          args: --git 'https://github.com/Kneelawk/cargo-bundle.git' --branch 'profile-option' cargo-bundle --force
+          args: cargo-wix
       - name: Build release
         uses: actions-rs/cargo@v1
         with:
-          command: bundle
-          args: --profile release-lto
+          command: build
+          args: --release
+      - name: Build release MSI
+        uses: actions-rs/cargo@v1
+        with:
+          command: wix
       - name: Create 'dist' directory
         run: mkdir dist
       - name: Copy release files
@@ -46,6 +50,6 @@ jobs:
           body_path: changelogs/changelog-${{ steps.tag_version.outputs.tag }}.md
           files: |
             dist/fractal-rs-2-${{ steps.tag_version.outputs.tag }}-${{ runner.os }}.zip
-            target/release-lto/bundle/msi/fractal-rs-2*.msi
+            target/wix/fractal-rs-2*.msi
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
