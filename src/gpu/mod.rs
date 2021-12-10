@@ -1,5 +1,5 @@
 use std::sync::Arc;
-use wgpu::{Device, Queue};
+use wgpu::{Device, Limits, Queue};
 
 pub mod buffer;
 pub mod util;
@@ -14,6 +14,7 @@ pub mod util;
 pub struct GPUContext {
     pub device: Arc<Device>,
     pub queue: Arc<Queue>,
+    pub limits: Limits,
     pub ty: GPUContextType,
 }
 

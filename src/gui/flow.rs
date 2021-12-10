@@ -1,7 +1,10 @@
 #![allow(dead_code)]
 
 use crate::{
-    gpu::{GPUContext, GPUContextType},
+    gpu::{
+        util::{get_desired_limits, print_adapter_info},
+        GPUContext, GPUContextType,
+    },
     gui::util::get_trace_path,
 };
 use std::{
@@ -25,7 +28,6 @@ use winit::{
     event_loop::{ControlFlow, EventLoop, EventLoopProxy},
     window::{Fullscreen, Window, WindowBuilder},
 };
-use crate::gpu::util::{get_desired_limits, print_adapter_info};
 
 /// Signal sent by the application to the Flow to control the application flow.
 pub enum FlowSignal {
@@ -157,11 +159,12 @@ impl Flow {
         print_adapter_info(&adapter);
 
         info!("Requesting device...");
+        let limits = get_desired_limits(&adapter);
         let trace_path = runtime.block_on(get_trace_path("present", true))?;
         let (device, queue) = runtime.block_on(adapter.request_device(
             &DeviceDescriptor {
                 label: Some("Device"),
-                limits: get_desired_limits(&adapter),
+                limits: limits.clone(),
                 features: Default::default(),
             },
             trace_path.as_ref().map(|p| p.as_path()),
@@ -202,6 +205,7 @@ impl Flow {
             present: GPUContext {
                 device: device.clone(),
                 queue: queue.clone(),
+                limits,
                 ty: GPUContextType::Presentable,
             },
             window: window.clone(),

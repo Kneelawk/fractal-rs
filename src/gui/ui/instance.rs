@@ -469,7 +469,9 @@ impl UIInstance {
                                     ui.add(
                                         DragValue::new(&mut self.edit_viewer_width)
                                             .speed(1.0)
-                                            .clamp_range(2..=8192),
+                                            .clamp_range(
+                                                2..=self.present.limits.max_texture_dimension_2d,
+                                            ),
                                     );
                                     ui.end_row();
 
@@ -477,7 +479,9 @@ impl UIInstance {
                                     ui.add(
                                         DragValue::new(&mut self.edit_viewer_height)
                                             .speed(1.0)
-                                            .clamp_range(2..=8192),
+                                            .clamp_range(
+                                                2..=self.present.limits.max_texture_dimension_2d,
+                                            ),
                                     );
                                     ui.end_row();
                                 },

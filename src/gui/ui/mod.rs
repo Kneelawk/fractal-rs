@@ -939,13 +939,14 @@ async fn create_gpu_factory(
 
     print_adapter_info(&adapter);
 
+    let limits = get_desired_limits(&adapter);
     let trace_path = get_trace_path("dedicated", false).await?;
     let (device, queue) = adapter
         .request_device(
             &DeviceDescriptor {
                 label: Some("High-Performance Device"),
                 features: Default::default(),
-                limits: get_desired_limits(&adapter),
+                limits: limits.clone(),
             },
             trace_path.as_ref().map(|p| p.as_path()),
         )
@@ -968,6 +969,7 @@ async fn create_gpu_factory(
     let dedicated = GPUContext {
         device,
         queue,
+        limits,
         ty: GPUContextType::Dedicated,
     };
 
