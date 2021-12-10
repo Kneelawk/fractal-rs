@@ -191,10 +191,41 @@ impl FractalRSUI {
     /// Create a new UIState, making sure to initialize all required textures
     /// and such.
     pub fn new(ctx: UICreationContext<'_>) -> FractalRSUI {
+        let general = CfgGeneral::read_clone();
+        let mut generator_type: GeneratorType = general.fractal_generator_type.into();
+
         // Set up the fractal generator factory
         info!("Creating Fractal Generator Factory...");
-        let factory = Arc::new(GpuFractalGeneratorFactory::new(ctx.present.clone()));
+        let (factory, gpu_poll): (Arc<dyn FractalGeneratorFactory + Sync + Send + 'static>, _) =
+            match generator_type {
+                GeneratorType::CPU => (
+                    Arc::new(CpuFractalGeneratorFactory::new(num_cpus::get())),
+                    None,
+                ),
+                GeneratorType::PresentGPU => (
+                    Arc::new(GpuFractalGeneratorFactory::new(ctx.present.clone())),
+                    None,
+                ),
+                GeneratorType::DedicatedGPU => {
+                    let res = ctx
+                        .handle
+                        .block_on(create_gpu_factory(ctx.instance.clone()));
+                    res.on_err(|e| error!("Error initializing dedicated GPU: {}", e))
+                        .map(|(factory, guard)| (factory, Some(guard)))
+                        .unwrap_or_else(|| {
+                            warn!(
+                                "Error initializing dedicated GPU, switching back to present GPU."
+                            );
+                            generator_type = GeneratorType::PresentGPU;
+                            (
+                                Arc::new(GpuFractalGeneratorFactory::new(ctx.present.clone())),
+                                None,
+                            )
+                        })
+                },
+            };
 
+        // Set up the tabs
         let mut instances = HashMap::new();
         let mut next_instance_id = 1;
 
@@ -211,7 +242,6 @@ impl FractalRSUI {
         instances.insert(next_instance_id, first_instance);
         next_instance_id += 1;
 
-        let general = CfgGeneral::read_clone();
         let ui_settings = CfgUiSettings::read_clone();
 
         FractalRSUI {
@@ -222,8 +252,8 @@ impl FractalRSUI {
             request_fullscreen: false,
             show_app_settings: false,
             show_ui_settings: false,
-            current_generator_type: general.fractal_generator_type.into(),
-            new_generator_type: general.fractal_generator_type.into(),
+            current_generator_type: generator_type,
+            new_generator_type: generator_type,
             chunk_size_power: general.fractal_chunk_size_power,
             start_fullscreen: ui_settings.start_fullscreen,
             initial_window_width: ui_settings.initial_window_width,
@@ -236,7 +266,7 @@ impl FractalRSUI {
             instance: ctx.instance,
             factory_future: Default::default(),
             factory,
-            gpu_poll: None,
+            gpu_poll,
             instances,
             next_instance_id,
             tabs: vec![first_tab],
@@ -260,10 +290,20 @@ impl FractalRSUI {
                 GeneratorType::CPU => {
                     self.factory = Arc::new(CpuFractalGeneratorFactory::new(num_cpus::get()));
                     self.gpu_poll = None;
+
+                    // update the factories for all existing instances
+                    for instance in self.instances.values_mut() {
+                        instance.set_factory(self.factory.clone());
+                    }
                 },
                 GeneratorType::PresentGPU => {
                     self.factory = Arc::new(GpuFractalGeneratorFactory::new(self.present.clone()));
                     self.gpu_poll = None;
+
+                    // update the factories for all existing instances
+                    for instance in self.instances.values_mut() {
+                        instance.set_factory(self.factory.clone());
+                    }
                 },
                 GeneratorType::DedicatedGPU => {
                     self.factory_future
@@ -274,11 +314,6 @@ impl FractalRSUI {
                         );
                 },
             };
-
-            // update the factories for all existing instances
-            for instance in self.instances.values_mut() {
-                instance.set_factory(self.factory.clone());
-            }
         }
 
         if let Some(factory) = self.factory_future.poll_unpin(&self.handle) {
@@ -288,6 +323,11 @@ impl FractalRSUI {
             {
                 self.factory = factory;
                 self.gpu_poll = Some(gpu_poll);
+
+                // update the factories for all existing instances
+                for instance in self.instances.values_mut() {
+                    instance.set_factory(self.factory.clone());
+                }
             }
         }
 
@@ -468,21 +508,23 @@ impl FractalRSUI {
                     .default_open(true)
                     .show(ui, |ui| {
                         ui.add(Label::new("Generator Type:").heading());
-                        ui.radio_value(
-                            &mut self.new_generator_type,
-                            GeneratorType::CPU,
-                            "CPU (Slow)",
-                        );
-                        ui.radio_value(
-                            &mut self.new_generator_type,
-                            GeneratorType::PresentGPU,
-                            "Display GPU (Faster)",
-                        );
-                        ui.radio_value(
-                            &mut self.new_generator_type,
-                            GeneratorType::DedicatedGPU,
-                            "Dedicated GPU (Fastest)",
-                        );
+                        ui.add_enabled_ui(self.factory_future.is_empty(), |ui| {
+                            ui.radio_value(
+                                &mut self.new_generator_type,
+                                GeneratorType::CPU,
+                                "CPU (Slow)",
+                            );
+                            ui.radio_value(
+                                &mut self.new_generator_type,
+                                GeneratorType::PresentGPU,
+                                "Display GPU (Faster)",
+                            );
+                            ui.radio_value(
+                                &mut self.new_generator_type,
+                                GeneratorType::DedicatedGPU,
+                                "Dedicated GPU (Fastest)",
+                            );
+                        });
                         ui.label(
                             "Note 1: While the GPU generator is significantly faster on most \
                             platforms, it may not run on all platforms. Some Linux/Mesa \
