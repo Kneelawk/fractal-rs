@@ -37,7 +37,7 @@ jobs:
       - name: Create 'dist' directory
         run: mkdir dist
       - name: Copy release files
-        run: cp target/release-lto/fractal-rs-2.exe dist/
+        run: cp target/release/fractal-rs-2.exe dist/
       - name: Archive release
         uses: thedoctor0/zip-release@master
         with:
