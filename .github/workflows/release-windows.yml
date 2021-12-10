@@ -19,7 +19,7 @@ jobs:
         uses: actions-rs/toolchain@v1
         with:
           toolchain: nightly-2021-11-26
-      - name: Install cargo-bundle
+      - name: Install cargo-wix
         uses: actions-rs/cargo@v1
         with:
           command: install
@@ -33,6 +33,7 @@ jobs:
         uses: actions-rs/cargo@v1
         with:
           command: wix
+          args: --nocapture
       - name: Create 'dist' directory
         run: mkdir dist
       - name: Copy release files
