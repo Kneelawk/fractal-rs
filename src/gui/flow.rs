@@ -25,6 +25,7 @@ use winit::{
     event_loop::{ControlFlow, EventLoop, EventLoopProxy},
     window::{Fullscreen, Window, WindowBuilder},
 };
+use crate::gpu::util::{get_desired_limits, print_adapter_info};
 
 /// Signal sent by the application to the Flow to control the application flow.
 pub enum FlowSignal {
@@ -153,12 +154,14 @@ impl Flow {
             }))
             .ok_or(FlowStartError::AdapterRequestError)?;
 
+        print_adapter_info(&adapter);
+
         info!("Requesting device...");
         let trace_path = runtime.block_on(get_trace_path("present", true))?;
         let (device, queue) = runtime.block_on(adapter.request_device(
             &DeviceDescriptor {
                 label: Some("Device"),
-                limits: Default::default(),
+                limits: get_desired_limits(&adapter),
                 features: Default::default(),
             },
             trace_path.as_ref().map(|p| p.as_path()),

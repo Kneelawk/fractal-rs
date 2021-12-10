@@ -6,7 +6,10 @@ use crate::{
     generator::{
         cpu::CpuFractalGeneratorFactory, gpu::GpuFractalGeneratorFactory, FractalGeneratorFactory,
     },
-    gpu::{GPUContext, GPUContextType},
+    gpu::{
+        util::{get_desired_limits, print_adapter_info},
+        GPUContext, GPUContextType,
+    },
     gui::{
         keyboard::{
             tracker::KeyboardTracker, tree::ShortcutTreeNode, Shortcut, ShortcutMap, ShortcutName,
@@ -891,13 +894,16 @@ async fn create_gpu_factory(
         })
         .await
         .ok_or(CreateGpuFactoryError::RequestAdapterError)?;
+
+    print_adapter_info(&adapter);
+
     let trace_path = get_trace_path("dedicated", false).await?;
     let (device, queue) = adapter
         .request_device(
             &DeviceDescriptor {
                 label: Some("High-Performance Device"),
                 features: Default::default(),
-                limits: Default::default(),
+                limits: get_desired_limits(&adapter),
             },
             trace_path.as_ref().map(|p| p.as_path()),
         )
