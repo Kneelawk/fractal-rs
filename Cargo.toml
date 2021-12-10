@@ -4,6 +4,10 @@ version = "0.1.0-alpha4"
 authors = ["Kneelawk <kneelawk@gmail.com>"]
 edition = "2021"
 resolver = "2"
+license = "MIT"
+description = "Simple fractal viewer written in Rust"
+repository = "https://github.com/Kneelawk/fractal-rs.git"
+keywords = ["fractal", "wgpu"]
 
 [features]
 debug-wgpu-trace = ["wgpu/trace"]
@@ -48,3 +52,14 @@ tokio = { version = "^1.2.0", features = ["fs", "io-util", "macros", "rt", "rt-m
 tokio-stream = { version = "^0.1.7", features = ["sync"] }
 winit = "^0.25.0"
 wgpu = "^0.11.0"
+
+[profile.release-lto]
+inherits = "release"
+lto = true
+
+[package.metadata.bundle]
+identifier = "com.kneelawk.fractal-rs-2"
+copyright = "Copyright (c) 2021 Jed Pommert (Kneelawk)"
+category = "GraphicsAndDesign"
+deb_depends = ["libgtk-3-0", "libxcb-shape0", "libxcb-xfixes0"]
+osx_minimum_system_version = "10.11"

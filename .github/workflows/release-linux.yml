@@ -21,15 +21,20 @@ jobs:
         uses: actions-rs/toolchain@v1
         with:
           toolchain: nightly-2021-11-26
+      - name: Install cargo-bundle
+        uses: actions-rs/cargo@v1
+        with:
+          command: install
+          args: --git 'https://github.com/Kneelawk/cargo-bundle.git' --branch 'profile-option' cargo-bundle --force
       - name: Build release
         uses: actions-rs/cargo@v1
         with:
-          command: build
-          args: --release
+          command: bundle
+          args: --profile release-lto
       - name: Create 'dist' directory
         run: mkdir dist
       - name: Copy release files
-        run: cp target/release/fractal-rs-2 dist/
+        run: cp target/release-lto/fractal-rs-2 dist/
       - name: Archive release
         uses: thedoctor0/zip-release@master
         with:
@@ -41,6 +46,8 @@ jobs:
         uses: softprops/action-gh-release@v1
         with:
           body_path: changelogs/changelog-${{ steps.tag_version.outputs.tag }}.md
-          files: dist/fractal-rs-2-${{ steps.tag_version.outputs.tag }}-${{ runner.os }}.*
+          files: |
+            dist/fractal-rs-2-${{ steps.tag_version.outputs.tag }}-${{ runner.os }}.tgz
+            target/release-lto/bundle/deb/fractal-rs-2*.deb
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

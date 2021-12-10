@@ -19,28 +19,44 @@ jobs:
         uses: actions-rs/toolchain@v1
         with:
           toolchain: nightly-2021-11-26
+      - name: Install cargo-bundle
+        uses: actions-rs/cargo@v1
+        with:
+          command: install
+          args: --git 'https://github.com/Kneelawk/cargo-bundle.git' --branch 'profile-option' cargo-bundle --force
       - name: Build release
         uses: actions-rs/cargo@v1
         with:
-          command: build
-          args: --release
+          command: bundle
+          args: --profile release-lto
         env:
           WINIT_LINK_COLORSYNC: true
-      - name: Create 'dist' directory
-        run: mkdir dist
+      - name: Create 'dist' directories
+        run: mkdir -p dist/bin && mkdir -p dist/app
       - name: Copy release files
-        run: cp target/release/fractal-rs-2 dist/
+        run: cp target/release-lto/fractal-rs-2 dist/bin/
+      - name: Copy App files
+        run: cp -r target/release-lto/bundle/osx/fractal-rs-2*.app dist/app/
       - name: Archive release
         uses: thedoctor0/zip-release@master
         with:
           type: 'tar'
-          directory: 'dist/'
+          directory: 'dist/bin/'
           filename: fractal-rs-2-${{ steps.tag_version.outputs.tag }}-${{ runner.os }}.tgz
+          path: 'fractal-rs-2*'
+      - name: Archive release app
+        uses: thedoctor0/zip-release@master
+        with:
+          type: 'tar'
+          directory: 'dist/app/'
+          filename: fractal-rs-2-${{ steps.tag_version.outputs.tag }}-${{ runner.os }}.app.tgz
           path: 'fractal-rs-2*'
       - name: Publish release
         uses: softprops/action-gh-release@v1
         with:
           body_path: changelogs/changelog-${{ steps.tag_version.outputs.tag }}.md
-          files: dist/fractal-rs-2-${{ steps.tag_version.outputs.tag }}-${{ runner.os }}.*
+          files: |
+            dist/bin/fractal-rs-2-${{ steps.tag_version.outputs.tag }}-${{ runner.os }}.tgz
+            dist/app/fractal-rs-2-${{ steps.tag_version.outputs.tag }}-${{ runner.os }}.app.tgz
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
