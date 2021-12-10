@@ -63,3 +63,6 @@ copyright = "Copyright (c) 2021 Jed Pommert (Kneelawk)"
 category = "GraphicsAndDesign"
 deb_depends = ["libgtk-3-0", "libxcb-shape0", "libxcb-xfixes0"]
 osx_minimum_system_version = "10.11"
+
+[package.metadata.wix]
+version = "0.1.0.5"
