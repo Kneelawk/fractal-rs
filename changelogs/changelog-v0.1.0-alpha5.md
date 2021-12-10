@@ -14,5 +14,5 @@
 * Added keyboard shortcut for generating a fractal.
 * Made the application save settings between runs.
 * Added the ability for the user to configure keyboard shortcuts.
-* Fixed bugs with generator backends not being selected. (This made it so that
-  dedicated GPUs were never actually being used.)
+* Fixed bugs with generator backends not being selected. (These bugs made it so
+  that dedicated GPUs were never actually being used.)
