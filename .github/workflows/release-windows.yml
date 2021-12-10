@@ -1,0 +1,44 @@
+# This handles the building and publishing of the project's release artifacts
+
+name: release-windows
+on:
+  push:
+    tags:
+      - 'v[0-9]+.[0-9]+.[0-9]+*'
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - name: Get tag version
+        uses: dawidd6/action-get-tag@v1
+        id: tag_version
+      - name: Checkout
+        uses: actions/checkout@v2
+      - name: Install Rust toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: nightly-2021-11-26
+      - name: Build release
+        uses: actions-rs/cargo@v1
+        with:
+          command: build
+          args: --release
+      - name: Create 'dist' directory
+        run: mkdir dist
+      - name: Copy release files
+        run: cp target/release/fractal-rs-2.exe dist/
+      - name: Archive release
+        uses: thedoctor0/zip-release@master
+        with:
+          type: 'zip'
+          directory: 'dist/'
+          filename: fractal-rs-2-${{ steps.tag_version.outputs.tag }}-${{ runner.os }}.zip
+          path: 'fractal-rs-2*'
+      - name: Publish release
+        uses: softprops/action-gh-release@v1
+        with:
+          body_path: changelogs/changelog-${{ steps.tag_version.outputs.tag }}.md
+          files: dist/fractal-rs-2-${{ steps.tag_version.outputs.tag }}-${{ runner.os }}.*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
