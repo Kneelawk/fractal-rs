@@ -16,3 +16,4 @@
 * Added the ability for the user to configure keyboard shortcuts.
 * Fixed bugs with generator backends not being selected. (These bugs made it so
   that dedicated GPUs were never actually being used.)
+* Increased viewer image max size to be the same as the GPU's max texture size.
