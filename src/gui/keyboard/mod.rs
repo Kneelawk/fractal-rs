@@ -28,8 +28,8 @@ pub const DEFAULT_SHORTCUT_LIST: &[(ShortcutName, Shortcut)] = &[
     (App_Fullscreen, shortcut!(F11)),
     (App_AlternateExitFullscreen, shortcut!(Escape)),
     (Tab_Generate, shortcut!(MacAlt - G)),
-    (Tab_SpawnJulia, shortcut!(MacAlt - J)),
-    (Tab_SwitchToJulia, shortcut!(Shift - MacAlt - J)),
+    (Tab_SpawnJulia, shortcut!(Shift - MacAlt - J)),
+    (Tab_SwitchToJulia, shortcut!(MacAlt - J)),
     (Tab_SwitchToMandelbrot, shortcut!(MacAlt - M)),
 ];
 
