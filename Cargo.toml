@@ -1,6 +1,6 @@
 [package]
 name = "fractal-rs-2"
-version = "0.1.0"
+version = "0.1.1"
 authors = ["Kneelawk <kneelawk@gmail.com>"]
 edition = "2021"
 resolver = "2"
@@ -11,6 +11,9 @@ keywords = ["fractal", "wgpu"]
 
 [features]
 debug-wgpu-trace = ["wgpu/trace"]
+prefer-dx12 = []
+prefer-metal = []
+prefer-vulkan = []
 
 [dependencies]
 anyhow = "^1.0.43"

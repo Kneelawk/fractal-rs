@@ -30,7 +30,7 @@ jobs:
         uses: actions-rs/cargo@v1
         with:
           command: bundle
-          args: --profile release-lto
+          args: --profile release-lto --features prefer-vulkan
       - name: Create 'dist' directory
         run: mkdir dist
       - name: Copy release files
@@ -40,14 +40,16 @@ jobs:
         with:
           type: 'tar'
           directory: 'dist/'
-          filename: fractal-rs-2-${{ steps.tag_version.outputs.tag }}-${{ runner.os }}.tgz
+          filename: fractal-rs-2_${{ steps.tag_version.outputs.tag }}+${{ env.GITHUB_RUN_NUMBER }}_x86_64-linux-vulkan.tgz
           path: 'fractal-rs-2*'
+      - name: Copy DEB to dist
+        run: cp target/release-lto/bundle/deb/fractal-rs-2*.deb dist/fractal-rs-2_${{ steps.tag_version.outputs.tag }}+${{ env.GITHUB_RUN_NUMBER }}_x86_64-linux-vulkan.deb
       - name: Publish release
         uses: softprops/action-gh-release@v1
         with:
           body_path: changelogs/changelog-${{ steps.tag_version.outputs.tag }}.md
           files: |
-            dist/fractal-rs-2-${{ steps.tag_version.outputs.tag }}-${{ runner.os }}.tgz
-            target/release-lto/bundle/deb/fractal-rs-2*.deb
+            dist/fractal-rs-2_${{ steps.tag_version.outputs.tag }}+${{ env.GITHUB_RUN_NUMBER }}_x86_64-linux-vulkan.tgz
+            dist/fractal-rs-2_${{ steps.tag_version.outputs.tag }}+${{ env.GITHUB_RUN_NUMBER }}_x86_64-linux-vulkan.deb
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

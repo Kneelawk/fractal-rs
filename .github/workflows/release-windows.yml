@@ -8,6 +8,9 @@ on:
 
 jobs:
   build:
+    strategy:
+      matrix:
+        backend: [vulkan, dx12]
     runs-on: windows-latest
     steps:
       - name: Get tag version
@@ -28,7 +31,7 @@ jobs:
         uses: actions-rs/cargo@v1
         with:
           command: build
-          args: --release
+          args: --release --features prefer-${{ matrix.backend }}
       - name: Build release MSI
         uses: actions-rs/cargo@v1
         with:
@@ -43,14 +46,16 @@ jobs:
         with:
           type: 'zip'
           directory: 'dist/'
-          filename: fractal-rs-2-${{ steps.tag_version.outputs.tag }}-${{ runner.os }}.zip
+          filename: fractal-rs-2_${{ steps.tag_version.outputs.tag }}+${{ env.GITHUB_RUN_NUMBER }}_x86_64-windows-${{ matrix.backend }}.zip
           path: 'fractal-rs-2*'
+      - name: Copy MSI to dist
+        run: copy target/wix/fractal-rs-2*.msi dist/fractal-rs-2_${{ steps.tag_version.outputs.tag }}+${{ env.GITHUB_RUN_NUMBER }}_x86_64-windows-${{ matrix.backend }}.msi
       - name: Publish release
         uses: softprops/action-gh-release@v1
         with:
           body_path: changelogs/changelog-${{ steps.tag_version.outputs.tag }}.md
           files: |
-            dist/fractal-rs-2-${{ steps.tag_version.outputs.tag }}-${{ runner.os }}.zip
-            target/wix/fractal-rs-2*.msi
+            dist/fractal-rs-2_${{ steps.tag_version.outputs.tag }}+${{ env.GITHUB_RUN_NUMBER }}_x86_64-windows-${{ matrix.backend }}.zip
+            dist/fractal-rs-2_${{ steps.tag_version.outputs.tag }}+${{ env.GITHUB_RUN_NUMBER }}_x86_64-windows-${{ matrix.backend }}.msi
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -2,7 +2,10 @@
 
 use crate::{
     gpu::{
-        util::{get_desired_limits, print_adapter_info},
+        util::{
+            backend::{initialize_wgpu, WgpuInitializationError},
+            get_desired_limits, print_adapter_info,
+        },
         GPUContext, GPUContextType,
     },
     gui::util::get_trace_path,
@@ -17,9 +20,9 @@ use std::{
 };
 use tokio::{runtime, runtime::Handle, time::sleep};
 use wgpu::{
-    Backends, DeviceDescriptor, Instance, Maintain, PowerPreference, PresentMode,
-    RequestAdapterOptions, RequestDeviceError, SurfaceConfiguration, SurfaceError, TextureFormat,
-    TextureUsages, TextureView, TextureViewDescriptor,
+    DeviceDescriptor, Instance, Maintain, PowerPreference, PresentMode, RequestDeviceError,
+    SurfaceConfiguration, SurfaceError, TextureFormat, TextureUsages, TextureView,
+    TextureViewDescriptor,
 };
 use winit::{
     dpi::PhysicalSize,
@@ -141,20 +144,8 @@ impl Flow {
         // setup wgpu
         let window_size = window.inner_size();
 
-        info!("Creating instance...");
-        let instance = Arc::new(Instance::new(Backends::PRIMARY));
-
-        info!("Creating surface...");
-        let surface = unsafe { instance.create_surface(window.as_ref()) };
-
-        info!("Requesting adapter...");
-        let adapter = runtime
-            .block_on(instance.request_adapter(&RequestAdapterOptions {
-                power_preference: PowerPreference::default(),
-                force_fallback_adapter: false,
-                compatible_surface: Some(&surface),
-            }))
-            .ok_or(FlowStartError::AdapterRequestError)?;
+        let (instance, surface, adapter) =
+            initialize_wgpu(&window, runtime.handle(), PowerPreference::default())?;
 
         print_adapter_info(&adapter);
 
@@ -340,7 +331,7 @@ pub enum FlowStartError {
     #[error("Window Builder error")]
     OsError(#[from] OsError),
     #[error("Error requesting adapter")]
-    AdapterRequestError,
+    WgpuInitializationError(#[from] WgpuInitializationError),
     #[error("Error requesting device")]
     RequestDeviceError(#[from] RequestDeviceError),
 }

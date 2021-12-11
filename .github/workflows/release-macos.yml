@@ -8,6 +8,9 @@ on:
 
 jobs:
   build:
+    strategy:
+      matrix:
+        backend: [vulkan, metal]
     runs-on: macos-latest
     steps:
       - name: Get tag version
@@ -28,7 +31,7 @@ jobs:
         uses: actions-rs/cargo@v1
         with:
           command: bundle
-          args: --profile release-lto
+          args: --profile release-lto --features prefer-${{ matrix.backend }}
         env:
           WINIT_LINK_COLORSYNC: true
       - name: Create 'dist' directories
@@ -42,21 +45,21 @@ jobs:
         with:
           type: 'tar'
           directory: 'dist/bin/'
-          filename: fractal-rs-2-${{ steps.tag_version.outputs.tag }}-${{ runner.os }}.tgz
+          filename: fractal-rs-2_${{ steps.tag_version.outputs.tag }}+${{ env.GITHUB_RUN_NUMBER }}_x86_64-macos-${{ matrix.backend }}.tgz
           path: 'fractal-rs-2*'
       - name: Archive release app
         uses: thedoctor0/zip-release@master
         with:
           type: 'tar'
           directory: 'dist/app/'
-          filename: fractal-rs-2-${{ steps.tag_version.outputs.tag }}-${{ runner.os }}.app.tgz
+          filename: fractal-rs-2_${{ steps.tag_version.outputs.tag }}+${{ env.GITHUB_RUN_NUMBER }}_x86_64-macos-${{ matrix.backend }}-app.tgz
           path: 'fractal-rs-2*'
       - name: Publish release
         uses: softprops/action-gh-release@v1
         with:
           body_path: changelogs/changelog-${{ steps.tag_version.outputs.tag }}.md
           files: |
-            dist/bin/fractal-rs-2-${{ steps.tag_version.outputs.tag }}-${{ runner.os }}.tgz
-            dist/app/fractal-rs-2-${{ steps.tag_version.outputs.tag }}-${{ runner.os }}.app.tgz
+            dist/bin/fractal-rs-2_${{ steps.tag_version.outputs.tag }}+${{ env.GITHUB_RUN_NUMBER }}_x86_64-macos-${{ matrix.backend }}.tgz
+            dist/app/fractal-rs-2_${{ steps.tag_version.outputs.tag }}+${{ env.GITHUB_RUN_NUMBER }}_x86_64-macos-${{ matrix.backend }}-app.tgz
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
