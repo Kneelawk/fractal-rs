@@ -30,11 +30,11 @@ jobs:
         uses: actions-rs/cargo@v1
         with:
           command: bundle
-          args: --profile release-lto --features prefer-vulkan
+          args: --release --features prefer-vulkan
       - name: Create 'dist' directory
         run: mkdir dist
       - name: Copy release files
-        run: cp target/release-lto/fractal-rs-2 dist/
+        run: cp target/release/fractal-rs-2 dist/
       - name: Archive release
         uses: thedoctor0/zip-release@master
         with:
@@ -43,7 +43,7 @@ jobs:
           filename: fractal-rs-2_${{ steps.tag_version.outputs.tag }}+${{ env.GITHUB_RUN_NUMBER }}_x86_64-linux-vulkan.tgz
           path: 'fractal-rs-2*'
       - name: Copy DEB to dist
-        run: cp target/release-lto/bundle/deb/fractal-rs-2*.deb dist/fractal-rs-2_${{ steps.tag_version.outputs.tag }}+${{ env.GITHUB_RUN_NUMBER }}_x86_64-linux-vulkan.deb
+        run: cp target/release/bundle/deb/fractal-rs-2*.deb dist/fractal-rs-2_${{ steps.tag_version.outputs.tag }}+${{ env.GITHUB_RUN_NUMBER }}_x86_64-linux-vulkan.deb
       - name: Publish release
         uses: softprops/action-gh-release@v1
         with:

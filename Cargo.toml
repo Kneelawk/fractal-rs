@@ -56,8 +56,7 @@ tokio-stream = { version = "^0.1.7", features = ["sync"] }
 winit = "^0.25.0"
 wgpu = "^0.11.0"
 
-[profile.release-lto]
-inherits = "release"
+[profile.release]
 lto = true
 
 [package.metadata.bundle]

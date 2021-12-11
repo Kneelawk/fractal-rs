@@ -31,15 +31,15 @@ jobs:
         uses: actions-rs/cargo@v1
         with:
           command: bundle
-          args: --profile release-lto --features prefer-${{ matrix.backend }}
+          args: --release --features prefer-${{ matrix.backend }}
         env:
           WINIT_LINK_COLORSYNC: true
       - name: Create 'dist' directories
         run: mkdir -p dist/bin && mkdir -p dist/app
       - name: Copy release files
-        run: cp target/release-lto/fractal-rs-2 dist/bin/
+        run: cp target/release/fractal-rs-2 dist/bin/
       - name: Copy App files
-        run: cp -r target/release-lto/bundle/osx/fractal-rs-2*.app dist/app/
+        run: cp -r target/release/bundle/osx/fractal-rs-2*.app dist/app/
       - name: Archive release
         uses: thedoctor0/zip-release@master
         with:
