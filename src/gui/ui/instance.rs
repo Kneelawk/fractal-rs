@@ -383,6 +383,11 @@ impl UIInstance {
     pub fn handle_keyboard_shortcuts(&mut self, ctx: &UIInstanceRenderContext) {
         let shortcuts = ctx.shortcuts;
 
+        // Handle Deselect shortcut
+        if shortcuts.is_pressed(ShortcutName::Tab_DeselectPosition) {
+            self.viewer.selection_pos = None;
+        }
+
         // Handle Generate shortcut
         if shortcuts.is_pressed(ShortcutName::Tab_Generate) && !self.generation_running {
             self.generate_fractal = Some(UIInstanceGenerationType::Viewer);

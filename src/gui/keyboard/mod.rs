@@ -22,11 +22,14 @@ pub mod tree;
 
 /// The list of shortcuts in the app.
 pub const DEFAULT_SHORTCUT_LIST: &[(ShortcutName, Shortcut)] = &[
-    (App_Quit, shortcut!(Cmd - Q)),
-    (App_New, shortcut!(Cmd - N)),
+    // App shortcuts
+    (App_AlternateExitFullscreen, shortcut!(Escape)),
     (App_CloseTab, shortcut!(Cmd - W)),
     (App_Fullscreen, shortcut!(F11)),
-    (App_AlternateExitFullscreen, shortcut!(Escape)),
+    (App_Quit, shortcut!(Cmd - Q)),
+    (App_New, shortcut!(Cmd - N)),
+    // Tab shortcuts
+    (Tab_DeselectPosition, shortcut!(MacAlt - D)),
     (Tab_Generate, shortcut!(MacAlt - G)),
     (Tab_SpawnJulia, shortcut!(Shift - MacAlt - J)),
     (Tab_SwitchToJulia, shortcut!(MacAlt - J)),
@@ -40,13 +43,14 @@ pub const DEFAULT_SHORTCUT_LIST: &[(ShortcutName, Shortcut)] = &[
 )]
 pub enum ShortcutName {
     // App shortcuts
+    App_AlternateExitFullscreen,
+    App_Fullscreen,
+    App_CloseTab,
     App_Quit,
     App_New,
-    App_CloseTab,
-    App_Fullscreen,
-    App_AlternateExitFullscreen,
 
-    // Instance shortcuts
+    // Tab shortcuts
+    Tab_DeselectPosition,
     Tab_Generate,
     Tab_SpawnJulia,
     Tab_SwitchToJulia,
