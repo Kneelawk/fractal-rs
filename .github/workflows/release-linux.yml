@@ -21,16 +21,15 @@ jobs:
         uses: actions-rs/toolchain@v1
         with:
           toolchain: nightly-2021-11-26
-      - name: Install cargo-bundle
+      - name: Install cargo-deb
         uses: actions-rs/cargo@v1
         with:
           command: install
-          args: --git 'https://github.com/Kneelawk/cargo-bundle.git' --branch 'profile-option' cargo-bundle --force
+          args: cargo-deb
       - name: Build release
         uses: actions-rs/cargo@v1
         with:
-          command: bundle
-          args: --release --features prefer-vulkan
+          command: deb
       - name: Create 'dist' directory
         run: mkdir dist
       - name: Copy release files
@@ -43,7 +42,7 @@ jobs:
           filename: fractal-rs-2_${{ steps.tag_version.outputs.tag }}+${{ env.GITHUB_RUN_NUMBER }}_x86_64-linux-vulkan.tgz
           path: 'fractal-rs-2*'
       - name: Copy DEB to dist
-        run: cp target/release/bundle/deb/fractal-rs-2*.deb dist/fractal-rs-2_${{ steps.tag_version.outputs.tag }}+${{ env.GITHUB_RUN_NUMBER }}_x86_64-linux-vulkan.deb
+        run: cp target/debian/fractal-rs-2*.deb dist/fractal-rs-2_${{ steps.tag_version.outputs.tag }}+${{ env.GITHUB_RUN_NUMBER }}_x86_64-linux-vulkan.deb
       - name: Publish release
         uses: softprops/action-gh-release@v1
         with:

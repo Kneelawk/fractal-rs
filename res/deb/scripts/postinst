@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+
+# Install the fractal-rs-2 alternative
+update-alternatives --install /usr/bin/fractal-rs-2 fractal-rs-2 /opt/fractal-rs-2/bin/fractal-rs-2 20
+update-alternatives --install /usr/bin/fractal-rs fractal-rs /opt/fractal-rs-2/bin/fractal-rs-2 20

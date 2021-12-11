@@ -1,0 +1,11 @@
+[Desktop Entry]
+Version=1.0
+Encoding=UTF-8
+Categories=Graphics;
+Comment=Simple fractal viewer written in Rust
+Exec=fractal-rs-2
+Icon=fractal-rs-2
+Name=fractal-rs-2
+Terminal=false
+Type=Application
+MimeType=

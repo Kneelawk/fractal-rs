@@ -8,6 +8,7 @@ license = "MIT"
 description = "Simple fractal viewer written in Rust"
 repository = "https://github.com/Kneelawk/fractal-rs.git"
 keywords = ["fractal", "wgpu"]
+readme = "README.md"
 
 [features]
 debug-wgpu-trace = ["wgpu/trace"]
@@ -63,5 +64,16 @@ lto = true
 identifier = "com.kneelawk.fractal-rs-2"
 copyright = "Copyright (c) 2021 Jed Pommert (Kneelawk)"
 category = "GraphicsAndDesign"
-deb_depends = ["libgtk-3-0", "libxcb-shape0", "libxcb-xfixes0"]
 osx_minimum_system_version = "10.11"
+
+[package.metadata.deb]
+section = "Graphics"
+copyright = "Copyright (c) 2021 Jed Pommert (Kneelawk)"
+maintainer-scripts = "res/deb/scripts/"
+features = ["prefer-vulkan"]
+assets = [
+    ["target/release/fractal-rs-2", "opt/fractal-rs-2/bin/", "755"],
+    ["res/deb/fractal-rs-2.desktop", "usr/share/applications/", "644"],
+    ["README.md", "usr/share/doc/fractal-rs-2/", "644"],
+    ["LICENSE", "usr/share/doc/fractal-rs-2/", "644"]
+]
