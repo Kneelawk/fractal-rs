@@ -45,21 +45,21 @@ jobs:
         with:
           type: 'tar'
           directory: 'dist/bin/'
-          filename: fractal-rs-2_${{ steps.tag_version.outputs.tag }}+${{ env.GITHUB_RUN_NUMBER }}_x86_64-macos-${{ matrix.backend }}.tgz
+          filename: fractal-rs-2_${{ steps.tag_version.outputs.tag }}_x86_64-macos-${{ matrix.backend }}.tgz
           path: 'fractal-rs-2*'
       - name: Archive release app
         uses: thedoctor0/zip-release@master
         with:
           type: 'tar'
           directory: 'dist/app/'
-          filename: fractal-rs-2_${{ steps.tag_version.outputs.tag }}+${{ env.GITHUB_RUN_NUMBER }}_x86_64-macos-${{ matrix.backend }}-app.tgz
+          filename: fractal-rs-2_${{ steps.tag_version.outputs.tag }}_x86_64-macos-${{ matrix.backend }}-app.tgz
           path: 'fractal-rs-2*'
       - name: Publish release
         uses: softprops/action-gh-release@v1
         with:
           body_path: changelogs/changelog-${{ steps.tag_version.outputs.tag }}.md
           files: |
-            dist/bin/fractal-rs-2_${{ steps.tag_version.outputs.tag }}+${{ env.GITHUB_RUN_NUMBER }}_x86_64-macos-${{ matrix.backend }}.tgz
-            dist/app/fractal-rs-2_${{ steps.tag_version.outputs.tag }}+${{ env.GITHUB_RUN_NUMBER }}_x86_64-macos-${{ matrix.backend }}-app.tgz
+            dist/bin/fractal-rs-2_${{ steps.tag_version.outputs.tag }}_x86_64-macos-${{ matrix.backend }}.tgz
+            dist/app/fractal-rs-2_${{ steps.tag_version.outputs.tag }}_x86_64-macos-${{ matrix.backend }}-app.tgz
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

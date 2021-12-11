@@ -39,16 +39,16 @@ jobs:
         with:
           type: 'tar'
           directory: 'dist/'
-          filename: fractal-rs-2_${{ steps.tag_version.outputs.tag }}+${{ env.GITHUB_RUN_NUMBER }}_x86_64-linux-vulkan.tgz
+          filename: fractal-rs-2_${{ steps.tag_version.outputs.tag }}_x86_64-linux-vulkan.tgz
           path: 'fractal-rs-2*'
       - name: Copy DEB to dist
-        run: cp target/debian/fractal-rs-2*.deb dist/fractal-rs-2_${{ steps.tag_version.outputs.tag }}+${{ env.GITHUB_RUN_NUMBER }}_x86_64-linux-vulkan.deb
+        run: cp target/debian/fractal-rs-2*.deb dist/fractal-rs-2_${{ steps.tag_version.outputs.tag }}_x86_64-linux-vulkan.deb
       - name: Publish release
         uses: softprops/action-gh-release@v1
         with:
           body_path: changelogs/changelog-${{ steps.tag_version.outputs.tag }}.md
           files: |
-            dist/fractal-rs-2_${{ steps.tag_version.outputs.tag }}+${{ env.GITHUB_RUN_NUMBER }}_x86_64-linux-vulkan.tgz
-            dist/fractal-rs-2_${{ steps.tag_version.outputs.tag }}+${{ env.GITHUB_RUN_NUMBER }}_x86_64-linux-vulkan.deb
+            dist/fractal-rs-2_${{ steps.tag_version.outputs.tag }}_x86_64-linux-vulkan.tgz
+            dist/fractal-rs-2_${{ steps.tag_version.outputs.tag }}_x86_64-linux-vulkan.deb
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
