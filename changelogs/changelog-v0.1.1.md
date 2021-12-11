@@ -6,3 +6,5 @@
 * Added installers.
 * Added features to prefer a specific backend if available.
 * Added release builds that prefer a specific backend if available.
+* Made linux debs install binaries to `/opt/fractal-rs-2` and
+  use `update-alternatives`.
