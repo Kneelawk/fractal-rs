@@ -36,7 +36,7 @@ jobs:
         uses: actions-rs/cargo@v1
         with:
           command: wix
-          args: --nocapture
+          args: --nocapture --no-build
       - name: Create 'dist' directory
         run: mkdir dist
       - name: Copy release files
