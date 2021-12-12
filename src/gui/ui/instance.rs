@@ -16,7 +16,8 @@ use crate::{
     util::result::ResultExt,
 };
 use egui::{
-    vec2, Button, Color32, ComboBox, CtxRef, DragValue, Label, ProgressBar, TextEdit, TextStyle, Ui,
+    vec2, Button, Color32, ComboBox, CtxRef, DragValue, Label, Layout, ProgressBar, TextEdit,
+    TextStyle, Ui,
 };
 use egui_wgpu_backend::RenderPass;
 use num_complex::Complex32;
@@ -471,7 +472,8 @@ impl UIInstance {
                                 ui,
                                 |ui| {
                                     ui.label("Image Width:");
-                                    ui.add(
+                                    ui.add_sized(
+                                        vec2(80.0, ui.spacing().interact_size.y),
                                         DragValue::new(&mut self.edit_viewer_width)
                                             .speed(1.0)
                                             .clamp_range(
@@ -481,7 +483,8 @@ impl UIInstance {
                                     ui.end_row();
 
                                     ui.label("Image Height:");
-                                    ui.add(
+                                    ui.add_sized(
+                                        vec2(80.0, ui.spacing().interact_size.y),
                                         DragValue::new(&mut self.edit_viewer_height)
                                             .speed(1.0)
                                             .clamp_range(
@@ -523,7 +526,8 @@ impl UIInstance {
                                 ui,
                                 |ui| {
                                     ui.label("Image Width:");
-                                    ui.add(
+                                    ui.add_sized(
+                                        vec2(80.0, ui.spacing().interact_size.y),
                                         DragValue::new(&mut self.edit_image_width)
                                             .speed(1.0)
                                             .clamp_range(2..=65536),
@@ -531,7 +535,8 @@ impl UIInstance {
                                     ui.end_row();
 
                                     ui.label("Image Height:");
-                                    ui.add(
+                                    ui.add_sized(
+                                        vec2(80.0, ui.spacing().interact_size.y),
                                         DragValue::new(&mut self.edit_image_height)
                                             .speed(1.0)
                                             .clamp_range(2..=65536),
@@ -550,7 +555,8 @@ impl UIInstance {
                     .show(ui, |ui| {
                         egui::Grid::new("complex_plane_settings.grid").show(ui, |ui| {
                             ui.label("Plane Width:");
-                            ui.add(
+                            ui.add_sized(
+                                vec2(80.0, ui.spacing().interact_size.y),
                                 DragValue::new(&mut self.edit_fractal_plane_width)
                                     .clamp_range(0.0..=10.0)
                                     .speed(0.03125),
@@ -564,20 +570,32 @@ impl UIInstance {
                             ui.end_row();
 
                             ui.label("Plane Real Center:");
-                            ui.add_enabled(
-                                !self.edit_fractal_plane_centered,
-                                DragValue::new(&mut self.edit_fractal_plane_center_x)
-                                    .clamp_range(-10.0..=10.0)
-                                    .speed(0.03125),
+                            ui.allocate_ui_with_layout(
+                                vec2(80.0, ui.spacing().interact_size.y),
+                                Layout::centered_and_justified(ui.layout().main_dir()),
+                                |ui| {
+                                    ui.set_enabled(!self.edit_fractal_plane_centered);
+                                    ui.add(
+                                        DragValue::new(&mut self.edit_fractal_plane_center_x)
+                                            .clamp_range(-10.0..=10.0)
+                                            .speed(0.03125),
+                                    );
+                                },
                             );
                             ui.end_row();
 
                             ui.label("Plane Imaginary Center:");
-                            ui.add_enabled(
-                                !self.edit_fractal_plane_centered,
-                                DragValue::new(&mut self.edit_fractal_plane_center_y)
-                                    .clamp_range(-10.0..=10.0)
-                                    .speed(0.03125),
+                            ui.allocate_ui_with_layout(
+                                vec2(80.0, ui.spacing().interact_size.y),
+                                Layout::centered_and_justified(ui.layout().main_dir()),
+                                |ui| {
+                                    ui.set_enabled(!self.edit_fractal_plane_centered);
+                                    ui.add(
+                                        DragValue::new(&mut self.edit_fractal_plane_center_y)
+                                            .clamp_range(-10.0..=10.0)
+                                            .speed(0.03125),
+                                    );
+                                },
                             );
                             ui.end_row();
                         });
@@ -594,7 +612,8 @@ impl UIInstance {
                             ui.end_row();
 
                             ui.label("C-real:");
-                            ui.add(
+                            ui.add_sized(
+                                vec2(80.0, ui.spacing().interact_size.y),
                                 DragValue::new(&mut self.c.re)
                                     .clamp_range(-10.0..=10.0)
                                     .speed(0.0001)
@@ -604,7 +623,8 @@ impl UIInstance {
                             ui.end_row();
 
                             ui.label("C-imaginary:");
-                            ui.add(
+                            ui.add_sized(
+                                vec2(80.0, ui.spacing().interact_size.y),
                                 DragValue::new(&mut self.c.im)
                                     .clamp_range(-10.0..=10.0)
                                     .speed(0.0001)
@@ -614,7 +634,10 @@ impl UIInstance {
                             ui.end_row();
 
                             ui.label("Iterations:");
-                            ui.add(DragValue::new(&mut self.iterations).clamp_range(1..=1000));
+                            ui.add_sized(
+                                vec2(80.0, ui.spacing().interact_size.y),
+                                DragValue::new(&mut self.iterations).clamp_range(1..=1000),
+                            );
                             ui.end_row();
                         });
                     });
@@ -664,7 +687,8 @@ impl UIInstance {
                     };
 
                     ui.label("Real:");
-                    ui.add(
+                    ui.add_sized(
+                        vec2(80.0, ui.spacing().interact_size.y),
                         DragValue::new(&mut selection_pos.re)
                             .speed(0.0001)
                             .min_decimals(7)
@@ -673,7 +697,8 @@ impl UIInstance {
                     ui.end_row();
 
                     ui.label("Imaginary:");
-                    ui.add(
+                    ui.add_sized(
+                        vec2(80.0, ui.spacing().interact_size.y),
                         DragValue::new(&mut selection_pos.im)
                             .speed(0.0001)
                             .min_decimals(7)
