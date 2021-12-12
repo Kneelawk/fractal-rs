@@ -212,7 +212,12 @@ impl ShortcutMap {
 
     /// Gets a list of the current bindings for a given shortcut name, if any.
     pub fn keys_for(&self, name: &ShortcutName) -> KeysFor {
-        KeysFor(self.names.get(name))
+        KeysFor(
+            self.names
+                .get(name)
+                .map(|vec| vec.as_slice())
+                .unwrap_or(&[]),
+        )
     }
 
     /// Replaces all bindings for a shortcut name with the binding given.
@@ -438,7 +443,13 @@ impl ShortcutMap {
 }
 
 /// Represents a list of the current bindings for a given shortcut name, if any.
-pub struct KeysFor<'a>(Option<&'a Vec<Shortcut>>);
+pub struct KeysFor<'a>(&'a [Shortcut]);
+
+impl<'a> KeysFor<'a> {
+    pub fn shortcuts(&self) -> &'a [Shortcut] {
+        self.0
+    }
+}
 
 //
 // Conflicts stuff
@@ -489,11 +500,7 @@ impl ShortcutMapConflicts {
 
 impl<'a> Display for KeysFor<'a> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        if let Some(bindings) = self.0 {
-            write!(f, "{}", bindings.iter().format(", "))
-        } else {
-            write!(f, "")
-        }
+        write!(f, "{}", self.0.iter().format(", "))
     }
 }
 

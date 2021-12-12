@@ -82,6 +82,7 @@ pub struct FractalRSUI {
     apply_shortcut_binding: bool,
     shortcut_reset_request: Option<ShortcutName>,
     reset_all_shortcuts: bool,
+    shortcut_initial_value_set: bool,
 
     // generator stuff
     instance: Arc<Instance>,
@@ -263,6 +264,7 @@ impl FractalRSUI {
             apply_shortcut_binding: false,
             shortcut_reset_request: None,
             reset_all_shortcuts: false,
+            shortcut_initial_value_set: false,
             instance: ctx.instance,
             factory_future: Default::default(),
             factory,
@@ -351,6 +353,7 @@ impl FractalRSUI {
             self.shortcut_change_request = None;
             self.selected_shortcut_binding = None;
             self.apply_shortcut_binding = false;
+            self.shortcut_initial_value_set = false;
         }
 
         // Update all the instances, even the ones that are not currently being
@@ -822,6 +825,16 @@ impl FractalRSUI {
 
     fn handle_change_shortcut(&mut self, ctx: &UIRenderContext) {
         if let Some(change_requested) = self.shortcut_change_request {
+            if !self.shortcut_initial_value_set {
+                self.shortcut_initial_value_set = true;
+                // If we had UI support for multiple bindings per shortcut name, we would set
+                // all of them here, but because we don't, we just set it to the first one.
+                let shortcuts = ctx.shortcuts.keys_for(&change_requested).shortcuts();
+                if !shortcuts.is_empty() {
+                    self.selected_shortcut_binding = Some(shortcuts[0]);
+                }
+            }
+
             let pressed = ctx.key_tracker.get_shortcuts();
             if self.selected_shortcut_binding.is_none() && !pressed.is_empty() {
                 self.selected_shortcut_binding = Some(pressed[0]);
