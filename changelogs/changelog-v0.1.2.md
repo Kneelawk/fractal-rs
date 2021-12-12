@@ -2,3 +2,4 @@
 
 ## Changelog:
 * Add keyboard shortcut to deselect the viewer selected position.
+* Allowed users to select nothing for a keyboard shortcut binding.
