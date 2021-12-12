@@ -1021,7 +1021,7 @@ mod test {
             "Alt+G should only be bound to Tab_Generate"
         );
 
-        map.replace_associations(Tab_Generate, shortcut!(Alt - F));
+        map.replace_associations(Tab_Generate, Some(shortcut!(Alt - F)));
 
         map.update(&[shortcut!(Alt - F)]);
         assert!(
@@ -1068,7 +1068,7 @@ mod test {
             "There should not be any name conflicts."
         );
 
-        map.replace_associations(App_Quit, shortcut!(Ctrl - Q));
+        map.replace_associations(App_Quit, Some(shortcut!(Ctrl - Q)));
 
         assert!(
             map.get_conflicts().is_empty(),
@@ -1112,7 +1112,7 @@ mod test {
             "There should not be any name conflicts."
         );
 
-        map.replace_associations(App_Quit, shortcut!(Ctrl - Q));
+        map.replace_associations(App_Quit, Some(shortcut!(Ctrl - Q)));
 
         assert!(
             !map.get_conflicts().is_empty(),
@@ -1167,7 +1167,7 @@ mod test {
             map.get_conflicts()
         );
 
-        map.replace_associations(App_Quit, shortcut!(Ctrl - N));
+        map.replace_associations(App_Quit, Some(shortcut!(Ctrl - N)));
 
         assert!(
             !map.get_conflicts().is_empty(),
@@ -1248,7 +1248,7 @@ mod test {
             ],
         );
 
-        map.replace_associations(App_Quit, shortcut!(Ctrl - W));
+        map.replace_associations(App_Quit, Some(shortcut!(Ctrl - W)));
 
         assert!(
             map.is_modified(),
