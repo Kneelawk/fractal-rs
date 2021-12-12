@@ -216,7 +216,7 @@ impl ShortcutMap {
     }
 
     /// Replaces all bindings for a shortcut name with the binding given.
-    pub fn replace_associations(&mut self, name: ShortcutName, binding: Shortcut) {
+    pub fn replace_associations(&mut self, name: ShortcutName, binding: Option<Shortcut>) {
         // replace the association
         Self::impl_remove_name(
             &mut self.bindings,
@@ -225,14 +225,17 @@ impl ShortcutMap {
             &mut self.conflicts.name_conflicts,
             &name,
         );
-        Self::impl_add_association(
-            &mut self.bindings,
-            &mut self.names,
-            &mut self.conflicts.binding_conflicts,
-            &mut self.conflicts.name_conflicts,
-            name,
-            binding,
-        );
+
+        if let Some(binding) = binding {
+            Self::impl_add_association(
+                &mut self.bindings,
+                &mut self.names,
+                &mut self.conflicts.binding_conflicts,
+                &mut self.conflicts.name_conflicts,
+                name,
+                binding,
+            );
+        }
 
         // recalculate the modifications
         self.modifications = Self::calculate_modifications(&self.names, &self.defaults);

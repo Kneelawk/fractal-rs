@@ -78,8 +78,8 @@ pub struct FractalRSUI {
 
     // shortcuts
     shortcut_change_request: Option<ShortcutName>,
-    current_shortcut_binding: Option<Shortcut>,
-    shortcut_new_binding: Option<Shortcut>,
+    selected_shortcut_binding: Option<Shortcut>,
+    apply_shortcut_binding: bool,
     shortcut_reset_request: Option<ShortcutName>,
     reset_all_shortcuts: bool,
 
@@ -259,8 +259,8 @@ impl FractalRSUI {
             initial_window_width: ui_settings.initial_window_width,
             initial_window_height: ui_settings.initial_window_height,
             shortcut_change_request: None,
-            current_shortcut_binding: None,
-            shortcut_new_binding: None,
+            selected_shortcut_binding: None,
+            apply_shortcut_binding: false,
             shortcut_reset_request: None,
             reset_all_shortcuts: false,
             instance: ctx.instance,
@@ -333,9 +333,8 @@ impl FractalRSUI {
 
         // Only let shortcut handlers handle shortcuts if we're not currently setting a
         // shortcut binding.
-        ctx.shortcuts.set_enabled(
-            self.shortcut_change_request.is_none() || self.shortcut_new_binding.is_some(),
-        );
+        ctx.shortcuts
+            .set_enabled(self.shortcut_change_request.is_none());
 
         // Handle reset requests
         if let Some(reset_request) = self.shortcut_reset_request {
@@ -344,14 +343,14 @@ impl FractalRSUI {
         }
 
         // Once a new shortcut binding has been chosen, we'll apply it.
-        if let (Some(change_request), Some(new_binding)) =
-            (self.shortcut_change_request, self.shortcut_new_binding)
-        {
-            ctx.shortcuts
-                .replace_associations(change_request, new_binding);
+        if self.apply_shortcut_binding && self.shortcut_change_request.is_some() {
+            ctx.shortcuts.replace_associations(
+                self.shortcut_change_request.unwrap(),
+                self.selected_shortcut_binding,
+            );
             self.shortcut_change_request = None;
-            self.shortcut_new_binding = None;
-            self.current_shortcut_binding = None;
+            self.selected_shortcut_binding = None;
+            self.apply_shortcut_binding = false;
         }
 
         // Update all the instances, even the ones that are not currently being
@@ -824,8 +823,8 @@ impl FractalRSUI {
     fn handle_change_shortcut(&mut self, ctx: &UIRenderContext) {
         if let Some(change_requested) = self.shortcut_change_request {
             let pressed = ctx.key_tracker.get_shortcuts();
-            if self.current_shortcut_binding.is_none() && !pressed.is_empty() {
-                self.current_shortcut_binding = Some(pressed[0]);
+            if self.selected_shortcut_binding.is_none() && !pressed.is_empty() {
+                self.selected_shortcut_binding = Some(pressed[0]);
             }
 
             egui::Window::new("New Keyboard Shortcut")
@@ -839,7 +838,7 @@ impl FractalRSUI {
                     ));
                     ui.horizontal(|ui| {
                         ui.label("Shortcut:");
-                        let button_text = if let Some(shortcut) = self.current_shortcut_binding {
+                        let button_text = if let Some(shortcut) = self.selected_shortcut_binding {
                             shortcut.to_string()
                         } else {
                             "".to_string()
@@ -850,7 +849,7 @@ impl FractalRSUI {
                         );
 
                         if ui.button("Clear").clicked() {
-                            self.current_shortcut_binding = None;
+                            self.selected_shortcut_binding = None;
                         }
                     });
 
@@ -858,11 +857,11 @@ impl FractalRSUI {
 
                     ui.with_layout(Layout::right_to_left().with_cross_align(Align::Min), |ui| {
                         if ui.button("Apply New Shortcut").clicked() {
-                            self.shortcut_new_binding = self.current_shortcut_binding;
+                            self.apply_shortcut_binding = true;
                         }
                         if ui.button("Cancel").clicked() {
                             self.shortcut_change_request = None;
-                            self.current_shortcut_binding = None;
+                            self.selected_shortcut_binding = None;
                         }
                     });
                 });
