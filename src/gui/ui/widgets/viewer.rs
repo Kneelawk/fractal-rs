@@ -1,9 +1,9 @@
 //! viewer.rs - This file holds the systems for the fractal image viewer. This
 //! means both image managing and rendering.
 
-use crate::{generator::view::View, gpu::util::create_texture};
+use crate::{generator::view::View, gpu::util::create_texture, gui::util::conversion::IntoVec2};
 use egui::{
-    paint::Mesh, vec2, Align2, Color32, PointerButton, Pos2, Rect, Response, Sense, Shape,
+    paint::Mesh, Align2, Color32, PointerButton, Pos2, Rect, Response, Sense, Shape, Stroke,
     TextStyle, TextureId, Ui, Vec2, Widget,
 };
 use egui_wgpu_backend::RenderPass;
@@ -15,6 +15,10 @@ use wgpu::{
 
 const IMAGE_UV_RECT: Rect = Rect::from_min_max(Pos2 { x: 0.0, y: 0.0 }, Pos2 { x: 1.0, y: 1.0 });
 const POSITION_SELECTION_COLOR: Color32 = Color32::WHITE;
+const ZOOM_BORDER: Stroke = Stroke {
+    width: 2.0,
+    color: POSITION_SELECTION_COLOR,
+};
 
 pub struct FractalViewer {
     // Static Components
@@ -33,6 +37,10 @@ pub struct FractalViewer {
 
     // Selection Components
     pub selection_pos: Option<Complex32>,
+
+    // Zoom Components
+    scroll_mode: ScrollMode,
+    pub new_plane_width: Option<f32>,
 }
 
 impl FractalViewer {
@@ -72,6 +80,8 @@ impl FractalViewer {
             fractal_offset: Vec2::new(0.0, 0.0),
             fractal_scale: 1.0,
             selection_pos: None,
+            scroll_mode: ScrollMode::Image,
+            new_plane_width: None,
         }
     }
 
@@ -151,6 +161,39 @@ impl FractalViewer {
         }
     }
 
+    pub fn is_plane_scrolling(&self) -> bool {
+        self.scroll_mode == ScrollMode::Plane
+    }
+
+    /// Switches this view to scaling the size of the new potential fractal
+    /// plane.
+    pub fn switch_to_plane_scrolling(&mut self) {
+        self.scroll_mode = ScrollMode::Plane;
+        if self.new_plane_width.is_none() {
+            self.new_plane_width =
+                Some(self.fractal_view.image_width as f32 * self.fractal_view.image_scale_x);
+        }
+    }
+
+    /// Switches this view to scaling the already-generated image.
+    pub fn switch_to_image_scrolling(&mut self) {
+        self.scroll_mode = ScrollMode::Image;
+    }
+
+    /// Clears any current potential new fractal plane scale and sets the scroll
+    /// mode to image scrolling.
+    pub fn clear_potential_plane_scale(&mut self) {
+        self.scroll_mode = ScrollMode::Image;
+        self.new_plane_width = None;
+    }
+
+    /// Resets the potential new fractal plane scale to match that of the entire
+    /// image.
+    pub fn reset_potential_plane_scale(&mut self) {
+        self.new_plane_width =
+            Some(self.fractal_view.image_width as f32 * self.fractal_view.image_scale_x);
+    }
+
     pub fn draw(&mut self, ui: &mut egui::Ui, opts: &FractalViewerDrawOptions) -> Response {
         let desired_size = opts
             .max_size_override
@@ -164,15 +207,36 @@ impl FractalViewer {
             self.fractal_offset += response.drag_delta().into();
         }
 
+        // Handle if something weird happens and we end up attempting to change the new
+        // image scale, but none has been set yet.
+        if self.scroll_mode == ScrollMode::Plane && self.new_plane_width.is_none() {
+            self.new_plane_width =
+                Some(self.fractal_view.image_width as f32 * self.fractal_view.image_scale_x);
+        }
+
         // handle scroll events, but only if we're being hovered over
         if response.hovered() {
             let scroll = ui.input().scroll_delta.y;
-            if scroll > 1.0 {
-                self.fractal_scale *= 1.1;
-                self.fractal_offset *= 1.1;
-            } else if scroll < -1.0 {
-                self.fractal_scale /= 1.1;
-                self.fractal_offset = self.fractal_offset / 1.1;
+
+            match &mut self.scroll_mode {
+                ScrollMode::Image => {
+                    if scroll > 1.0 {
+                        self.fractal_scale *= 1.1;
+                        self.fractal_offset *= 1.1;
+                    } else if scroll < -1.0 {
+                        self.fractal_scale /= 1.1;
+                        self.fractal_offset = self.fractal_offset / 1.1;
+                    }
+                },
+                ScrollMode::Plane => {
+                    if let Some(new_plane_size) = &mut self.new_plane_width {
+                        if scroll > 1.0 {
+                            *new_plane_size /= 2.0;
+                        } else if scroll < -1.0 {
+                            *new_plane_size *= 2.0;
+                        }
+                    }
+                },
             }
         }
 
@@ -230,8 +294,8 @@ impl FractalViewer {
                 // calculate the associated pixel position of the selected complex position
                 let pixel_selection = self
                     .fractal_view
-                    .get_local_unconstrained_pixel_coordinates(complex_selection);
-                let pixel_selection = vec2(pixel_selection.0 as f32, pixel_selection.1 as f32);
+                    .get_local_unconstrained_pixel_coordinates(complex_selection)
+                    .into_vec2();
 
                 // calculate selection highlight position
                 let pixel_rect = Rect::from_min_size(
@@ -442,6 +506,33 @@ impl FractalViewer {
                         );
                     }
                 }
+
+                // Draw the zoom selection thingy
+                if let Some(new_plane_width) = self.new_plane_width {
+                    // This is so unoptimised
+                    let new_image_scale = new_plane_width / self.fractal_view.image_width as f32;
+                    let new_plane_height = self.fractal_view.image_height as f32 * new_image_scale;
+                    let plane_offset =
+                        Complex32::new(new_plane_width / 2.0, new_plane_height / 2.0);
+                    let plane_min = complex_selection - plane_offset;
+                    let plane_max = complex_selection + plane_offset;
+                    let image_min = self
+                        .fractal_view
+                        .get_local_unconstrained_pixel_coordinates(plane_min)
+                        .into_vec2();
+                    let image_max = self
+                        .fractal_view
+                        .get_local_unconstrained_pixel_coordinates(plane_max)
+                        .into_vec2();
+
+                    let pixel_rect = Rect::from_min_max(
+                        img_start + image_min * self.fractal_scale,
+                        img_start + image_max * self.fractal_scale,
+                    )
+                    .expand(ZOOM_BORDER.width);
+
+                    clip_painter.rect_stroke(pixel_rect, 0.0, ZOOM_BORDER);
+                }
             }
         }
 
@@ -487,4 +578,15 @@ pub struct FractalViewerDrawOptions {
 pub enum FractalViewerError {
     #[error("Egui WGPU Backend Error")]
     BackendError(#[from] egui_wgpu_backend::BackendError),
+}
+
+#[derive(Debug, Copy, Clone, Ord, PartialOrd, Eq, PartialEq)]
+enum ScrollMode {
+    /// The image itself gets larger or smaller when you scroll, but zooming is
+    /// limited by the current pixel resolution of the image.
+    Image,
+
+    /// The selected zoom level gets larger or smaller when you scroll, but the
+    /// current image size stays the same.
+    Plane,
 }

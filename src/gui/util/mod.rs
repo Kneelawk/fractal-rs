@@ -1,3 +1,5 @@
+pub mod conversion;
+
 use std::{io, path::PathBuf};
 
 /// Gets WGPU trace path for this application.
