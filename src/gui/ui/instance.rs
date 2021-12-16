@@ -356,6 +356,8 @@ impl UIInstance {
         }
         self.generate_julia_from_point = false;
 
+        // If we're wanting to start generating a zoomed-in fractal, let's set up the
+        // settings and set ourselves to start that on the next update() call.
         if self.generate_fractal_with_zoom && !self.generation_running {
             self.edit_fractal_plane_width = self.deselected_new_plane_width;
             if self.deselected_position != Complex32::zero() {
@@ -446,6 +448,26 @@ impl UIInstance {
             && self.parent_instance.is_some()
         {
             self.switch_to_parent = true;
+        }
+
+        // Handle alternating between scrolling changing the size of the current view or
+        // the potential new one.
+        if shortcuts.is_pressed(ShortcutName::Tab_ViewerScrollNewOrCurrent) {
+            if self.viewer.is_plane_scrolling() {
+                self.viewer.switch_to_image_scrolling();
+            } else {
+                self.viewer.switch_to_plane_scrolling();
+            }
+        }
+
+        // Handle clearing the potential new zoom value.
+        if shortcuts.is_pressed(ShortcutName::Tab_ClearNewZoom) {
+            self.viewer.clear_potential_plane_scale();
+        }
+
+        // Handle applying the new zoom value.
+        if shortcuts.is_pressed(ShortcutName::Tab_ApplyNewZoom) {
+            self.generate_fractal_with_zoom = true;
         }
     }
 
