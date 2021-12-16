@@ -81,7 +81,6 @@ pub struct UIInstance {
     // fractal viewers
     viewer: FractalViewer,
     deselected_position: Complex32,
-    deselected_new_plane_width: f32,
 
     // julia target stuff
     generate_julia_from_point: bool,
@@ -241,7 +240,6 @@ impl UIInstance {
             iterations: ctx.initial_settings.iterations,
             viewer,
             deselected_position: Default::default(),
-            deselected_new_plane_width: plane_height,
             generate_julia_from_point: false,
             switch_to_target: false,
             switch_to_parent: false,
@@ -353,10 +351,6 @@ impl UIInstance {
             self.deselected_position = selected_position;
         }
 
-        if let Some(new_plane_width) = self.viewer.new_plane_width {
-            self.deselected_new_plane_width = new_plane_width;
-        }
-
         // If we're wanting to start a julia set, then we need to request that.
         if self.generate_julia_from_point {
             ctx.operations.push(UIOperationRequest::StartJuliaSet {
@@ -369,7 +363,10 @@ impl UIInstance {
         // If we're wanting to start generating a zoomed-in fractal, let's set up the
         // settings and set ourselves to start that on the next update() call.
         if self.generate_fractal_with_zoom && !self.generation_running {
-            self.edit_fractal_plane_width = self.deselected_new_plane_width;
+            if let Some(new_plane_width) = self.viewer.new_plane_width {
+                self.edit_fractal_plane_width = new_plane_width;
+            }
+
             if self.deselected_position != Complex32::zero() {
                 self.edit_fractal_plane_centered = false;
                 self.edit_fractal_plane_center_x = self.deselected_position.re;
@@ -854,7 +851,7 @@ impl UIInstance {
                                     {
                                         new_plane_width
                                     } else {
-                                        &mut self.deselected_new_plane_width
+                                        &mut self.edit_fractal_plane_width
                                     };
 
                                     ui.add(
