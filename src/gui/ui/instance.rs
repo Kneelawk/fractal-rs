@@ -68,6 +68,11 @@ pub struct UIInstance {
     edit_fractal_plane_center_x: f32,
     edit_fractal_plane_center_y: f32,
 
+    // backup plane values for resets
+    init_fractal_plane_width: f32,
+    init_fractal_plane_center_x: f32,
+    init_fractal_plane_center_y: f32,
+
     // mandelbrot & julia/fatou set controls
     pub mandelbrot: bool,
     pub c: Complex32,
@@ -89,6 +94,7 @@ pub struct UIInstance {
 
     // zoom stuff
     generate_fractal_with_zoom: bool,
+    generate_reset_fractal: bool,
 }
 
 /// Struct holding all the information needed when creating a new UIInstance.
@@ -227,6 +233,9 @@ impl UIInstance {
             edit_fractal_plane_centered: center_x == 0.0 && center_y == 0.0,
             edit_fractal_plane_center_x: center_x,
             edit_fractal_plane_center_y: center_y,
+            init_fractal_plane_width: plane_width,
+            init_fractal_plane_center_x: center_x,
+            init_fractal_plane_center_y: center_y,
             mandelbrot: ctx.initial_settings.mandelbrot,
             c: ctx.initial_settings.c,
             iterations: ctx.initial_settings.iterations,
@@ -241,6 +250,7 @@ impl UIInstance {
             new_target_instance: None,
             parent_instance: None,
             generate_fractal_with_zoom: false,
+            generate_reset_fractal: false,
         }
     }
 
@@ -377,6 +387,22 @@ impl UIInstance {
         }
         self.generate_fractal_with_zoom = false;
 
+        // If we're wanting to start generating a reset-zoom fractal, let's set up the
+        // settings and set ourselves to start that on the next update() call.
+        if self.generate_reset_fractal && !self.generation_running {
+            self.edit_fractal_plane_width = self.init_fractal_plane_width;
+            self.edit_fractal_plane_center_x = self.init_fractal_plane_center_x;
+            self.edit_fractal_plane_center_y = self.init_fractal_plane_center_y;
+            self.edit_fractal_plane_centered =
+                self.init_fractal_plane_center_y == 0.0 && self.init_fractal_plane_center_x == 0.0;
+
+            self.generate_fractal = Some(UIInstanceGenerationType::Viewer);
+
+            self.viewer.clear_potential_plane_scale();
+            self.viewer.fractal_offset = vec2(0.0, 0.0);
+        }
+        self.generate_reset_fractal = false;
+
         if self.target_instance != self.new_target_instance {
             // This operation will set target instance, so we don't do it here
             ctx.operations.push(UIOperationRequest::SetTarget {
@@ -466,8 +492,13 @@ impl UIInstance {
         }
 
         // Handle applying the new zoom value.
-        if shortcuts.is_pressed(ShortcutName::Tab_ApplyNewZoom) {
+        if shortcuts.is_pressed(ShortcutName::Tab_ApplyNewZoom) && !self.generation_running {
             self.generate_fractal_with_zoom = true;
+        }
+
+        // Handle resetting the fractal zoom and center.
+        if shortcuts.is_pressed(ShortcutName::Tab_ApplyResetZoom) && !self.generation_running {
+            self.generate_reset_fractal = true;
         }
     }
 
@@ -853,6 +884,10 @@ impl UIInstance {
                                 .clicked()
                             {
                                 self.generate_fractal_with_zoom = true;
+                            }
+
+                            if ui.button("Generate Reset Fractal").clicked() {
+                                self.generate_reset_fractal = true;
                             }
                         });
                     });
