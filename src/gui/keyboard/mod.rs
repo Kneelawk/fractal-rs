@@ -34,6 +34,10 @@ pub const DEFAULT_SHORTCUT_LIST: &[(ShortcutName, Shortcut)] = &[
     (Tab_SpawnJulia, shortcut!(Shift - MacAlt - J)),
     (Tab_SwitchToJulia, shortcut!(MacAlt - J)),
     (Tab_SwitchToMandelbrot, shortcut!(MacAlt - M)),
+    (Tab_ViewerScrollNewOrCurrent, shortcut!(MacAlt - Z)),
+    (Tab_ClearNewZoom, shortcut!(MacAlt - X)),
+    (Tab_ApplyNewZoom, shortcut!(MacAlt - C)),
+    (Tab_ApplyResetZoom, shortcut!(MacAlt - V)),
 ];
 
 /// This enum contains an entry for each keyboard shortcut the application uses.
@@ -55,6 +59,10 @@ pub enum ShortcutName {
     Tab_SpawnJulia,
     Tab_SwitchToJulia,
     Tab_SwitchToMandelbrot,
+    Tab_ViewerScrollNewOrCurrent,
+    Tab_ClearNewZoom,
+    Tab_ApplyNewZoom,
+    Tab_ApplyResetZoom,
 }
 
 /// Tracks keyboard modifier presses.
