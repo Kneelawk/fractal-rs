@@ -1,4 +1,5 @@
 pub mod opts;
+pub mod source;
 
 use crate::{
     generator::{gpu::shader::opts::GpuFractalOpts, FractalOpts},
@@ -12,11 +13,13 @@ use std::borrow::Cow;
 use tokio::{fs::File, io::AsyncWriteExt};
 use wgpu::ShaderSource;
 
-const TEMPLATE_SOURCE: &str = include_str!("template.wgsl");
+const TEMPLATE_NAME: &str = "template.wgsl";
 
 pub async fn load_shaders(opts: FractalOpts) -> anyhow::Result<ShaderSource<'static>> {
+    let template_source = source::compile_template(TEMPLATE_NAME.to_string())?;
+
     info!("Loading utility functions...");
-    let mut module = front::wgsl::parse_str(TEMPLATE_SOURCE).unwrap();
+    let mut module = front::wgsl::parse_str(&template_source).unwrap();
 
     opts.install(&mut module)?;
 
