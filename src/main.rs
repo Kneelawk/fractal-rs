@@ -22,6 +22,7 @@ use crate::storage::{CfgGeneral, CfgSingleton};
 mod generator;
 mod gpu;
 mod gui;
+mod liquid;
 mod logging;
 mod storage;
 mod util;

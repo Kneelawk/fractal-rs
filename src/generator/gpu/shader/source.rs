@@ -1,11 +1,13 @@
+use crate::liquid::{default_language, partials::CompositePartialStore};
 use cached::proc_macro::cached;
 use include_dir::{Dir, DirEntry};
-use liquid::{
-    object,
-    partials::{LazyCompiler, PartialSource},
-    Parser, ParserBuilder, Template,
+use liquid::partials::{LazyCompiler, PartialSource};
+use liquid_core::{
+    parser,
+    partials::PartialCompiler,
+    runtime::{PartialStore, RuntimeBuilder},
+    Language, Renderable, Template,
 };
-use serde::__private::from_utf8_lossy;
 use std::{borrow::Cow, fmt::Debug, sync::Arc};
 
 /// Shader source files include into this rust binary.
@@ -14,7 +16,8 @@ static SHADER_TEMPLATE_DIR: Dir<'_> =
 
 lazy_static! {
     static ref DIR_CONTENTS: Vec<String> = make_dir_contents();
-    static ref LIQUID_PARSER: Parser = make_liquid_parser();
+    static ref LIQUID_LANGUAGE: Arc<Language> = make_language();
+    static ref STATIC_STORE: Arc<dyn PartialStore + Send + Sync> = make_store();
 }
 
 fn make_dir_contents() -> Vec<String> {
@@ -36,16 +39,15 @@ fn walk_dir_contents(dir: &Dir, into: &mut Vec<String>) {
     }
 }
 
-fn make_compiler() -> LazyCompiler<ShaderTemplateDirSource> {
-    LazyCompiler::<ShaderTemplateDirSource>::new(ShaderTemplateDirSource)
+fn make_language() -> Arc<Language> {
+    Arc::new(default_language().build())
 }
 
-fn make_liquid_parser() -> Parser {
-    ParserBuilder::new()
-        .stdlib()
-        .partials(make_compiler())
-        .build()
-        .expect("Error building `liquid` shader template parser")
+fn make_store() -> Arc<dyn PartialStore + Send + Sync> {
+    LazyCompiler::<ShaderTemplateDirSource>::new(ShaderTemplateDirSource)
+        .compile(LIQUID_LANGUAGE.clone())
+        .expect("Error compiling shader template `liquid` static partial store")
+        .into()
 }
 
 /// `PartialSource` representing the contents of the shader template dir.
@@ -64,7 +66,7 @@ impl PartialSource for ShaderTemplateDirSource {
     fn try_get(&self, name: &str) -> Option<Cow<str>> {
         SHADER_TEMPLATE_DIR
             .get_file(name)
-            .map(|f| from_utf8_lossy(f.contents()))
+            .map(|f| String::from_utf8_lossy(f.contents()))
     }
 }
 
@@ -75,13 +77,27 @@ fn get_template(path: String) -> Result<Arc<Template>, ShaderTemplateError> {
         .ok_or(ShaderTemplateError::NoSuchFile)?
         .contents_utf8()
         .ok_or(ShaderTemplateError::NotUTF8)?;
-    Ok(Arc::new(LIQUID_PARSER.parse(source)?))
+    Ok(Arc::new(Template::new(parser::parse(
+        source,
+        LIQUID_LANGUAGE.as_ref(),
+    )?)))
 }
 
 pub fn compile_template(path: String) -> Result<String, ShaderTemplateError> {
+    // Build the composite store. This will eventually be able to contain
+    // naga-generated partials as well, allowing templates to incorporate
+    // generated code. Though naga-generated partials will likely also be
+    // template-based.
+    let store = CompositePartialStore::new(vec![STATIC_STORE.clone()]);
+
+    // Build the runtime.
+    let runtime = RuntimeBuilder::new().set_partials(&store).build();
+
+    // Get the cached template.
     let template = get_template(path)?;
-    let object = object!({});
-    Ok(template.render(&object)?)
+
+    // Render the template.
+    Ok(template.render(&runtime)?)
 }
 
 #[derive(Debug, Clone, Error)]
