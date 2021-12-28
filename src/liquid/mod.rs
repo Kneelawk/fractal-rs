@@ -1,7 +1,7 @@
 //! template/mod.rs - This module has the components for the application's
 //! template engine(s).
 use crate::liquid::{
-    blocks::DefineBlock,
+    blocks::{DefineBlock, IfDefBlock, IfNDefBlock},
     tags::{CallTag, DefineTag, UndefTag},
 };
 use liquid_core::{parser::PluginRegistry, Language, ParseBlock, ParseFilter, ParseTag};
@@ -20,6 +20,8 @@ pub fn default_language() -> LanguageBuilder {
         .tag(UndefTag)
         .tag(CallTag)
         .block(DefineBlock)
+        .block(IfDefBlock)
+        .block(IfNDefBlock)
 }
 
 #[derive(Default, Clone)]
