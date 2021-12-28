@@ -1,12 +1,25 @@
 //! template/mod.rs - This module has the components for the application's
 //! template engine(s).
+use crate::liquid::{
+    blocks::DefineBlock,
+    tags::{CallTag, DefineTag, UndefTag},
+};
 use liquid_core::{parser::PluginRegistry, Language, ParseBlock, ParseFilter, ParseTag};
 use liquid_lib::stdlib;
 
+pub mod blocks;
+pub mod macros;
 pub mod partials;
+pub mod tags;
+pub mod util;
 
 pub fn default_language() -> LanguageBuilder {
-    LanguageBuilder::default().stdlib()
+    LanguageBuilder::default()
+        .stdlib()
+        .tag(DefineTag)
+        .tag(UndefTag)
+        .tag(CallTag)
+        .block(DefineBlock)
 }
 
 #[derive(Default, Clone)]
