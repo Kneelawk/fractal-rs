@@ -206,4 +206,24 @@ mod tests {
             )
         );
     }
+
+    #[test]
+    fn complex_macro() {
+        test_liquid!(
+            tags(CallTag)
+            blocks(DefineBlock)
+            input(
+                concat!(
+                    "{% begindef foo<input> %}",
+                    "Hello {{ input }}",
+                    "{% enddef %}",
+                    "{% call foo<input = \"Liquid!\"> %}"
+                )
+            )
+            assert_output(
+                "Hello Liquid!",
+                "The rendered macro should say \"Hello\"."
+            )
+        );
+    }
 }

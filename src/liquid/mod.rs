@@ -2,12 +2,14 @@
 //! template engine(s).
 use crate::liquid::{
     blocks::{DefineBlock, IfDefBlock, IfNDefBlock},
+    filters::CallFilter,
     tags::{CallTag, DefineTag, UndefTag},
 };
 use liquid_core::{parser::PluginRegistry, Language, ParseBlock, ParseFilter, ParseTag};
 use liquid_lib::stdlib;
 
 pub mod blocks;
+pub mod filters;
 pub mod macros;
 pub mod partials;
 pub mod tags;
@@ -22,6 +24,7 @@ pub fn default_language() -> LanguageBuilder {
         .block(DefineBlock)
         .block(IfDefBlock)
         .block(IfNDefBlock)
+        .filter(CallFilter)
 }
 
 #[derive(Default, Clone)]
