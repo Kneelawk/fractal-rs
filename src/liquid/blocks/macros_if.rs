@@ -44,7 +44,7 @@ impl BlockReflection for IfDefBlock {
     }
 
     fn end_tag(&self) -> &str {
-        "endif"
+        "endifdef"
     }
 
     fn description(&self) -> &str {
@@ -118,7 +118,7 @@ impl BlockReflection for IfNDefBlock {
     }
 
     fn end_tag(&self) -> &str {
-        "endif"
+        "endifndef"
     }
 
     fn description(&self) -> &str {
@@ -253,7 +253,7 @@ mod tests {
                     "Foo is defined.",
                     "{% else %}",
                     "Foo is not defined.",
-                    "{% endif %}"
+                    "{% endifdef %}"
                 )
             )
             assert_output(
@@ -274,7 +274,7 @@ mod tests {
                     "Foo is defined.",
                     "{% else %}",
                     "Foo is not defined.",
-                    "{% endif %}"
+                    "{% endifdef %}"
                 )
             )
             assert_output(
@@ -296,7 +296,7 @@ mod tests {
                     "Foo is not defined.",
                     "{% else %}",
                     "Foo is defined.",
-                    "{% endif %}"
+                    "{% endifndef %}"
                 )
             )
             assert_output(
@@ -317,7 +317,7 @@ mod tests {
                     "Foo is not defined.",
                     "{% else %}",
                     "Foo is defined.",
-                    "{% endif %}"
+                    "{% endifndef %}"
                 )
             )
             assert_output(
@@ -341,15 +341,15 @@ mod tests {
                     " and bar is defined",
                     "{% else %}",
                     " and bar is not defined",
-                    "{% endif %}",
+                    "{% endifdef %}",
                     "{% else %}",
                     "Foo is not defined",
                     "{% ifdef bar %}",
                     " and bar is defined",
                     "{% else %}",
                     " and bar is not defined",
-                    "{% endif %}",
-                    "{% endif %}"
+                    "{% endifdef %}",
+                    "{% endifdef %}"
                 )
             )
             assert_output(
@@ -373,15 +373,15 @@ mod tests {
                     " and bar is not defined",
                     "{% else %}",
                     " and bar is defined",
-                    "{% endif %}",
+                    "{% endifndef %}",
                     "{% else %}",
                     "Foo is not defined",
                     "{% ifndef bar %}",
                     " and bar is not defined",
                     "{% else %}",
                     " and bar is defined",
-                    "{% endif %}",
-                    "{% endif %}"
+                    "{% endifndef %}",
+                    "{% endifdef %}"
                 )
             )
             assert_output(
@@ -418,7 +418,7 @@ mod tests {
                     "{% else %}",
                     " and bar is not \"baz\"",
                     "{% endif %}",
-                    "{% endif %}"
+                    "{% endifdef %}"
                 )
             )
             assert_output(
