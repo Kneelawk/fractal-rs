@@ -1,7 +1,7 @@
 use crate::{
     generator::{
         gpu::{
-            shader::load_shaders,
+            shader::{load_fragment_shader, load_vertex_shader},
             uniforms::{GpuView, Uniforms},
         },
         util::{copy_region, smallest_multiple_containing},
@@ -59,7 +59,7 @@ impl GpuFractalGeneratorFactory {
                 label: Some("Uniform Bind Group Layout"),
                 entries: &[BindGroupLayoutEntry {
                     binding: 0,
-                    visibility: ShaderStages::VERTEX_FRAGMENT,
+                    visibility: ShaderStages::FRAGMENT,
                     ty: BindingType::Buffer {
                         ty: BufferBindingType::Uniform,
                         has_dynamic_offset: false,
@@ -126,11 +126,17 @@ impl GpuFractalGenerator {
         uniform_bind_group_layout: Arc<BindGroupLayout>,
         render_pipeline_layout: Arc<PipelineLayout>,
     ) -> anyhow::Result<GpuFractalGenerator> {
-        info!("Creating shader module...");
-        let shader = load_shaders(opts).await?;
-        let module = gpu.device.create_shader_module(&ShaderModuleDescriptor {
+        info!("Creating shader modules...");
+        let frag_shader = load_fragment_shader(opts).await?;
+        let frag_module = gpu.device.create_shader_module(&ShaderModuleDescriptor {
+            label: Some("Fragment Shader"),
+            source: frag_shader,
+        });
+
+        let vert_shader = load_vertex_shader().await?;
+        let vert_module = gpu.device.create_shader_module(&ShaderModuleDescriptor {
             label: Some("Vertex Shader"),
-            source: shader,
+            source: vert_shader,
         });
 
         info!("Creating render pipeline...");
@@ -139,12 +145,12 @@ impl GpuFractalGenerator {
                 label: Some("Render Pipeline"),
                 layout: Some(&render_pipeline_layout),
                 vertex: VertexState {
-                    module: &module,
+                    module: &vert_module,
                     entry_point: "vert_main",
                     buffers: &[],
                 },
                 fragment: Some(FragmentState {
-                    module: &module,
+                    module: &frag_module,
                     entry_point: "frag_main",
                     targets: &[ColorTargetState {
                         format: TextureFormat::Rgba8Unorm,

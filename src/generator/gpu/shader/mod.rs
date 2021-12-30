@@ -13,10 +13,11 @@ use std::borrow::Cow;
 use tokio::{fs::File, io::AsyncWriteExt};
 use wgpu::ShaderSource;
 
-const TEMPLATE_NAME: &str = "template.wgsl";
+const VERTEX_SHADER_PATH: &str = "screen_rect_vertex_shader.wgsl.liquid";
+const FRAGMENT_SHADER_PATH: &str = "fragment_shader_main.wgsl.liquid";
 
-pub async fn load_shaders(opts: FractalOpts) -> anyhow::Result<ShaderSource<'static>> {
-    let template_source = source::compile_template(TEMPLATE_NAME.to_string())?;
+pub async fn load_fragment_shader(opts: FractalOpts) -> anyhow::Result<ShaderSource<'static>> {
+    let template_source = source::compile_template(FRAGMENT_SHADER_PATH.to_string())?;
 
     info!("Loading utility functions...");
     let mut module = front::wgsl::parse_str(&template_source).unwrap();
@@ -24,7 +25,7 @@ pub async fn load_shaders(opts: FractalOpts) -> anyhow::Result<ShaderSource<'sta
     opts.install(&mut module)?;
 
     info!("Writing module as txt...");
-    let mut file = File::create(debug_dir().join("debug.txt")).await.unwrap();
+    let mut file = File::create(debug_dir().join("debug_fragment.txt")).await.unwrap();
     file.write_all(format!("{:#?}", &module).as_bytes())
         .await
         .unwrap();
@@ -40,10 +41,20 @@ pub async fn load_shaders(opts: FractalOpts) -> anyhow::Result<ShaderSource<'sta
     writer.finish();
 
     info!("Writing WGSL...");
-    let mut wgsl_file = File::create(debug_dir().join("debug.wgsl")).await.unwrap();
+    let mut wgsl_file = File::create(debug_dir().join("debug_fragment.wgsl")).await.unwrap();
     wgsl_file.write_all(wgsl_str.as_bytes()).await.unwrap();
 
     Ok(ShaderSource::Wgsl(Cow::Owned(wgsl_str)))
+}
+
+pub async fn load_vertex_shader() -> anyhow::Result<ShaderSource<'static>> {
+    let source = source::compile_template(VERTEX_SHADER_PATH.to_string())?;
+
+    info!("Writing Vertex Shader WGSL...");
+    let mut wgsl_file = File::create(debug_dir().join("debug_vertex.wgsl")).await.unwrap();
+    wgsl_file.write_all(source.as_bytes()).await.unwrap();
+
+    Ok(ShaderSource::Wgsl(Cow::Owned(source)))
 }
 
 #[derive(Error, Debug)]

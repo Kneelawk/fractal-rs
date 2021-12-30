@@ -1,15 +1,13 @@
-// template.wgsl - This file describes the general process for generating
-// fractals using WGPU. This file is a template. Key constants and functions are
-// replaced when this file is loaded, allowing efficient manipulation of the
-// fractal generator.
+// fragment_shader_main.wgsl.liquid - This file describes the general process
+// for generating fractals using WGPU. This file is a template. Key constants
+// and functions are replaced when this file is loaded, allowing efficient
+// manipulation of the fractal generator.
+
+{% include "fragment_data.wgsl.liquid" %}
 
 //
 // Structs
 //
-
-struct FragmentData {
-    [[builtin(position)]] position: vec4<f32>;
-};
 
 struct View {
     image_size: vec2<f32>;
@@ -56,23 +54,6 @@ let t_sample_count: u32 = 1u;
 
 [[group(0), binding(0)]]
 var<uniform> uniforms: Uniforms;
-
-//
-// Vertex Shader
-//
-
-[[stage(vertex)]]
-fn vert_main([[builtin(vertex_index)]] vert_index: u32) -> FragmentData {
-    var indexable: array<vec2<f32>,6u> = array<vec2<f32>,6u>(
-        vec2<f32>(1.0, 1.0), vec2<f32>(-1.0, -1.0), vec2<f32>(1.0, -1.0),
-        vec2<f32>(1.0, 1.0), vec2<f32>(-1.0, 1.0), vec2<f32>(-1.0, -1.0)
-    );
-
-    var data: FragmentData;
-    let xy = indexable[vert_index];
-    data.position = vec4<f32>(xy, 0.0, 1.0);
-    return data;
-}
 
 //
 // Utility Functions

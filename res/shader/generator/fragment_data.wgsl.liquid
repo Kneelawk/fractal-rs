@@ -1,0 +1,12 @@
+// fragment_data.wgsl - This file describes the FragmentData struct.
+
+{% ifndef FRAGMENT_DATA_WGSL %}
+{% define FRAGMENT_DATA_WGSL %}
+
+// FragmentData - This struct is used as the output of the vertex shader and the
+// input of the fragment shader.
+struct FragmentData {
+    [[builtin(position)]] position: vec4<f32>;
+};
+
+{% endifndef %}
