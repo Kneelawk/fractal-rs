@@ -1,6 +1,6 @@
 [package]
 name = "fractal-rs-2"
-version = "0.1.2-dev"
+version = "0.1.2"
 authors = ["Kneelawk <kneelawk@gmail.com>"]
 edition = "2021"
 resolver = "2"
