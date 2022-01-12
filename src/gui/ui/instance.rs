@@ -16,10 +16,12 @@ use crate::{
     util::result::ResultExt,
 };
 use egui::{
-    vec2, Button, Color32, ComboBox, CtxRef, DragValue, Label, ProgressBar, TextEdit, TextStyle, Ui,
+    vec2, Button, Color32, ComboBox, CtxRef, DragValue, Label, Layout, ProgressBar, TextEdit,
+    TextStyle, Ui,
 };
 use egui_wgpu_backend::RenderPass;
 use num_complex::Complex32;
+use num_traits::Zero;
 use rfd::AsyncFileDialog;
 use std::{borrow::Cow, collections::HashMap, path::PathBuf, sync::Arc};
 use tokio::runtime::Handle;
@@ -66,6 +68,11 @@ pub struct UIInstance {
     edit_fractal_plane_center_x: f32,
     edit_fractal_plane_center_y: f32,
 
+    // backup plane values for resets
+    init_fractal_plane_width: f32,
+    init_fractal_plane_center_x: f32,
+    init_fractal_plane_center_y: f32,
+
     // mandelbrot & julia/fatou set controls
     pub mandelbrot: bool,
     pub c: Complex32,
@@ -83,6 +90,10 @@ pub struct UIInstance {
     target_instance: Option<u64>,
     new_target_instance: Option<u64>,
     pub parent_instance: Option<u64>,
+
+    // zoom stuff
+    generate_fractal_with_zoom: bool,
+    generate_reset_fractal: bool,
 }
 
 /// Struct holding all the information needed when creating a new UIInstance.
@@ -221,6 +232,9 @@ impl UIInstance {
             edit_fractal_plane_centered: center_x == 0.0 && center_y == 0.0,
             edit_fractal_plane_center_x: center_x,
             edit_fractal_plane_center_y: center_y,
+            init_fractal_plane_width: plane_width,
+            init_fractal_plane_center_x: center_x,
+            init_fractal_plane_center_y: center_y,
             mandelbrot: ctx.initial_settings.mandelbrot,
             c: ctx.initial_settings.c,
             iterations: ctx.initial_settings.iterations,
@@ -233,6 +247,8 @@ impl UIInstance {
             target_instance: None,
             new_target_instance: None,
             parent_instance: None,
+            generate_fractal_with_zoom: false,
+            generate_reset_fractal: false,
         }
     }
 
@@ -344,6 +360,46 @@ impl UIInstance {
         }
         self.generate_julia_from_point = false;
 
+        // If we're wanting to start generating a zoomed-in fractal, let's set up the
+        // settings and set ourselves to start that on the next update() call.
+        if self.generate_fractal_with_zoom && !self.generation_running {
+            if let Some(new_plane_width) = self.viewer.new_plane_width {
+                self.edit_fractal_plane_width = new_plane_width;
+            }
+
+            if self.deselected_position != Complex32::zero() {
+                self.edit_fractal_plane_centered = false;
+                self.edit_fractal_plane_center_x = self.deselected_position.re;
+                self.edit_fractal_plane_center_y = self.deselected_position.im;
+            } else {
+                self.edit_fractal_plane_centered = true;
+                self.edit_fractal_plane_center_x = 0.0;
+                self.edit_fractal_plane_center_y = 0.0;
+            }
+
+            self.generate_fractal = Some(UIInstanceGenerationType::Viewer);
+
+            self.viewer.clear_potential_plane_scale();
+            self.viewer.fractal_offset = vec2(0.0, 0.0);
+        }
+        self.generate_fractal_with_zoom = false;
+
+        // If we're wanting to start generating a reset-zoom fractal, let's set up the
+        // settings and set ourselves to start that on the next update() call.
+        if self.generate_reset_fractal && !self.generation_running {
+            self.edit_fractal_plane_width = self.init_fractal_plane_width;
+            self.edit_fractal_plane_center_x = self.init_fractal_plane_center_x;
+            self.edit_fractal_plane_center_y = self.init_fractal_plane_center_y;
+            self.edit_fractal_plane_centered =
+                self.init_fractal_plane_center_y == 0.0 && self.init_fractal_plane_center_x == 0.0;
+
+            self.generate_fractal = Some(UIInstanceGenerationType::Viewer);
+
+            self.viewer.clear_potential_plane_scale();
+            self.viewer.fractal_offset = vec2(0.0, 0.0);
+        }
+        self.generate_reset_fractal = false;
+
         if self.target_instance != self.new_target_instance {
             // This operation will set target instance, so we don't do it here
             ctx.operations.push(UIOperationRequest::SetTarget {
@@ -416,6 +472,31 @@ impl UIInstance {
         {
             self.switch_to_parent = true;
         }
+
+        // Handle alternating between scrolling changing the size of the current view or
+        // the potential new one.
+        if shortcuts.is_pressed(ShortcutName::Tab_ViewerScrollNewOrCurrent) {
+            if self.viewer.is_plane_scrolling() {
+                self.viewer.switch_to_image_scrolling();
+            } else {
+                self.viewer.switch_to_plane_scrolling();
+            }
+        }
+
+        // Handle clearing the potential new zoom value.
+        if shortcuts.is_pressed(ShortcutName::Tab_ClearNewZoom) {
+            self.viewer.clear_potential_plane_scale();
+        }
+
+        // Handle applying the new zoom value.
+        if shortcuts.is_pressed(ShortcutName::Tab_ApplyNewZoom) && !self.generation_running {
+            self.generate_fractal_with_zoom = true;
+        }
+
+        // Handle resetting the fractal zoom and center.
+        if shortcuts.is_pressed(ShortcutName::Tab_ApplyResetZoom) && !self.generation_running {
+            self.generate_reset_fractal = true;
+        }
     }
 
     pub fn draw(&mut self, ctx: &UIInstanceRenderContext) {
@@ -471,7 +552,8 @@ impl UIInstance {
                                 ui,
                                 |ui| {
                                     ui.label("Image Width:");
-                                    ui.add(
+                                    ui.add_sized(
+                                        vec2(80.0, ui.spacing().interact_size.y),
                                         DragValue::new(&mut self.edit_viewer_width)
                                             .speed(1.0)
                                             .clamp_range(
@@ -481,7 +563,8 @@ impl UIInstance {
                                     ui.end_row();
 
                                     ui.label("Image Height:");
-                                    ui.add(
+                                    ui.add_sized(
+                                        vec2(80.0, ui.spacing().interact_size.y),
                                         DragValue::new(&mut self.edit_viewer_height)
                                             .speed(1.0)
                                             .clamp_range(
@@ -523,7 +606,8 @@ impl UIInstance {
                                 ui,
                                 |ui| {
                                     ui.label("Image Width:");
-                                    ui.add(
+                                    ui.add_sized(
+                                        vec2(80.0, ui.spacing().interact_size.y),
                                         DragValue::new(&mut self.edit_image_width)
                                             .speed(1.0)
                                             .clamp_range(2..=65536),
@@ -531,7 +615,8 @@ impl UIInstance {
                                     ui.end_row();
 
                                     ui.label("Image Height:");
-                                    ui.add(
+                                    ui.add_sized(
+                                        vec2(80.0, ui.spacing().interact_size.y),
                                         DragValue::new(&mut self.edit_image_height)
                                             .speed(1.0)
                                             .clamp_range(2..=65536),
@@ -550,10 +635,11 @@ impl UIInstance {
                     .show(ui, |ui| {
                         egui::Grid::new("complex_plane_settings.grid").show(ui, |ui| {
                             ui.label("Plane Width:");
-                            ui.add(
+                            ui.add_sized(
+                                vec2(80.0, ui.spacing().interact_size.y),
                                 DragValue::new(&mut self.edit_fractal_plane_width)
                                     .clamp_range(0.0..=10.0)
-                                    .speed(0.03125),
+                                    .speed(0.00001),
                             );
                             ui.end_row();
 
@@ -564,20 +650,32 @@ impl UIInstance {
                             ui.end_row();
 
                             ui.label("Plane Real Center:");
-                            ui.add_enabled(
-                                !self.edit_fractal_plane_centered,
-                                DragValue::new(&mut self.edit_fractal_plane_center_x)
-                                    .clamp_range(-10.0..=10.0)
-                                    .speed(0.03125),
+                            ui.allocate_ui_with_layout(
+                                vec2(80.0, ui.spacing().interact_size.y),
+                                Layout::centered_and_justified(ui.layout().main_dir()),
+                                |ui| {
+                                    ui.set_enabled(!self.edit_fractal_plane_centered);
+                                    ui.add(
+                                        DragValue::new(&mut self.edit_fractal_plane_center_x)
+                                            .clamp_range(-10.0..=10.0)
+                                            .speed(0.00001),
+                                    );
+                                },
                             );
                             ui.end_row();
 
                             ui.label("Plane Imaginary Center:");
-                            ui.add_enabled(
-                                !self.edit_fractal_plane_centered,
-                                DragValue::new(&mut self.edit_fractal_plane_center_y)
-                                    .clamp_range(-10.0..=10.0)
-                                    .speed(0.03125),
+                            ui.allocate_ui_with_layout(
+                                vec2(80.0, ui.spacing().interact_size.y),
+                                Layout::centered_and_justified(ui.layout().main_dir()),
+                                |ui| {
+                                    ui.set_enabled(!self.edit_fractal_plane_centered);
+                                    ui.add(
+                                        DragValue::new(&mut self.edit_fractal_plane_center_y)
+                                            .clamp_range(-10.0..=10.0)
+                                            .speed(0.00001),
+                                    );
+                                },
                             );
                             ui.end_row();
                         });
@@ -594,27 +692,32 @@ impl UIInstance {
                             ui.end_row();
 
                             ui.label("C-real:");
-                            ui.add(
+                            ui.add_sized(
+                                vec2(80.0, ui.spacing().interact_size.y),
                                 DragValue::new(&mut self.c.re)
                                     .clamp_range(-10.0..=10.0)
-                                    .speed(0.0001)
+                                    .speed(0.00001)
                                     .min_decimals(7)
                                     .max_decimals(45),
                             );
                             ui.end_row();
 
                             ui.label("C-imaginary:");
-                            ui.add(
+                            ui.add_sized(
+                                vec2(80.0, ui.spacing().interact_size.y),
                                 DragValue::new(&mut self.c.im)
                                     .clamp_range(-10.0..=10.0)
-                                    .speed(0.0001)
+                                    .speed(0.00001)
                                     .min_decimals(7)
                                     .max_decimals(45),
                             );
                             ui.end_row();
 
                             ui.label("Iterations:");
-                            ui.add(DragValue::new(&mut self.iterations).clamp_range(1..=1000));
+                            ui.add_sized(
+                                vec2(80.0, ui.spacing().interact_size.y),
+                                DragValue::new(&mut self.iterations).clamp_range(1..=1000),
+                            );
                             ui.end_row();
                         });
                     });
@@ -626,82 +729,165 @@ impl UIInstance {
             .default_size([340.0, 500.0])
             .open(&mut self.show_viewer_controls)
             .show(&ctx.ctx, |ui| {
-                ui.label("Viewer Movement");
-                ui.horizontal(|ui| {
-                    if ui.button("Zoom 1:1").clicked() {
-                        self.viewer.zoom_1_to_1();
-                    }
-                    if ui.button("Zoom Fit").clicked() {
-                        self.viewer.zoom_fit();
-                    }
-                    if ui.button("Zoom Fill").clicked() {
-                        self.viewer.zoom_fill();
-                    }
-                });
-                if ui.button("Center View").clicked() {
-                    self.viewer.fractal_offset = vec2(0.0, 0.0);
-                }
-
-                ui.separator();
-
-                ui.label("Selection");
-                ui.horizontal(|ui| {
-                    if ui.button("Deselect Position").clicked() {
-                        self.viewer.selection_pos = None;
-                    }
-                    if ui.button("Select Position").clicked() {
-                        self.viewer.selection_pos = Some(self.deselected_position);
-                    }
-                });
-
-                ui.label("Selection Position:");
-                egui::Grid::new("viewer_controls.selection.grid").show(ui, |ui| {
-                    let selection_pos = if let Some(selection_pos) = &mut self.viewer.selection_pos
-                    {
-                        selection_pos
-                    } else {
-                        &mut self.deselected_position
-                    };
-
-                    ui.label("Real:");
-                    ui.add(
-                        DragValue::new(&mut selection_pos.re)
-                            .speed(0.0001)
-                            .min_decimals(7)
-                            .max_decimals(45),
-                    );
-                    ui.end_row();
-
-                    ui.label("Imaginary:");
-                    ui.add(
-                        DragValue::new(&mut selection_pos.im)
-                            .speed(0.0001)
-                            .min_decimals(7)
-                            .max_decimals(45),
-                    );
-                    ui.end_row();
-                });
-
-                ui.add_enabled_ui(
-                    self.mandelbrot
-                        && !self
-                            .target_instance
-                            .as_ref()
-                            .and_then(|id| ctx.instance_infos.get(id).map(|info| info.running))
-                            .unwrap_or(false),
-                    |ui| {
-                        if ui
-                            .button("Generate Julia/Fatou Set at Position")
-                            .on_hover_text(format!(
-                                "Shortcut: {}",
-                                ctx.shortcuts.keys_for(&ShortcutName::Tab_SpawnJulia)
-                            ))
-                            .clicked()
-                        {
-                            self.generate_julia_from_point = true;
+                egui::CollapsingHeader::new("Viewer Movement")
+                    .default_open(true)
+                    .show(ui, |ui| {
+                        ui.horizontal(|ui| {
+                            if ui.button("Zoom 1:1").clicked() {
+                                self.viewer.zoom_1_to_1();
+                            }
+                            if ui.button("Zoom Fit").clicked() {
+                                self.viewer.zoom_fit();
+                            }
+                            if ui.button("Zoom Fill").clicked() {
+                                self.viewer.zoom_fill();
+                            }
+                        });
+                        if ui.button("Center View").clicked() {
+                            self.viewer.fractal_offset = vec2(0.0, 0.0);
                         }
-                    },
-                );
+                    });
+
+                egui::CollapsingHeader::new("Selection")
+                    .default_open(true)
+                    .show(ui, |ui| {
+                        ui.horizontal(|ui| {
+                            if ui.button("Deselect Position").clicked() {
+                                self.viewer.selection_pos = None;
+                            }
+                            if ui.button("Select Position").clicked() {
+                                self.viewer.selection_pos = Some(self.deselected_position);
+                            }
+                        });
+
+                        ui.label("Selection Position:");
+                        egui::Grid::new("viewer_controls.selection.grid").show(ui, |ui| {
+                            let selection_pos =
+                                if let Some(selection_pos) = &mut self.viewer.selection_pos {
+                                    selection_pos
+                                } else {
+                                    &mut self.deselected_position
+                                };
+
+                            ui.label("Real:");
+                            ui.add_sized(
+                                vec2(80.0, ui.spacing().interact_size.y),
+                                DragValue::new(&mut selection_pos.re)
+                                    .speed(0.00001)
+                                    .min_decimals(7)
+                                    .max_decimals(45),
+                            );
+                            ui.end_row();
+
+                            ui.label("Imaginary:");
+                            ui.add_sized(
+                                vec2(80.0, ui.spacing().interact_size.y),
+                                DragValue::new(&mut selection_pos.im)
+                                    .speed(0.00001)
+                                    .min_decimals(7)
+                                    .max_decimals(45),
+                            );
+                            ui.end_row();
+                        });
+
+                        ui.add_enabled_ui(
+                            self.mandelbrot
+                                && !self
+                                    .target_instance
+                                    .as_ref()
+                                    .and_then(|id| {
+                                        ctx.instance_infos.get(id).map(|info| info.running)
+                                    })
+                                    .unwrap_or(false),
+                            |ui| {
+                                if ui
+                                    .button("Generate Julia/Fatou Set at Position")
+                                    .on_hover_text(format!(
+                                        "Shortcut: {}",
+                                        ctx.shortcuts.keys_for(&ShortcutName::Tab_SpawnJulia)
+                                    ))
+                                    .clicked()
+                                {
+                                    self.generate_julia_from_point = true;
+                                }
+                            },
+                        );
+                    });
+
+                egui::CollapsingHeader::new("New Fractal Zoom")
+                    .default_open(true)
+                    .show(ui, |ui| {
+                        ui.label("Scroll Mode:");
+                        ui.horizontal(|ui| {
+                            if ui
+                                .selectable_label(
+                                    !self.viewer.is_plane_scrolling(),
+                                    "Current Image",
+                                )
+                                .clicked()
+                            {
+                                self.viewer.switch_to_image_scrolling();
+                            }
+
+                            if ui
+                                .selectable_label(self.viewer.is_plane_scrolling(), "New Image")
+                                .clicked()
+                            {
+                                self.viewer.switch_to_plane_scrolling();
+                            }
+                        });
+
+                        ui.horizontal(|ui| {
+                            ui.label("New Plane width:");
+
+                            ui.allocate_ui_with_layout(
+                                vec2(80.0, ui.spacing().interact_size.y),
+                                Layout::centered_and_justified(ui.layout().main_dir()),
+                                |ui| {
+                                    ui.set_enabled(self.viewer.new_plane_width.is_some());
+
+                                    let new_plane_width = if let Some(new_plane_width) =
+                                        &mut self.viewer.new_plane_width
+                                    {
+                                        new_plane_width
+                                    } else {
+                                        &mut self.edit_fractal_plane_width
+                                    };
+
+                                    ui.add(
+                                        DragValue::new(new_plane_width)
+                                            .clamp_range(-10.0..=10.0)
+                                            .speed(0.00001)
+                                            .min_decimals(7)
+                                            .max_decimals(45),
+                                    );
+                                },
+                            );
+                        });
+
+                        ui.horizontal(|ui| {
+                            if ui.button("Clear Plane Width").clicked() {
+                                self.viewer.clear_potential_plane_scale();
+                            }
+
+                            if ui.button("Reset Plane Width").clicked() {
+                                self.viewer.reset_potential_plane_scale();
+                            }
+                        });
+
+                        ui.add_enabled_ui(!self.generation_running, |ui| {
+                            if ui
+                                .button("Generate New Fractal With Selected Plane")
+                                .clicked()
+                            {
+                                self.generate_fractal_with_zoom = true;
+                            }
+
+                            if ui.button("Generate Reset Fractal").clicked() {
+                                self.generate_reset_fractal = true;
+                            }
+                        });
+                    });
             });
     }
 

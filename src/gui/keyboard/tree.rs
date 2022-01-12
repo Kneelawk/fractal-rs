@@ -133,7 +133,8 @@ impl ShortcutTreeNode {
                             ShortcutTreeNode::Leaf { shortcut } => {
                                 ui.label(child_name);
                                 if ui
-                                    .add(
+                                    .add_sized(
+                                        egui::vec2(50.0, ui.spacing().interact_size.y),
                                         egui::Button::new(shortcuts.keys_for(shortcut))
                                             .text_style(egui::TextStyle::Monospace),
                                     )

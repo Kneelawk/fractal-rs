@@ -34,6 +34,10 @@ pub const DEFAULT_SHORTCUT_LIST: &[(ShortcutName, Shortcut)] = &[
     (Tab_SpawnJulia, shortcut!(Shift - MacAlt - J)),
     (Tab_SwitchToJulia, shortcut!(MacAlt - J)),
     (Tab_SwitchToMandelbrot, shortcut!(MacAlt - M)),
+    (Tab_ViewerScrollNewOrCurrent, shortcut!(MacAlt - Z)),
+    (Tab_ClearNewZoom, shortcut!(MacAlt - X)),
+    (Tab_ApplyNewZoom, shortcut!(MacAlt - C)),
+    (Tab_ApplyResetZoom, shortcut!(MacAlt - V)),
 ];
 
 /// This enum contains an entry for each keyboard shortcut the application uses.
@@ -55,6 +59,10 @@ pub enum ShortcutName {
     Tab_SpawnJulia,
     Tab_SwitchToJulia,
     Tab_SwitchToMandelbrot,
+    Tab_ViewerScrollNewOrCurrent,
+    Tab_ClearNewZoom,
+    Tab_ApplyNewZoom,
+    Tab_ApplyResetZoom,
 }
 
 /// Tracks keyboard modifier presses.
@@ -212,11 +220,16 @@ impl ShortcutMap {
 
     /// Gets a list of the current bindings for a given shortcut name, if any.
     pub fn keys_for(&self, name: &ShortcutName) -> KeysFor {
-        KeysFor(self.names.get(name))
+        KeysFor(
+            self.names
+                .get(name)
+                .map(|vec| vec.as_slice())
+                .unwrap_or(&[]),
+        )
     }
 
     /// Replaces all bindings for a shortcut name with the binding given.
-    pub fn replace_associations(&mut self, name: ShortcutName, binding: Shortcut) {
+    pub fn replace_associations(&mut self, name: ShortcutName, binding: Option<Shortcut>) {
         // replace the association
         Self::impl_remove_name(
             &mut self.bindings,
@@ -225,14 +238,17 @@ impl ShortcutMap {
             &mut self.conflicts.name_conflicts,
             &name,
         );
-        Self::impl_add_association(
-            &mut self.bindings,
-            &mut self.names,
-            &mut self.conflicts.binding_conflicts,
-            &mut self.conflicts.name_conflicts,
-            name,
-            binding,
-        );
+
+        if let Some(binding) = binding {
+            Self::impl_add_association(
+                &mut self.bindings,
+                &mut self.names,
+                &mut self.conflicts.binding_conflicts,
+                &mut self.conflicts.name_conflicts,
+                name,
+                binding,
+            );
+        }
 
         // recalculate the modifications
         self.modifications = Self::calculate_modifications(&self.names, &self.defaults);
@@ -435,7 +451,13 @@ impl ShortcutMap {
 }
 
 /// Represents a list of the current bindings for a given shortcut name, if any.
-pub struct KeysFor<'a>(Option<&'a Vec<Shortcut>>);
+pub struct KeysFor<'a>(&'a [Shortcut]);
+
+impl<'a> KeysFor<'a> {
+    pub fn shortcuts(&self) -> &'a [Shortcut] {
+        self.0
+    }
+}
 
 //
 // Conflicts stuff
@@ -486,11 +508,7 @@ impl ShortcutMapConflicts {
 
 impl<'a> Display for KeysFor<'a> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        if let Some(bindings) = self.0 {
-            write!(f, "{}", bindings.iter().format(", "))
-        } else {
-            write!(f, "")
-        }
+        write!(f, "{}", self.0.iter().format(", "))
     }
 }
 
@@ -1018,7 +1036,7 @@ mod test {
             "Alt+G should only be bound to Tab_Generate"
         );
 
-        map.replace_associations(Tab_Generate, shortcut!(Alt - F));
+        map.replace_associations(Tab_Generate, Some(shortcut!(Alt - F)));
 
         map.update(&[shortcut!(Alt - F)]);
         assert!(
@@ -1065,7 +1083,7 @@ mod test {
             "There should not be any name conflicts."
         );
 
-        map.replace_associations(App_Quit, shortcut!(Ctrl - Q));
+        map.replace_associations(App_Quit, Some(shortcut!(Ctrl - Q)));
 
         assert!(
             map.get_conflicts().is_empty(),
@@ -1109,7 +1127,7 @@ mod test {
             "There should not be any name conflicts."
         );
 
-        map.replace_associations(App_Quit, shortcut!(Ctrl - Q));
+        map.replace_associations(App_Quit, Some(shortcut!(Ctrl - Q)));
 
         assert!(
             !map.get_conflicts().is_empty(),
@@ -1164,7 +1182,7 @@ mod test {
             map.get_conflicts()
         );
 
-        map.replace_associations(App_Quit, shortcut!(Ctrl - N));
+        map.replace_associations(App_Quit, Some(shortcut!(Ctrl - N)));
 
         assert!(
             !map.get_conflicts().is_empty(),
@@ -1245,7 +1263,7 @@ mod test {
             ],
         );
 
-        map.replace_associations(App_Quit, shortcut!(Ctrl - W));
+        map.replace_associations(App_Quit, Some(shortcut!(Ctrl - W)));
 
         assert!(
             map.is_modified(),
