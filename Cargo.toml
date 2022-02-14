@@ -75,5 +75,6 @@ assets = [
     ["target/release/fractal-rs-2", "opt/fractal-rs-2/bin/", "755"],
     ["res/deb/fractal-rs-2.desktop", "usr/share/applications/", "644"],
     ["README.md", "usr/share/doc/fractal-rs-2/", "644"],
-    ["LICENSE", "usr/share/doc/fractal-rs-2/", "644"]
+    ["COPYING", "usr/share/doc/fractal-rs-2/", "644"],
+    ["COPYING.LESSER", "usr/share/doc/fractal-rs-2/", "644"]
 ]
