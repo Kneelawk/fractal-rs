@@ -1,6 +1,6 @@
 [package]
 name = "fractal-rs-2"
-version = "0.1.2-dev"
+version = "0.1.2"
 authors = ["Kneelawk <kneelawk@gmail.com>"]
 edition = "2021"
 resolver = "2"
@@ -82,5 +82,6 @@ assets = [
     ["target/release/fractal-rs-2", "opt/fractal-rs-2/bin/", "755"],
     ["res/deb/fractal-rs-2.desktop", "usr/share/applications/", "644"],
     ["README.md", "usr/share/doc/fractal-rs-2/", "644"],
-    ["LICENSE", "usr/share/doc/fractal-rs-2/", "644"]
+    ["COPYING", "usr/share/doc/fractal-rs-2/", "644"],
+    ["COPYING.LESSER", "usr/share/doc/fractal-rs-2/", "644"]
 ]
