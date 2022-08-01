@@ -12,10 +12,6 @@ use crate::generator::{
     FractalOpts,
 };
 
-const C_REAL_NAME: &str = "t_c_real";
-const C_IMAG_NAME: &str = "t_c_imag";
-const ITERATIONS_NAME: &str = "t_iterations";
-const MANDELBROT_NAME: &str = "t_mandelbrot";
 const RADIUS_SQUARED_NAME: &str = "t_radius_squared";
 const SAMPLE_COUNT_NAME: &str = "t_sample_count";
 const SAMPLE_OFFSETS_NAME: &str = "t_sample_offsets";
@@ -30,58 +26,9 @@ pub trait GpuFractalOpts {
 
 impl GpuFractalOpts for FractalOpts {
     fn install(&self, module: &mut Module) -> Result<(), ShaderError> {
-        self.install_c(module)?;
-        self.install_iterations(module)?;
-        self.install_mandelbrot(module)?;
         self.smoothing.install(module)?;
         self.multisampling.install(module)?;
         Ok(())
-    }
-}
-
-impl FractalOpts {
-    fn install_c(&self, module: &mut Module) -> Result<(), ShaderError> {
-        replace_constant(
-            &mut module.constants,
-            C_REAL_NAME,
-            ConstantInner::Scalar {
-                width: 4,
-                value: ScalarValue::Float(self.c.re as f64),
-            },
-        )?;
-
-        replace_constant(
-            &mut module.constants,
-            C_IMAG_NAME,
-            ConstantInner::Scalar {
-                width: 4,
-                value: ScalarValue::Float(self.c.im as f64),
-            },
-        )?;
-
-        Ok(())
-    }
-
-    fn install_iterations(&self, module: &mut Module) -> Result<(), ShaderError> {
-        replace_constant(
-            &mut module.constants,
-            ITERATIONS_NAME,
-            ConstantInner::Scalar {
-                width: 4,
-                value: ScalarValue::Uint(self.iterations as u64),
-            },
-        )
-    }
-
-    fn install_mandelbrot(&self, module: &mut Module) -> Result<(), ShaderError> {
-        replace_constant(
-            &mut module.constants,
-            MANDELBROT_NAME,
-            ConstantInner::Scalar {
-                width: 1,
-                value: ScalarValue::Bool(self.mandelbrot),
-            },
-        )
     }
 }
 

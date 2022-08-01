@@ -4,7 +4,7 @@ use liquid::partials::{LazyCompiler, PartialSource};
 use liquid_core::{
     partials::PartialCompiler,
     runtime::{PartialStore, RuntimeBuilder},
-    Language,
+    Language, Object,
 };
 use std::{borrow::Cow, fmt::Debug, sync::Arc};
 
@@ -68,7 +68,7 @@ impl PartialSource for ShaderTemplateDirSource {
     }
 }
 
-pub fn compile_template(path: String) -> Result<String, ShaderTemplateError> {
+pub fn compile_template(path: String, globals: Object) -> Result<String, ShaderTemplateError> {
     // Build the composite store. This will eventually be able to contain
     // naga-generated partials as well, allowing templates to incorporate
     // generated code. Though naga-generated partials will likely also be
@@ -76,7 +76,10 @@ pub fn compile_template(path: String) -> Result<String, ShaderTemplateError> {
     let store = CompositePartialStore::new(vec![STATIC_STORE.clone()]);
 
     // Build the runtime.
-    let runtime = RuntimeBuilder::new().set_partials(&store).build();
+    let runtime = RuntimeBuilder::new()
+        .set_globals(&globals)
+        .set_partials(&store)
+        .build();
 
     // Get the cached template.
     let template = store

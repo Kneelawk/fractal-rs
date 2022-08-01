@@ -8,17 +8,13 @@
 // Template Constants
 //
 
-// This constant is designed to have its value replaced.
-let t_c_real: f32 = 0.0;
+let t_c_real: f32 = {{ opts.c_real }};
 
-// This constant is designed to have its value replaced.
-let t_c_imag: f32 = 0.0;
+let t_c_imag: f32 = {{ opts.c_imag }};
 
-// This constant is designed to have its value replaced.
-let t_iterations: u32 = 0u;
+let t_iterations: u32 = {{ opts.iterations }}u;
 
-// This constant is designed to have its value replaced.
-let t_mandelbrot: bool = false;
+let t_mandelbrot: bool = {{ opts.mandelbrot }};
 
 // This constant is designed to have its value replaced.
 let t_radius_squared: f32 = 0.0;
