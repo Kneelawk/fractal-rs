@@ -1,0 +1,29 @@
+// globals.wgsl.liquid - This file contains the global template-ized variables
+// used everywhere else.
+
+{% ifndef GLOBALS_WGSL %}
+{% define GLOBALS_WGSL %}
+
+//
+// Template Constants
+//
+
+// This constant is designed to have its value replaced.
+let t_c_real: f32 = 0.0;
+
+// This constant is designed to have its value replaced.
+let t_c_imag: f32 = 0.0;
+
+// This constant is designed to have its value replaced.
+let t_iterations: u32 = 0u;
+
+// This constant is designed to have its value replaced.
+let t_mandelbrot: bool = false;
+
+// This constant is designed to have its value replaced.
+let t_radius_squared: f32 = 0.0;
+
+// This constant is designed to have its value replaced.
+let t_sample_count: u32 = 1u;
+
+{% endifndef %}

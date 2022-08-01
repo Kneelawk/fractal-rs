@@ -1,0 +1,28 @@
+// util/complex_f32.wgsl.liquid - This file contains the complex utility
+// functions.
+
+{% ifndef UTIL_COMPLEX_F32_WGSL %}
+{% define UTIL_COMPLEX_F32_WGSL %}
+
+// complex_add - This function adds two complex numbers.
+fn complex_add(a: vec2<f32>, b: vec2<f32>) -> vec2<f32> {
+    return a + b;
+}
+
+// complex_multiply - This function multiplies two complex numbers.
+fn complex_multiply(a: vec2<f32>, b: vec2<f32>) -> vec2<f32> {
+    return vec2<f32>(a.x * b.x - a.y * b.y, a.x * b.y + a.y * b.x);
+}
+
+// complex_sqr - This function gets the square of a complex number.
+fn complex_sqr(a: vec2<f32>) -> vec2<f32> {
+    return vec2<f32>(a.x * a.x - a.y * a.y, 2.0 * a.x * a.y);
+}
+
+// complex_length_sqr - This function gets the absolute squared value of the
+// complex number.
+fn complex_length_sqr(a: vec2<f32>) -> f32 {
+    return dot(a, a);
+}
+
+{% endifndef %}

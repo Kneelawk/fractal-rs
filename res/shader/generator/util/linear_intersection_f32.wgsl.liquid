@@ -1,0 +1,65 @@
+// util/linear_intersection_f32.wgsl.liquid - This file contains the
+// linear-intersection iteration smoothing function.
+
+{% ifndef UTIL_LINEAR_INTERSECTION_F32_WGSL %}
+{% define UTIL_LINEAR_INTERSECTION_F32_WGSL %}
+
+{% include "globals.wgsl.liquid" %}
+{% include "util/complex_f32.wgsl.liquid" %}
+
+// linear_intersection - The linear-intersection iteration smoothing function.
+fn linear_intersection(iterations: u32, z_curr: vec2<f32>, z_prev: vec2<f32>) -> f32 {
+    let iter = f32(iterations);
+
+    if (complex_length_sqr(z_curr) == complex_length_sqr(z_prev)) {
+        return iter;
+    }
+
+    if (complex_length_sqr(z_prev) > t_radius_squared) {
+        return iter;
+    }
+
+    if (complex_length_sqr(z_curr) < t_radius_squared) {
+        return iter;
+    }
+
+    let ax = z_prev.x;
+    let ay = z_prev.y;
+    let bx = z_curr.x;
+    let by = z_curr.y;
+    let dx = bx - ax;
+    let dy = by - ay;
+
+    var frac: f32;
+    if (abs(dx) > abs(dy)) {
+        let m = dy / dx;
+        let m_sqr_1 = m * m + 1.0;
+        let p = m * ax - ay;
+
+        var f: f32;
+        if (bx > ax) {
+            f = (m * p + sqrt(t_radius_squared * m_sqr_1 - p * p)) / m_sqr_1;
+        } else {
+            f = (m * p - sqrt(t_radius_squared * m_sqr_1 - p * p)) / m_sqr_1;
+        }
+
+        frac = (bx - f) / dx;
+    } else {
+        let m = dx / dy;
+        let m_sqr_1 = m * m + 1.0;
+        let p = m * ay - ax;
+
+        var f: f32;
+        if (by > ay) {
+            f = (m * p + sqrt(t_radius_squared * m_sqr_1 - p * p)) / m_sqr_1;
+        } else {
+            f = (m * p - sqrt(t_radius_squared * m_sqr_1 - p * p)) / m_sqr_1;
+        }
+
+        frac = (by - f) / dy;
+    }
+
+    return iter - frac;
+}
+
+{% endifndef %}
