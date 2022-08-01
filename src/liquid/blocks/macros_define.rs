@@ -202,7 +202,7 @@ mod tests {
             )
             assert_output(
                 "Hello Liquid!",
-                "The rendered macro should say \"Hello\"."
+                "The rendered macro should say \"Hello Liquid!\"."
             )
         );
     }
@@ -222,7 +222,7 @@ mod tests {
             )
             assert_output(
                 "Hello Liquid!",
-                "The rendered macro should say \"Hello\"."
+                "The rendered macro should say \"Hello Liquid!\"."
             )
         );
     }
