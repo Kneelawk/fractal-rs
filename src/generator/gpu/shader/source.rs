@@ -1,12 +1,10 @@
 use crate::liquid::{default_language, partials::CompositePartialStore};
-use cached::proc_macro::cached;
 use include_dir::{Dir, DirEntry};
 use liquid::partials::{LazyCompiler, PartialSource};
 use liquid_core::{
-    parser,
     partials::PartialCompiler,
     runtime::{PartialStore, RuntimeBuilder},
-    Language, Renderable, Template,
+    Language,
 };
 use std::{borrow::Cow, fmt::Debug, sync::Arc};
 
@@ -70,19 +68,6 @@ impl PartialSource for ShaderTemplateDirSource {
     }
 }
 
-#[cached(result = true)]
-fn get_template(path: String) -> Result<Arc<Template>, ShaderTemplateError> {
-    let source = SHADER_TEMPLATE_DIR
-        .get_file(&path)
-        .ok_or(ShaderTemplateError::NoSuchFile)?
-        .contents_utf8()
-        .ok_or(ShaderTemplateError::NotUTF8)?;
-    Ok(Arc::new(Template::new(parser::parse(
-        source,
-        LIQUID_LANGUAGE.as_ref(),
-    )?)))
-}
-
 pub fn compile_template(path: String) -> Result<String, ShaderTemplateError> {
     // Build the composite store. This will eventually be able to contain
     // naga-generated partials as well, allowing templates to incorporate
@@ -94,7 +79,9 @@ pub fn compile_template(path: String) -> Result<String, ShaderTemplateError> {
     let runtime = RuntimeBuilder::new().set_partials(&store).build();
 
     // Get the cached template.
-    let template = get_template(path)?;
+    let template = store
+        .try_get(&path)
+        .ok_or(ShaderTemplateError::NoSuchFile)?;
 
     // Render the template.
     Ok(template.render(&runtime)?)
@@ -104,8 +91,6 @@ pub fn compile_template(path: String) -> Result<String, ShaderTemplateError> {
 pub enum ShaderTemplateError {
     #[error("No such shader template file")]
     NoSuchFile,
-    #[error("Shader template file is not in UTF8")]
-    NotUTF8,
     #[error("Error parsing or rendering shader template")]
     LiquidError(#[from] liquid::Error),
 }
