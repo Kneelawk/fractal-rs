@@ -133,6 +133,8 @@ pub struct UIInstanceUpdateContext<'a> {
     pub render_pass: &'a mut RenderPass,
     /// The maximum size of generation chunks.
     pub chunk_size: usize,
+    /// Whether to cache pipelines if starting a new fractal.
+    pub cache_generators: bool,
     /// A vec into which operation requests are inserted.
     pub operations: &'a mut UIOperations,
 }
@@ -298,6 +300,7 @@ impl UIInstance {
                             .start_to_gui(
                                 opts,
                                 views,
+                                ctx.cache_generators,
                                 self.present.clone(),
                                 self.viewer.get_texture(),
                                 self.viewer.get_texture_view(),
@@ -309,7 +312,13 @@ impl UIInstance {
                     },
                     UIInstanceGenerationType::Image => {
                         self.manager
-                            .start_to_image(opts, view, views, PathBuf::from(&self.output_location))
+                            .start_to_image(
+                                opts,
+                                view,
+                                views,
+                                ctx.cache_generators,
+                                PathBuf::from(&self.output_location),
+                            )
                             .expect(
                                 "Attempted to start a new gractal generator while one was \
                                 already running! (This is a bug)",

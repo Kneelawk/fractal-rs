@@ -141,6 +141,7 @@ impl GeneratorManager {
         opts: FractalOpts,
         parent_view: View,
         child_views: Vec<View>,
+        cache_generators: bool,
         output: PathBuf,
     ) -> Result<(), ImageStartError> {
         // make sure we're not currently running
@@ -157,7 +158,10 @@ impl GeneratorManager {
         self.instance_canceled = false;
 
         // check to see if we need to create a new generator
-        if self.current_generator.is_none() || self.current_generator.as_ref().unwrap().0 != opts {
+        if self.current_generator.is_none()
+            || !cache_generators
+            || self.current_generator.as_ref().unwrap().0 != opts
+        {
             // we need to create a new generator
             self.start_with_new_generator(StartArgs::CPU {
                 opts,
@@ -217,6 +221,7 @@ impl GeneratorManager {
         &mut self,
         opts: FractalOpts,
         views: Vec<View>,
+        cache_generators: bool,
         present: GPUContext,
         texture: Arc<Texture>,
         texture_view: Arc<TextureView>,
@@ -230,7 +235,10 @@ impl GeneratorManager {
         self.instance_canceled = false;
 
         // check to see if we need to create a new generator
-        if self.current_generator.is_none() || self.current_generator.as_ref().unwrap().0 != opts {
+        if self.current_generator.is_none()
+            || !cache_generators
+            || self.current_generator.as_ref().unwrap().0 != opts
+        {
             // we need to create a new generator
             self.start_with_new_generator(StartArgs::GPU {
                 opts,

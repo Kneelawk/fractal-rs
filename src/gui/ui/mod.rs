@@ -72,6 +72,7 @@ pub struct FractalRSUI {
     current_generator_type: GeneratorType,
     new_generator_type: GeneratorType,
     chunk_size_power: usize,
+    cache_generators: bool,
     start_fullscreen: bool,
     initial_window_width: u32,
     initial_window_height: u32,
@@ -256,6 +257,7 @@ impl FractalRSUI {
             current_generator_type: generator_type,
             new_generator_type: generator_type,
             chunk_size_power: general.fractal_chunk_size_power,
+            cache_generators: general.cache_generators,
             start_fullscreen: ui_settings.start_fullscreen,
             initial_window_width: ui_settings.initial_window_width,
             initial_window_height: ui_settings.initial_window_height,
@@ -363,6 +365,7 @@ impl FractalRSUI {
             instance.update(&mut UIInstanceUpdateContext {
                 render_pass: ctx.render_pass,
                 chunk_size: 1 << self.chunk_size_power,
+                cache_generators: self.cache_generators,
                 operations: &mut self.instance_operations,
             });
         }
@@ -551,6 +554,13 @@ impl FractalRSUI {
                             may crash with values that are too large. Most devices handle 2^8 \
                             relatively well. My GTX1060 timed out when rendering a mandelbrot set \
                             at 2^13.",
+                        );
+
+                        ui.add(Label::new("Generator Caching:").heading());
+                        ui.checkbox(&mut self.cache_generators, "Cache Generators");
+                        ui.label(
+                            "Note: you generally only want to disable this if you're \
+                            doing shader development.",
                         );
                     });
 
@@ -886,6 +896,7 @@ impl FractalRSUI {
             let mut cfg = CfgGeneral::write();
             cfg.fractal_generator_type = self.current_generator_type.into();
             cfg.fractal_chunk_size_power = self.chunk_size_power;
+            cfg.cache_generators = self.cache_generators;
         }
         {
             let mut cfg = CfgUiSettings::write();
