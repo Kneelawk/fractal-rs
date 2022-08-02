@@ -1,13 +1,15 @@
-// fragment_shader_main.wgsl.liquid - This file describes the general process
-// for generating fractals using WGPU. This file is a template. Key constants
-// and functions are replaced when this file is loaded, allowing efficient
-// manipulation of the fractal generator.
-
 {% include "globals.wgsl.liquid" %}
 {% include "fragment_data.wgsl.liquid" %}
 {% include "util/color.wgsl.liquid" %}
 {% include "util/complex_f32.wgsl.liquid" %}
 {% include "util/linear_intersection_f32.wgsl.liquid" %}
+
+//
+// fragment_shader_main.wgsl.liquid - This file describes the general process
+// for generating fractals using WGPU. This file is a template. Key constants
+// and functions are replaced when this file is loaded, allowing efficient
+// manipulation of the fractal generator.
+//
 
 //
 // Structs

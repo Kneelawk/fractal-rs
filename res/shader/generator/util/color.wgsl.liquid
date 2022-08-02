@@ -1,7 +1,9 @@
-// color.wgsl.liquid - This file contains the color utility functions.
-
 {% ifndef UTIL_COLOR_WGSL %}
 {% define UTIL_COLOR_WGSL %}
+
+//
+// color.wgsl.liquid - This file contains the color utility functions.
+//
 
 // fromHSB - This function converts HSBA values into an RGBA color.
 fn fromHSB(hue: f32, saturation: f32, brightness: f32, alpha: f32) -> vec4<f32> {

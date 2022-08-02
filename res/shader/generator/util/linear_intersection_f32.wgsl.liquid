@@ -1,11 +1,13 @@
-// util/linear_intersection_f32.wgsl.liquid - This file contains the
-// linear-intersection iteration smoothing function.
-
 {% ifndef UTIL_LINEAR_INTERSECTION_F32_WGSL %}
 {% define UTIL_LINEAR_INTERSECTION_F32_WGSL %}
 
 {% include "globals.wgsl.liquid" %}
 {% include "util/complex_f32.wgsl.liquid" %}
+
+//
+// util/linear_intersection_f32.wgsl.liquid - This file contains the
+// linear-intersection iteration smoothing function.
+//
 
 // linear_intersection - The linear-intersection iteration smoothing function.
 fn linear_intersection(iterations: u32, z_curr: vec2<f32>, z_prev: vec2<f32>) -> f32 {
