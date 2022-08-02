@@ -1,7 +1,7 @@
 use crate::{
     generator::{
         gpu::{
-            shader::{load_fragment_shader, load_vertex_shader},
+            shader::load_shaders,
             uniforms::{GpuView, Uniforms},
         },
         util::{copy_region, smallest_multiple_containing},
@@ -128,20 +128,15 @@ impl GpuFractalGenerator {
         render_pipeline_layout: Arc<PipelineLayout>,
     ) -> anyhow::Result<GpuFractalGenerator> {
         info!("Creating shader modules...");
-        let frag_shader = load_fragment_shader(opts)
-            .await
-            .context("Error loading fragment shader")?;
+        let shaders = load_shaders(opts).await.context("Error loading shaders")?;
         let frag_module = gpu.device.create_shader_module(&ShaderModuleDescriptor {
             label: Some("Fragment Shader"),
-            source: frag_shader,
+            source: shaders.fragment,
         });
 
-        let vert_shader = load_vertex_shader()
-            .await
-            .context("Error loading vertex shader")?;
         let vert_module = gpu.device.create_shader_module(&ShaderModuleDescriptor {
             label: Some("Vertex Shader"),
-            source: vert_shader,
+            source: shaders.vertex,
         });
 
         info!("Creating render pipeline...");

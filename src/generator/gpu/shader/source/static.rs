@@ -1,10 +1,15 @@
-use crate::liquid::{default_language, partials::CompositePartialStore};
+use crate::{
+    generator::gpu::shader::source::{
+        ShaderTemplateError, ShaderTemplateLoader, ShaderTemplateOpts, LIQUID_LANGUAGE,
+    },
+    liquid::partials::CompositePartialStore,
+};
+use anyhow::Context;
 use include_dir::{Dir, DirEntry};
 use liquid::partials::{LazyCompiler, PartialSource};
 use liquid_core::{
     partials::PartialCompiler,
     runtime::{PartialStore, RuntimeBuilder},
-    Language, Object,
 };
 use std::{borrow::Cow, fmt::Debug, sync::Arc};
 
@@ -14,7 +19,6 @@ static SHADER_TEMPLATE_DIR: Dir<'_> =
 
 lazy_static! {
     static ref DIR_CONTENTS: Vec<String> = make_dir_contents();
-    static ref LIQUID_LANGUAGE: Arc<Language> = make_language();
     static ref STATIC_STORE: Arc<dyn PartialStore + Send + Sync> = make_store();
 }
 
@@ -35,10 +39,6 @@ fn walk_dir_contents(dir: &Dir, into: &mut Vec<String>) {
             },
         }
     }
-}
-
-fn make_language() -> Arc<Language> {
-    Arc::new(default_language().build())
 }
 
 fn make_store() -> Arc<dyn PartialStore + Send + Sync> {
@@ -68,32 +68,30 @@ impl PartialSource for ShaderTemplateDirSource {
     }
 }
 
-pub fn compile_template(path: String, globals: Object) -> Result<String, ShaderTemplateError> {
-    // Build the composite store. This will eventually be able to contain
-    // naga-generated partials as well, allowing templates to incorporate
-    // generated code. Though naga-generated partials will likely also be
-    // template-based.
-    let store = CompositePartialStore::new(vec![STATIC_STORE.clone()]);
+pub struct StaticShaderTemplateLoader;
 
-    // Build the runtime.
-    let runtime = RuntimeBuilder::new()
-        .set_globals(&globals)
-        .set_partials(&store)
-        .build();
+impl ShaderTemplateLoader for StaticShaderTemplateLoader {
+    fn compile_template(&self, opts: ShaderTemplateOpts) -> anyhow::Result<String> {
+        // Build the composite store. This will eventually be able to contain
+        // naga-generated partials as well, allowing templates to incorporate
+        // generated code. Though naga-generated partials will likely also be
+        // template-based.
+        let store = CompositePartialStore::new(vec![STATIC_STORE.clone()]);
 
-    // Get the cached template.
-    let template = store
-        .try_get(&path)
-        .ok_or(ShaderTemplateError::NoSuchFile)?;
+        // Build the runtime.
+        let runtime = RuntimeBuilder::new()
+            .set_globals(opts.globals)
+            .set_partials(&store)
+            .build();
 
-    // Render the template.
-    Ok(template.render(&runtime)?)
-}
+        // Get the cached template.
+        let template = store
+            .try_get(&opts.path)
+            .ok_or(ShaderTemplateError::NoSuchFile)?;
 
-#[derive(Debug, Clone, Error)]
-pub enum ShaderTemplateError {
-    #[error("No such shader template file")]
-    NoSuchFile,
-    #[error("Error parsing or rendering shader template")]
-    LiquidError(#[from] liquid::Error),
+        // Render the template.
+        Ok(template
+            .render(&runtime)
+            .context("Error parsing or rendering shader template")?)
+    }
 }

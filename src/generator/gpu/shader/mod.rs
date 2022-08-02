@@ -2,7 +2,10 @@ pub mod opts;
 pub mod source;
 
 use crate::{
-    generator::{gpu::shader::opts::GpuFractalOpts, FractalOpts},
+    generator::{
+        gpu::shader::{opts::GpuFractalOpts, source::ShaderTemplateOpts},
+        FractalOpts,
+    },
     util::files::debug_dir,
 };
 use anyhow::Context;
@@ -18,20 +21,34 @@ use wgpu::ShaderSource;
 const VERTEX_SHADER_PATH: &str = "screen_rect_vertex_shader.wgsl.liquid";
 const FRAGMENT_SHADER_PATH: &str = "fragment_shader_main.wgsl.liquid";
 
-pub async fn load_fragment_shader(opts: FractalOpts) -> anyhow::Result<ShaderSource<'static>> {
+/// Both
+pub struct LoadedShaders {
+    pub vertex: ShaderSource<'static>,
+    pub fragment: ShaderSource<'static>,
+}
+
+pub async fn load_shaders(opts: FractalOpts) -> anyhow::Result<LoadedShaders> {
+    info!("Getting shader loader...");
+    let loader = source::obtain_loader().context("Error obtaining shader loader")?;
+
+    //
+    // Fragment Shader
+    //
+
     info!("Loading fragment shader template...");
-    let template_source = source::compile_template(
-        FRAGMENT_SHADER_PATH.to_string(),
-        object!({
-            "opts": object!({
-                "c_real": opts.c.re,
-                "c_imag": opts.c.im,
-                "iterations": opts.iterations,
-                "mandelbrot": opts.mandelbrot
-            })
-        }),
-    )
-    .context("Error loading fragment shader template")?;
+    let template_source = loader
+        .compile_template(ShaderTemplateOpts {
+            path: Cow::Borrowed(FRAGMENT_SHADER_PATH),
+            globals: &object!({
+                "opts": object!({
+                    "c_real": opts.c.re,
+                    "c_imag": opts.c.im,
+                    "iterations": opts.iterations,
+                    "mandelbrot": opts.mandelbrot
+                })
+            }),
+        })
+        .context("Error loading fragment shader template")?;
 
     info!("Writing filled template...");
     let path = debug_dir().join("debug_fragment_template.wgsl");
@@ -72,8 +89,8 @@ pub async fn load_fragment_shader(opts: FractalOpts) -> anyhow::Result<ShaderSou
         .context("Error while validating filled WGSL template")?;
 
     info!("Compiling WGSL...");
-    let mut wgsl_str = String::new();
-    let mut writer = back::wgsl::Writer::new(&mut wgsl_str);
+    let mut frag_str = String::new();
+    let mut writer = back::wgsl::Writer::new(&mut frag_str);
     writer
         .write(&module, &module_info)
         .context("Error writing validated WGSL to string")?;
@@ -85,16 +102,20 @@ pub async fn load_fragment_shader(opts: FractalOpts) -> anyhow::Result<ShaderSou
         .await
         .with_context(|| format!("Error opening {:?} for writing", &path))?;
     wgsl_file
-        .write_all(wgsl_str.as_bytes())
+        .write_all(frag_str.as_bytes())
         .await
         .with_context(|| format!("Error writing to {:?}", &path))?;
 
-    Ok(ShaderSource::Wgsl(Cow::Owned(wgsl_str)))
-}
+    //
+    // Vertex Shader
+    //
 
-pub async fn load_vertex_shader() -> anyhow::Result<ShaderSource<'static>> {
     info!("Loading vertex shader template...");
-    let source = source::compile_template(VERTEX_SHADER_PATH.to_string(), object!({}))
+    let vert_str = loader
+        .compile_template(ShaderTemplateOpts {
+            path: Cow::Borrowed(VERTEX_SHADER_PATH),
+            ..Default::default()
+        })
         .context("Error loading vertex shader template")?;
 
     info!("Writing Vertex Shader WGSL...");
@@ -103,11 +124,14 @@ pub async fn load_vertex_shader() -> anyhow::Result<ShaderSource<'static>> {
         .await
         .with_context(|| format!("Error opening {:?} for writing", &path))?;
     wgsl_file
-        .write_all(source.as_bytes())
+        .write_all(vert_str.as_bytes())
         .await
         .with_context(|| format!("Error writing to {:?}", &path))?;
 
-    Ok(ShaderSource::Wgsl(Cow::Owned(source)))
+    Ok(LoadedShaders {
+        vertex: ShaderSource::Wgsl(Cow::Owned(vert_str)),
+        fragment: ShaderSource::Wgsl(Cow::Owned(frag_str)),
+    })
 }
 
 #[derive(Error, Debug)]
