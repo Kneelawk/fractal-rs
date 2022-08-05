@@ -15,7 +15,7 @@ let t_iterations: u32 = {{ opts.iterations }}u;
 let t_mandelbrot: bool = {{ opts.mandelbrot }};
 
 // This constant is designed to have its value replaced.
-let t_radius_squared: f32 = 0.0;
+let t_radius_squared: f32 = {{ opts.radius_squared }}.0;
 
 // This constant is designed to have its value replaced.
 let t_sample_count: u32 = 1u;

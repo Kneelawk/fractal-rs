@@ -44,7 +44,8 @@ pub async fn load_shaders(opts: FractalOpts) -> anyhow::Result<LoadedShaders> {
                     "c_real": opts.c.re,
                     "c_imag": opts.c.im,
                     "iterations": opts.iterations,
-                    "mandelbrot": opts.mandelbrot
+                    "mandelbrot": opts.mandelbrot,
+                    "radius_squared": opts.radius_squared,
                 })
             }),
         })

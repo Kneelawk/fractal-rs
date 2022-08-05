@@ -1,9 +1,4 @@
-use crate::generator::{
-    args::{Smoothing, DEFAULT_RADIUS_SQUARED},
-    color::FromHSBA,
-    view::View,
-    FractalOpts,
-};
+use crate::generator::{args::Smoothing, color::FromHSBA, view::View, FractalOpts};
 use cgmath::Vector4;
 use num_complex::Complex;
 
@@ -38,11 +33,9 @@ impl CpuFractalOpts for FractalOpts {
 
         let mut z_prev = z;
 
-        let radius_squared = self.smoothing.radius_squared();
-
         let mut n = 0;
         while n < self.iterations {
-            if z.norm_sqr() > radius_squared {
+            if z.norm_sqr() > self.radius_squared {
                 break;
             }
 
@@ -54,7 +47,7 @@ impl CpuFractalOpts for FractalOpts {
         }
 
         if n < self.iterations {
-            self.smoothing.smooth(n, z, z_prev)
+            self.smoothing.smooth(n, z, z_prev, self.radius_squared)
         } else {
             n as f32
         }
@@ -82,25 +75,25 @@ impl CpuFractalOpts for FractalOpts {
 /// Structs implementing this trait can be used to smooth an integer iteration
 /// count into a floating-point value.
 pub trait CpuSmoothing {
-    /// Gets the radius squared used to calculate if a complex number has
-    /// escaped the circle around the origin.
-    fn radius_squared(&self) -> f32;
-
     /// Smooths an integer iteration count based on the current and previous
     /// values of the complex number.
-    fn smooth(&self, iterations: u32, z_current: Complex<f32>, z_previous: Complex<f32>) -> f32;
+    fn smooth(
+        &self,
+        iterations: u32,
+        z_current: Complex<f32>,
+        z_previous: Complex<f32>,
+        radius_squared: f32,
+    ) -> f32;
 }
 
 impl CpuSmoothing for Smoothing {
-    fn radius_squared(&self) -> f32 {
-        match self {
-            Smoothing::None => DEFAULT_RADIUS_SQUARED,
-            Smoothing::LogarithmicDistance { radius_squared, .. } => *radius_squared,
-            Smoothing::LinearIntersection => DEFAULT_RADIUS_SQUARED,
-        }
-    }
-
-    fn smooth(&self, iterations: u32, z_current: Complex<f32>, z_previous: Complex<f32>) -> f32 {
+    fn smooth(
+        &self,
+        iterations: u32,
+        z_current: Complex<f32>,
+        z_previous: Complex<f32>,
+        radius_squared: f32,
+    ) -> f32 {
         match self {
             Smoothing::None => iterations as f32,
             Smoothing::LogarithmicDistance {
@@ -111,11 +104,11 @@ impl CpuSmoothing for Smoothing {
                     return iterations as f32;
                 }
 
-                if z_previous.norm_sqr() > DEFAULT_RADIUS_SQUARED {
+                if z_previous.norm_sqr() > radius_squared {
                     return iterations as f32;
                 }
 
-                if z_current.norm_sqr() < DEFAULT_RADIUS_SQUARED {
+                if z_current.norm_sqr() < radius_squared {
                     return iterations as f32;
                 }
 
@@ -133,11 +126,9 @@ impl CpuSmoothing for Smoothing {
                         let p = m * ax - ay;
 
                         (bx - if bx > ax {
-                            (m * p + (DEFAULT_RADIUS_SQUARED * m_squared_1 - p * p).sqrt())
-                                / m_squared_1
+                            (m * p + (radius_squared * m_squared_1 - p * p).sqrt()) / m_squared_1
                         } else {
-                            (m * p - (DEFAULT_RADIUS_SQUARED * m_squared_1 - p * p).sqrt())
-                                / m_squared_1
+                            (m * p - (radius_squared * m_squared_1 - p * p).sqrt()) / m_squared_1
                         }) / dx
                     } else {
                         let m = dx / dy;
@@ -145,11 +136,9 @@ impl CpuSmoothing for Smoothing {
                         let p = m * ay - ax;
 
                         (by - if by > ay {
-                            (m * p + (DEFAULT_RADIUS_SQUARED * m_squared_1 - p * p).sqrt())
-                                / m_squared_1
+                            (m * p + (radius_squared * m_squared_1 - p * p).sqrt()) / m_squared_1
                         } else {
-                            (m * p - (DEFAULT_RADIUS_SQUARED * m_squared_1 - p * p).sqrt())
-                                / m_squared_1
+                            (m * p - (radius_squared * m_squared_1 - p * p).sqrt()) / m_squared_1
                         }) / dy
                     }
             },

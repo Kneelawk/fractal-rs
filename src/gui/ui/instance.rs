@@ -1,6 +1,6 @@
 use crate::{
     generator::{
-        args::{Multisampling, Smoothing},
+        args::{Multisampling, Smoothing, DEFAULT_RADIUS_SQUARED},
         manager::{GeneratorManager, PollError, WriteError},
         view::View,
         FractalGeneratorFactory, FractalOpts,
@@ -286,6 +286,7 @@ impl UIInstance {
                     smoothing: Smoothing::from_logarithmic_distance(4.0, 2.0),
                     multisampling: Multisampling::Linear { axial_points: 16 },
                     c: self.c,
+                    radius_squared: DEFAULT_RADIUS_SQUARED,
                 };
 
                 // subdivide the view

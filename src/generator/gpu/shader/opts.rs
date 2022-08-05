@@ -6,13 +6,12 @@ use naga::{
 };
 
 use crate::generator::{
-    args::{Multisampling, Smoothing, DEFAULT_RADIUS_SQUARED},
+    args::{Multisampling, Smoothing},
     gpu::shader::ShaderError,
     util::FloatKey,
     FractalOpts,
 };
 
-const RADIUS_SQUARED_NAME: &str = "t_radius_squared";
 const SAMPLE_COUNT_NAME: &str = "t_sample_count";
 const SAMPLE_OFFSETS_NAME: &str = "t_sample_offsets";
 const SMOOTH_NAME: &str = "t_smooth";
@@ -40,34 +39,12 @@ pub trait GpuSmoothing {
 
 impl GpuSmoothing for Smoothing {
     fn install(&self, module: &mut Module) -> Result<(), ShaderError> {
-        self.install_radius_squared(module)?;
         self.install_smoothing(module)?;
         Ok(())
     }
 }
 
 impl Smoothing {
-    fn install_radius_squared(&self, module: &mut Module) -> Result<(), ShaderError> {
-        replace_constant(
-            &mut module.constants,
-            RADIUS_SQUARED_NAME,
-            ConstantInner::Scalar {
-                width: 4,
-                value: ScalarValue::Float(self.radius_squared() as f64),
-            },
-        )?;
-
-        Ok(())
-    }
-
-    fn radius_squared(&self) -> f32 {
-        match self {
-            Smoothing::None => DEFAULT_RADIUS_SQUARED,
-            Smoothing::LogarithmicDistance { radius_squared, .. } => *radius_squared,
-            Smoothing::LinearIntersection => DEFAULT_RADIUS_SQUARED,
-        }
-    }
-
     fn install_smoothing(&self, module: &mut Module) -> Result<(), ShaderError> {
         let handle = find_function_handle(&module.functions, SMOOTH_NAME)?;
         let linear_intersection_handle =
