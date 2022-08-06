@@ -16,14 +16,13 @@
 //
 
 struct View {
-    image_size: vec2<f32>;
-    image_scale: vec2<f32>;
-    plane_start: vec2<f32>;
+    image_size: vec2<f32>,
+    image_scale: vec2<f32>,
+    plane_start: vec2<f32>,
 };
 
-[[block]]
 struct Uniforms {
-    view: View;
+    view: View,
 };
 
 //
@@ -36,7 +35,7 @@ let offset: vec2<f32> = vec2<f32>(-0.5, -0.5);
 // Uniforms
 //
 
-[[group(0), binding(0)]]
+@group(0) @binding(0)
 var<uniform> uniforms: Uniforms;
 
 //
@@ -95,8 +94,8 @@ fn gen_pixel(pixel_location: vec2<f32>) -> vec4<f32> {
     }
 }
 
-[[stage(fragment)]]
-fn frag_main(data: FragmentData) -> [[location(0)]] vec4<f32> {
+@fragment
+fn frag_main(data: FragmentData) -> @location(0) vec4<f32> {
     // Only generate fractals for the requested area.
     if (data.position.x >= uniforms.view.image_size.x || data.position.y >= uniforms.view.image_size.y) {
         return vec4<f32>(0.0, 0.0, 0.0, 1.0);

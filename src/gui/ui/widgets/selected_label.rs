@@ -63,7 +63,7 @@ impl Widget for SelectableLabel2 {
         let id = override_id.unwrap_or_else(|| ui.make_persistent_id(&text));
 
         let text_style = text_style
-            .or(ui.style().override_text_style)
+            .or(ui.style().override_text_style.clone())
             .unwrap_or(TextStyle::Button);
 
         let button_padding = ui.spacing().button_padding;
@@ -75,9 +75,9 @@ impl Widget for SelectableLabel2 {
             f32::INFINITY
         };
 
-        let galley = ui
-            .fonts()
-            .layout_delayed_color(text, text_style, wrap_width);
+        let galley =
+            ui.fonts()
+                .layout_delayed_color(text, text_style.resolve(ui.style()), wrap_width);
 
         let mut desired_size = total_extra + galley.size();
         desired_size.y = desired_size.y.at_least(ui.spacing().interact_size.y);

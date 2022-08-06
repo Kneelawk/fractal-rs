@@ -69,7 +69,7 @@ pub fn print_adapter_info(adapter: &Adapter) {
         Max Push Constant Size: {push_constant_size}
     Features:
         Buffer Binding Array: .... {buffer_binding_array}
-        Clear Commands: .......... {clear_commands}
+        Clear Texture: ........... {clear_texture}
         Mappable Primary Buffers:  {mappable_primary_buffers}
         Multi Draw Indirect: ..... {multi_draw_indirect}
         Multi Draw Indirect Count: {multi_draw_indirect_count}
@@ -89,7 +89,7 @@ pub fn print_adapter_info(adapter: &Adapter) {
         storage_size = limits.max_storage_buffer_binding_size,
         push_constant_size = limits.max_push_constant_size,
         buffer_binding_array = features.contains(Features::BUFFER_BINDING_ARRAY),
-        clear_commands = features.contains(Features::CLEAR_COMMANDS),
+        clear_texture = features.contains(Features::CLEAR_TEXTURE),
         mappable_primary_buffers = features.contains(Features::MAPPABLE_PRIMARY_BUFFERS),
         multi_draw_indirect = features.contains(Features::MULTI_DRAW_INDIRECT),
         multi_draw_indirect_count = features.contains(Features::MULTI_DRAW_INDIRECT_COUNT),

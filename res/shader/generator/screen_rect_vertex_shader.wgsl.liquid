@@ -8,8 +8,8 @@
 // that creates a single rect covering the entire screen.
 //
 
-[[stage(vertex)]]
-fn vert_main([[builtin(vertex_index)]] vert_index: u32) -> FragmentData {
+@vertex
+fn vert_main(@builtin(vertex_index) vert_index: u32) -> FragmentData {
     var indexable: array<vec2<f32>,6u> = array<vec2<f32>,6u>(
         vec2<f32>(1.0, 1.0), vec2<f32>(-1.0, -1.0), vec2<f32>(1.0, -1.0),
         vec2<f32>(1.0, 1.0), vec2<f32>(-1.0, 1.0), vec2<f32>(-1.0, -1.0)

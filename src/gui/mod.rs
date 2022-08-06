@@ -10,6 +10,7 @@ use crate::{
         ui::{FractalRSUI, UICreationContext, UIRenderContext, UIUpdateContext},
     },
     storage::{CfgGeneral, CfgSingleton},
+    util::result::ResultExt,
 };
 use egui_wgpu_backend::{RenderPass, ScreenDescriptor};
 use egui_winit_platform::{Platform, PlatformDescriptor};
@@ -183,26 +184,26 @@ impl FlowModel for FractalRSGuiMain {
             window_size: self.window_size,
         });
 
-        let (_output, paint_commands) = self.platform.end_frame(Some(&self.window));
+        let output = self.platform.end_frame(Some(&self.window));
 
         // Clear keyboard keypress events.
         self.keyboard_tracker.reset_keyboard_input();
 
         // Encode UI draw commands
-        let paint_jobs = self.platform.context().tessellate(paint_commands);
+        let paint_jobs = self.platform.context().tessellate(output.shapes);
 
         let screen_descriptor = ScreenDescriptor {
             physical_width: self.window_size.width,
             physical_height: self.window_size.height,
             scale_factor: self.scale_factor as f32,
         };
-        self.render_pass.update_texture(
-            &self.present.device,
-            &self.present.queue,
-            &self.platform.context().texture(),
-        );
         self.render_pass
-            .update_user_textures(&self.present.device, &self.present.queue);
+            .add_textures(
+                &self.present.device,
+                &self.present.queue,
+                &output.textures_delta,
+            )
+            .on_err(|e| error!("Error adding EGUI textures to render pass! {:?}", e));
         self.render_pass.update_buffers(
             &self.present.device,
             &self.present.queue,

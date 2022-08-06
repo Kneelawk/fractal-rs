@@ -176,11 +176,23 @@ impl Flow {
         }));
 
         info!("Configuring surface...");
+        let supported_formats = surface.get_supported_formats(&adapter);
+        info!("Surface supported formats: {:?}", &supported_formats);
+
+        if !supported_formats.contains(&TextureFormat::Bgra8Unorm) {
+            warn!("Your system does not support rendering to a Bgra8Unorm format. Fractals will look a little weird.");
+            // FIXME: currently everything writes to the sRGB color space,
+            //  however fragment shaders expect their output to be in the
+            //  linear-sRGB color space. This means that if we try to render to
+            //  a Bgra8UnormSrgb surface, it will attempt to convert
+            //  already sRGB colors into sRGB.
+        }
+
+        let texture_format = TextureFormat::Bgra8Unorm;
+        info!("Using surface format: {:?}", &texture_format);
         let mut config = SurfaceConfiguration {
             usage: TextureUsages::RENDER_ATTACHMENT,
-            format: surface
-                .get_preferred_format(&adapter)
-                .unwrap_or(TextureFormat::Bgra8Unorm),
+            format: texture_format,
             width: window_size.width,
             height: window_size.height,
             present_mode: PresentMode::Fifo,

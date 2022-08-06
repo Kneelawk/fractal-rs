@@ -44,7 +44,7 @@ pub fn tab_list<T: TabX, F1: FnMut(&mut T) -> String, F2: FnMut(&mut Ui, &mut T)
                         let tab_extra = tab_padding + tab_padding;
                         let tab_galley = ui.ctx().fonts().layout_delayed_color(
                             name.to_string(),
-                            TextStyle::Button,
+                            TextStyle::Button.resolve(ui.style()),
                             f32::INFINITY,
                         );
                         let tab_size = tab_galley.size() + tab_extra;
@@ -117,7 +117,7 @@ pub fn tab_list<T: TabX, F1: FnMut(&mut T) -> String, F2: FnMut(&mut Ui, &mut T)
                         let tab_extra = tab_padding + tab_padding;
                         let tab_galley = ui.ctx().fonts().layout_delayed_color(
                             name.to_string(),
-                            TextStyle::Button,
+                            TextStyle::Button.resolve(ui.style()),
                             f32::INFINITY,
                         );
                         let tab_size = tab_galley.size() + tab_extra;

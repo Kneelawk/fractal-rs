@@ -149,9 +149,9 @@ impl Widget for ShortcutButton {
         let frame = frame.unwrap_or_else(|| ui.visuals().button_frame);
 
         let text_style = text_style
-            .or(ui.style().override_text_style)
+            .or(ui.style().override_text_style.clone())
             .unwrap_or(TextStyle::Button);
-        let shortcut_style = shortcut_style.unwrap_or(text_style);
+        let shortcut_style = shortcut_style.unwrap_or(text_style.clone());
 
         let shortcut_padding = if shortcut_text.is_empty() { 0.0 } else { 5.0 };
 
@@ -167,9 +167,11 @@ impl Widget for ShortcutButton {
         } else {
             f32::INFINITY
         };
-        let shortcut_galley =
-            ui.fonts()
-                .layout_delayed_color(shortcut_text, shortcut_style, shortcut_wrap_width);
+        let shortcut_galley = ui.fonts().layout_delayed_color(
+            shortcut_text,
+            shortcut_style.resolve(ui.style()),
+            shortcut_wrap_width,
+        );
         let shortcut_size = shortcut_galley.size();
 
         let wrap_width = if wrap {
@@ -177,9 +179,9 @@ impl Widget for ShortcutButton {
         } else {
             f32::INFINITY
         };
-        let galley = ui
-            .fonts()
-            .layout_delayed_color(text, text_style, wrap_width);
+        let galley =
+            ui.fonts()
+                .layout_delayed_color(text, text_style.resolve(ui.style()), wrap_width);
         let galley_size = galley.size();
 
         let mut desired_size = vec2(
@@ -213,7 +215,7 @@ impl Widget for ShortcutButton {
                 let stroke = stroke.unwrap_or(visuals.bg_stroke);
                 ui.painter().rect(
                     rect.expand(visuals.expansion),
-                    visuals.corner_radius,
+                    visuals.rounding,
                     fill,
                     stroke,
                 );
@@ -295,9 +297,9 @@ impl<'a> Widget for ShortcutCheckbox<'a> {
         } = self;
 
         let text_style = text_style
-            .or(ui.style().override_text_style)
+            .or(ui.style().override_text_style.clone())
             .unwrap_or(TextStyle::Button);
-        let shortcut_style = shortcut_style.unwrap_or(text_style);
+        let shortcut_style = shortcut_style.unwrap_or(text_style.clone());
 
         let spacing = ui.spacing();
         let icon_width = spacing.icon_width;
@@ -314,9 +316,11 @@ impl<'a> Widget for ShortcutCheckbox<'a> {
         } else {
             f32::INFINITY
         };
-        let shortcut_galley =
-            ui.fonts()
-                .layout_delayed_color(shortcut_text, shortcut_style, shortcut_wrap_width);
+        let shortcut_galley = ui.fonts().layout_delayed_color(
+            shortcut_text,
+            shortcut_style.resolve(ui.style()),
+            shortcut_wrap_width,
+        );
         let shortcut_size = shortcut_galley.size();
 
         let wrap_width = if wrap {
@@ -324,9 +328,9 @@ impl<'a> Widget for ShortcutCheckbox<'a> {
         } else {
             f32::INFINITY
         };
-        let galley = ui
-            .fonts()
-            .layout_delayed_color(text, text_style, wrap_width);
+        let galley =
+            ui.fonts()
+                .layout_delayed_color(text, text_style.resolve(ui.style()), wrap_width);
         let galley_size = galley.size();
 
         let mut desired_size = vec2(
@@ -358,7 +362,7 @@ impl<'a> Widget for ShortcutCheckbox<'a> {
         let (small_icon_rect, big_icon_rect) = ui.spacing().icon_rectangles(rect);
         ui.painter().add(epaint::RectShape {
             rect: big_icon_rect.expand(visuals.expansion),
-            corner_radius: visuals.corner_radius,
+            rounding: visuals.rounding,
             fill: visuals.bg_fill,
             stroke: visuals.bg_stroke,
         });

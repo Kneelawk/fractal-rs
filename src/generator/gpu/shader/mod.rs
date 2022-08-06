@@ -91,7 +91,8 @@ pub async fn load_shaders(opts: FractalOpts) -> anyhow::Result<LoadedShaders> {
 
     info!("Compiling WGSL...");
     let mut frag_str = String::new();
-    let mut writer = back::wgsl::Writer::new(&mut frag_str);
+    let mut writer =
+        back::wgsl::Writer::new(&mut frag_str, back::wgsl::WriterFlags::EXPLICIT_TYPES);
     writer
         .write(&module, &module_info)
         .context("Error writing validated WGSL to string")?;

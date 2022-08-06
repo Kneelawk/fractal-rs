@@ -3,8 +3,8 @@
 
 use crate::{generator::view::View, gpu::util::create_texture, gui::util::conversion::IntoVec2};
 use egui::{
-    paint::Mesh, Align2, Color32, PointerButton, Pos2, Rect, Response, Sense, Shape, Stroke,
-    TextStyle, TextureId, Ui, Vec2, Widget,
+    Align2, Color32, Mesh, PointerButton, Pos2, Rect, Response, Sense, Shape, Stroke, TextStyle,
+    TextureId, Ui, Vec2, Widget,
 };
 use egui_wgpu_backend::RenderPass;
 use num_complex::Complex32;
@@ -49,7 +49,7 @@ impl FractalViewer {
             device,
             fractal_view.image_width as u32,
             fractal_view.image_height as u32,
-            TextureFormat::Rgba8UnormSrgb,
+            TextureFormat::Rgba8Unorm,
             TextureUsages::COPY_DST | TextureUsages::TEXTURE_BINDING,
         );
 
@@ -58,7 +58,7 @@ impl FractalViewer {
 
         let texture_id = render_pass.egui_texture_from_wgpu_texture_with_sampler_options(
             device,
-            &image_texture,
+            &image_texture_view,
             SamplerDescriptor {
                 label: Some("viewer image sampler"),
                 mag_filter: FilterMode::Nearest,
@@ -123,7 +123,7 @@ impl FractalViewer {
 
             render_pass.update_egui_texture_from_wgpu_texture_with_sampler_options(
                 device,
-                &self.image_texture,
+                &self.image_texture_view,
                 SamplerDescriptor {
                     label: Some("viewer image sampler"),
                     mag_filter: FilterMode::Nearest,
@@ -303,6 +303,9 @@ impl FractalViewer {
                     Vec2::splat(self.fractal_scale.max(1.0)),
                 );
 
+                // get the monospace font
+                let font_id = TextStyle::Monospace.resolve(ui.style());
+
                 if clip_rect.contains(pixel_rect.min) || clip_rect.contains(pixel_rect.max) {
                     // selected pixel is on screen
                     clip_painter.rect_filled(
@@ -365,14 +368,14 @@ impl FractalViewer {
                         pixel_rect.right_top(),
                         Align2::LEFT_BOTTOM,
                         format!("({:.0}, {:.0})", pixel_selection.x, pixel_selection.y),
-                        TextStyle::Monospace,
+                        font_id.clone(),
                         POSITION_SELECTION_COLOR,
                     );
                     clip_painter.text(
                         pixel_rect.left_bottom(),
                         Align2::RIGHT_TOP,
                         format!("({} + {}i)", complex_selection.re, complex_selection.im),
-                        TextStyle::Monospace,
+                        font_id,
                         POSITION_SELECTION_COLOR,
                     );
                 } else if clip_rect.x_range().contains(&pixel_rect.min.x)
@@ -404,7 +407,7 @@ impl FractalViewer {
                             },
                             Align2::LEFT_TOP,
                             format!("({:.0}, {:.0})", pixel_selection.x, pixel_selection.y),
-                            TextStyle::Monospace,
+                            font_id.clone(),
                             POSITION_SELECTION_COLOR,
                         );
                         clip_painter.text(
@@ -414,7 +417,7 @@ impl FractalViewer {
                             },
                             Align2::RIGHT_TOP,
                             format!("({} + {}i)", complex_selection.re, complex_selection.im),
-                            TextStyle::Monospace,
+                            font_id,
                             POSITION_SELECTION_COLOR,
                         );
                     } else {
@@ -426,7 +429,7 @@ impl FractalViewer {
                             },
                             Align2::LEFT_BOTTOM,
                             format!("({:.0}, {:.0})", pixel_selection.x, pixel_selection.y),
-                            TextStyle::Monospace,
+                            font_id.clone(),
                             POSITION_SELECTION_COLOR,
                         );
                         clip_painter.text(
@@ -436,7 +439,7 @@ impl FractalViewer {
                             },
                             Align2::RIGHT_BOTTOM,
                             format!("({} + {}i)", complex_selection.re, complex_selection.im),
-                            TextStyle::Monospace,
+                            font_id,
                             POSITION_SELECTION_COLOR,
                         );
                     }
@@ -469,7 +472,7 @@ impl FractalViewer {
                             },
                             Align2::LEFT_BOTTOM,
                             format!("({:.0}, {:.0})", pixel_selection.x, pixel_selection.y),
-                            TextStyle::Monospace,
+                            font_id.clone(),
                             POSITION_SELECTION_COLOR,
                         );
                         clip_painter.text(
@@ -479,7 +482,7 @@ impl FractalViewer {
                             },
                             Align2::LEFT_TOP,
                             format!("({} + {}i)", complex_selection.re, complex_selection.im),
-                            TextStyle::Monospace,
+                            font_id,
                             POSITION_SELECTION_COLOR,
                         );
                     } else {
@@ -491,7 +494,7 @@ impl FractalViewer {
                             },
                             Align2::RIGHT_BOTTOM,
                             format!("({:.0}, {:.0})", pixel_selection.x, pixel_selection.y),
-                            TextStyle::Monospace,
+                            font_id.clone(),
                             POSITION_SELECTION_COLOR,
                         );
                         clip_painter.text(
@@ -501,7 +504,7 @@ impl FractalViewer {
                             },
                             Align2::RIGHT_TOP,
                             format!("({} + {}i)", complex_selection.re, complex_selection.im),
-                            TextStyle::Monospace,
+                            font_id,
                             POSITION_SELECTION_COLOR,
                         );
                     }

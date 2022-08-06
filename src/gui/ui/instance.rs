@@ -16,8 +16,8 @@ use crate::{
     util::result::ResultExt,
 };
 use egui::{
-    vec2, Button, Color32, ComboBox, CtxRef, DragValue, Label, Layout, ProgressBar, TextEdit,
-    TextStyle, Ui,
+    vec2, Button, Color32, ComboBox, Context, DragValue, Label, Layout, ProgressBar, RichText,
+    TextEdit, TextStyle, Ui,
 };
 use egui_wgpu_backend::RenderPass;
 use num_complex::Complex32;
@@ -142,7 +142,7 @@ pub struct UIInstanceUpdateContext<'a> {
 /// Context passed to a UIInstance when rendering.
 pub struct UIInstanceRenderContext<'a> {
     /// Egui context reference.
-    pub ctx: &'a CtxRef,
+    pub ctx: &'a Context,
     /// The currently pressed keyboard shortcut if any.
     pub shortcuts: &'a ShortcutMap,
     /// A list of the tabs this application has open.
@@ -533,7 +533,10 @@ impl UIInstance {
             .default_size([340.0, 500.0])
             .open(&mut self.show_generator_controls)
             .show(ctx.ctx, |ui| {
-                ui.add(ProgressBar::new(self.generation_fraction).text(&self.generation_message));
+                ui.add(
+                    ProgressBar::new(self.generation_fraction)
+                        .text(self.generation_message.as_ref()),
+                );
 
                 ui.add_enabled_ui(self.generation_running, |ui| {
                     if ui.button("Cancel Generation").clicked() {
@@ -590,7 +593,10 @@ impl UIInstance {
                 egui::CollapsingHeader::new("Generate to Exported Image")
                     .default_open(false)
                     .show(ui, |ui| {
-                        ui.add(ProgressBar::new(self.writer_fraction).text(&self.writer_message));
+                        ui.add(
+                            ProgressBar::new(self.writer_fraction)
+                                .text(self.writer_message.as_ref()),
+                        );
 
                         ui.add_enabled_ui(!self.generation_running, |ui| {
                             ui.add_enabled_ui(!self.output_location.is_empty(), |ui| {
@@ -924,11 +930,11 @@ impl UIInstance {
                         )
                         .show_ui(ui, |ui| {
                             if ui
-                                .add(
-                                    Button::new("None")
-                                        .text_color(Color32::BLUE)
+                                .add(Button::new(
+                                    RichText::new("None")
+                                        .color(Color32::BLUE)
                                         .text_style(TextStyle::Monospace),
-                                )
+                                ))
                                 .clicked()
                             {
                                 self.new_target_instance = None;
@@ -964,14 +970,12 @@ impl UIInstance {
                         });
                         let lacks_parent = parent.is_none();
 
-                        let mut label = Label::new(parent.unwrap_or("None".to_string()));
+                        let mut text = RichText::new(parent.unwrap_or("None".to_string()));
                         if lacks_parent {
-                            label = label
-                                .text_color(Color32::BLUE)
-                                .text_style(TextStyle::Monospace);
+                            text = text.color(Color32::BLUE).text_style(TextStyle::Monospace);
                         }
 
-                        ui.add(label);
+                        ui.add(Label::new(text));
                     });
 
                     ui.add_enabled_ui(self.parent_instance.is_some(), |ui| {

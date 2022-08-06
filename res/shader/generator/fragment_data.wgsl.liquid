@@ -8,7 +8,7 @@
 // FragmentData - This struct is used as the output of the vertex shader and the
 // input of the fragment shader.
 struct FragmentData {
-    [[builtin(position)]] position: vec4<f32>;
+    @builtin(position) position: vec4<f32>,
 };
 
 {% endifndef %}
