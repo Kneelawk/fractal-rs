@@ -110,7 +110,7 @@ impl FractalViewer {
                 device,
                 fractal_view.image_width as u32,
                 fractal_view.image_height as u32,
-                TextureFormat::Rgba8UnormSrgb,
+                TextureFormat::Rgba8Unorm,
                 TextureUsages::COPY_DST | TextureUsages::TEXTURE_BINDING,
             );
 
