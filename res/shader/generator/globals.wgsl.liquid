@@ -14,10 +14,12 @@ let t_iterations: u32 = {{ opts.iterations }}u;
 
 let t_mandelbrot: bool = {{ opts.mandelbrot }};
 
-// This constant is designed to have its value replaced.
 let t_radius_squared: f32 = {{ opts.radius_squared }}f;
 
-// This constant is designed to have its value replaced.
-let t_sample_count: u32 = 1u;
+let t_sample_count: u32 = {{ opts.multisampling.sample_count }}u;
+
+let t_sample_offsets: array<vec2<f32>, t_sample_count> = array<vec2<f32>, t_sample_count>({% assign sample_index = 0 %}{% for sample in opts.multisampling.sample_offsets %}{% assign mod_index = sample_index | modulo: 4 %}{% if mod_index == 0 %}
+    {% endif %}vec2<f32>({{ sample.x }}, {{ sample.y }}){% assign sample_index = sample_index | plus: 1 %}{% if sample_index < opts.multisampling.sample_count %},{% endif %}{% if mod_index != 3 %} {% endif %}{% endfor %}
+);
 
 {% endifndef %}

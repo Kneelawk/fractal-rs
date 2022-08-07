@@ -22,7 +22,7 @@ async-trait = "^0.1.51"
 bytemuck = "^1.7.2"
 chrono = "^0.4.19"
 chrono-humanize = "^0.2.1"
-cgmath = "^0.18.0"
+cgmath = { version = "^0.18.0", features = ["serde"] }
 dirs = "^4.0.0"
 egui = "^0.18.1"
 egui_wgpu_backend = "^0.18.0"

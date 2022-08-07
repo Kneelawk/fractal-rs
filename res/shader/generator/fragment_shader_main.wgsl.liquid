@@ -2,7 +2,7 @@
 {% include "fragment_data.wgsl.liquid" %}
 {% include "util/color.wgsl.liquid" %}
 {% include "util/complex_f32.wgsl.liquid" %}
-{% include "util/linear_intersection_f32.wgsl.liquid" %}
+{% include "smoothing.wgsl.liquid" %}
 
 //
 // fragment_shader_main.wgsl.liquid - This file describes the general process
@@ -43,18 +43,8 @@ var<uniform> uniforms: Uniforms;
 //
 
 // This function is designed to have its contents replaced.
-fn t_sample_offsets() -> array<vec2<f32>, t_sample_count> {
-    return array<vec2<f32>, t_sample_count>(vec2<f32>(0.0, 0.0));
-}
-
-// This function is designed to have its contents replaced.
 fn t_f(z: vec2<f32>, c: vec2<f32>) -> vec2<f32> {
     return complex_add(complex_sqr(z), c);
-}
-
-// This function is designed to have its contents replaced.
-fn t_smooth(iterations: u32, z_curr: vec2<f32>, z_prev: vec2<f32>) -> f32 {
-    return f32(iterations);
 }
 
 //
@@ -102,7 +92,7 @@ fn frag_main(data: FragmentData) -> @location(0) vec4<f32> {
     }
 
     let sample_count_f32 = f32(t_sample_count);
-    var sample_offsets = t_sample_offsets();
+    var sample_offsets = t_sample_offsets;
 
     var color = vec4<f32>(0.0, 0.0, 0.0, 0.0);
 
