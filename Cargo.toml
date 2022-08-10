@@ -17,50 +17,50 @@ prefer-metal = []
 prefer-vulkan = []
 
 [dependencies]
-anyhow = "^1.0.43"
-async-trait = "^0.1.51"
-bytemuck = "^1.7.2"
-chrono = "^0.4.19"
+anyhow = "^1.0.60"
+async-trait = "^0.1.57"
+bytemuck = "^1.11.0"
+chrono = "^0.4.21"
 chrono-humanize = "^0.2.1"
 cgmath = { version = "^0.18.0", features = ["serde"] }
 dirs = "^4.0.0"
 egui = "^0.18.1"
 egui_wgpu_backend = "^0.18.0"
 egui_winit_platform = { version = "^0.15.0", features = ["clipboard", "webbrowser"] }
-futures = "^0.3.12"
+futures = "^0.3.21"
 heck = "^0.4.0"
 #imgui = "^0.8.0"
 #imgui-wgpu = "^0.17.0"
 #imgui-winit-support = "^0.8.0"
 include_dir = { version = "^0.7.2", features = ["nightly"] }
-itertools = "^0.10.1"
+itertools = "^0.10.3"
 kstring = "^2.0.0"
 lazy_static = "^1.4.0"
 liquid = "^0.26.0"
 liquid-core = "^0.26.0"
 liquid-lib = "^0.26.0"
 liquid-derive = "^0.26.0"
-log = "^0.4.14"
-log4rs = "^1.0.0"
+log = "^0.4.17"
+log4rs = "^1.1.1"
 mtpng = { git = "https://github.com/Kneelawk/mtpng.git", branch = "encoder-drop-panic-fix" }
 naga = { version = "^0.9.0", features = ["wgsl-in", "wgsl-out"] }
 num-complex = "^0.4.2"
-num_cpus = "^1.13.0"
-num-traits = "^0.2.14"
+num_cpus = "^1.13.1"
+num-traits = "^0.2.15"
 pathdiff = "^0.2.1"
 parking_lot = "^0.12.1"
 pin-utils = "^0.1.0"
 #png = "^0.16.1"
-rayon = "^1.5.0"
-regex = "^1.4.3"
+rayon = "^1.5.3"
+regex = "^1.6.0"
 rfd = "^0.10.0"
-ron = "^0.7.0"
-serde = "^1.0.127"
+ron = "^0.7.1"
+serde = "^1.0.143"
 strum = "^0.24.1"
-strum_macros = "^0.24.2"
-thiserror = "^1.0.26"
-tokio = { version = "^1.2.0", features = ["fs", "io-util", "macros", "rt", "rt-multi-thread", "sync"] }
-tokio-stream = { version = "^0.1.7", features = ["sync"] }
+strum_macros = "^0.24.3"
+thiserror = "^1.0.32"
+tokio = { version = "^1.20.1", features = ["fs", "io-util", "macros", "rt", "rt-multi-thread", "sync"] }
+tokio-stream = { version = "^0.1.9", features = ["sync"] }
 winit = { version = "^0.26.1", features = ["wayland", "x11"] }
 wgpu = "^0.13.1"
 
