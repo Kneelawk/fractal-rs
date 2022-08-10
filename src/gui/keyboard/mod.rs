@@ -6,7 +6,7 @@ use crate::{
     gui::keyboard::{macros::shortcut, storage::CfgKeybinds, ShortcutName::*},
     storage::CfgSingleton,
 };
-use heck::TitleCase;
+use heck::ToTitleCase;
 use itertools::Itertools;
 use serde::{de::Visitor, Deserialize, Deserializer, Serialize, Serializer};
 use std::{
