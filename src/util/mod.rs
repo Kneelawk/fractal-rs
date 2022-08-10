@@ -4,6 +4,8 @@ pub mod files;
 pub mod future;
 pub mod result;
 pub mod running_guard;
+#[cfg(test)]
+pub mod tests;
 
 use chrono::{DateTime, Local, Utc};
 use chrono_humanize::{Accuracy, HumanTime, Tense};

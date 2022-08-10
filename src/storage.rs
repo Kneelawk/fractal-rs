@@ -34,6 +34,11 @@ pub struct CfgGeneral {
     /// of 256x256.
     #[serde(default = "default_fractal_chunk_size_power")]
     pub fractal_chunk_size_power: usize,
+
+    /// Whether to cache fractal generators between renders. You pretty much
+    /// only want this off if you're doing shader development.
+    #[serde(default = "default_cache_generators")]
+    pub cache_generators: bool,
 }
 
 /// Represents a selection of which type of generator backend should be used to
@@ -69,6 +74,7 @@ impl Default for CfgGeneral {
         Self {
             fractal_generator_type: Default::default(),
             fractal_chunk_size_power: default_fractal_chunk_size_power(),
+            cache_generators: true,
         }
     }
 }
@@ -81,6 +87,10 @@ impl Default for CfgFractalGeneratorType {
 
 fn default_fractal_chunk_size_power() -> usize {
     8
+}
+
+fn default_cache_generators() -> bool {
+    true
 }
 
 /// Implemented by any struct that is loaded as a singleton from a config file.

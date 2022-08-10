@@ -30,7 +30,7 @@ use crate::{
     storage::{CfgFractalGeneratorType, CfgGeneral, CfgSingleton},
     util::{future::future_wrapper::FutureWrapper, result::ResultExt, running_guard::RunningGuard},
 };
-use egui::{vec2, Align, Align2, Button, CtxRef, DragValue, Label, Layout, TextStyle};
+use egui::{vec2, Align, Align2, Button, Context, DragValue, Layout, RichText, TextStyle};
 use egui_wgpu_backend::RenderPass;
 use num_complex::Complex32;
 use std::{
@@ -72,6 +72,7 @@ pub struct FractalRSUI {
     current_generator_type: GeneratorType,
     new_generator_type: GeneratorType,
     chunk_size_power: usize,
+    cache_generators: bool,
     start_fullscreen: bool,
     initial_window_width: u32,
     initial_window_height: u32,
@@ -134,7 +135,7 @@ pub struct UIUpdateContext<'a> {
 /// Struct containing context passed to the UI render function.
 pub struct UIRenderContext<'a> {
     /// Egui context reference.
-    pub ctx: &'a CtxRef,
+    pub ctx: &'a Context,
     /// The current shortcut map.
     pub shortcuts: &'a ShortcutMap,
     /// The current keyboard shortcut tracker, containing info about all key
@@ -256,6 +257,7 @@ impl FractalRSUI {
             current_generator_type: generator_type,
             new_generator_type: generator_type,
             chunk_size_power: general.fractal_chunk_size_power,
+            cache_generators: general.cache_generators,
             start_fullscreen: ui_settings.start_fullscreen,
             initial_window_width: ui_settings.initial_window_width,
             initial_window_height: ui_settings.initial_window_height,
@@ -363,6 +365,7 @@ impl FractalRSUI {
             instance.update(&mut UIInstanceUpdateContext {
                 render_pass: ctx.render_pass,
                 chunk_size: 1 << self.chunk_size_power,
+                cache_generators: self.cache_generators,
                 operations: &mut self.instance_operations,
             });
         }
@@ -445,7 +448,7 @@ impl FractalRSUI {
         // Draw top bar
         egui::TopBottomPanel::top("Menu Bar").show(ctx.ctx, |ui| {
             egui::menu::bar(ui, |ui| {
-                egui::menu::menu(ui, "File", |ui| {
+                egui::menu::menu_button(ui, "File", |ui| {
                     if ui.add(shortcut_button!("New", ctx, App_New)).clicked() {
                         self.new_instance_requested = true;
                     }
@@ -456,7 +459,7 @@ impl FractalRSUI {
                         self.close_requested = true;
                     }
                 });
-                egui::menu::menu(ui, "Window", |ui| {
+                egui::menu::menu_button(ui, "Window", |ui| {
                     ui.add(shortcut_checkbox!(
                         &mut self.request_fullscreen,
                         "Fullscreen",
@@ -509,7 +512,7 @@ impl FractalRSUI {
                 egui::CollapsingHeader::new("Generator Settings")
                     .default_open(true)
                     .show(ui, |ui| {
-                        ui.add(Label::new("Generator Type:").heading());
+                        ui.label(RichText::new("Generator Type:").heading());
                         ui.add_enabled_ui(self.factory_future.is_empty(), |ui| {
                             ui.radio_value(
                                 &mut self.new_generator_type,
@@ -541,9 +544,9 @@ impl FractalRSUI {
                             enabled causes the application to use more CPU.",
                         );
 
-                        ui.add(Label::new("Chunk Size:").heading());
+                        ui.label(RichText::new("Chunk Size:").heading());
                         ui.horizontal(|ui| {
-                            ui.add(Label::new("2^").monospace());
+                            ui.label(RichText::new("2^").monospace());
                             ui.add(DragValue::new(&mut self.chunk_size_power).clamp_range(4..=13));
                         });
                         ui.label(
@@ -551,6 +554,13 @@ impl FractalRSUI {
                             may crash with values that are too large. Most devices handle 2^8 \
                             relatively well. My GTX1060 timed out when rendering a mandelbrot set \
                             at 2^13.",
+                        );
+
+                        ui.label(RichText::new("Generator Caching:").heading());
+                        ui.checkbox(&mut self.cache_generators, "Cache Generators");
+                        ui.label(
+                            "Note: you generally only want to disable this if you're \
+                            doing shader development.",
                         );
                     });
 
@@ -858,7 +868,9 @@ impl FractalRSUI {
                         };
                         ui.add_sized(
                             vec2(100.0, ui.spacing().interact_size.y),
-                            Button::new(button_text).text_style(TextStyle::Monospace),
+                            Button::new(
+                                RichText::new(button_text).text_style(TextStyle::Monospace),
+                            ),
                         );
 
                         if ui.button("Clear").clicked() {
@@ -886,6 +898,7 @@ impl FractalRSUI {
             let mut cfg = CfgGeneral::write();
             cfg.fractal_generator_type = self.current_generator_type.into();
             cfg.fractal_chunk_size_power = self.chunk_size_power;
+            cfg.cache_generators = self.cache_generators;
         }
         {
             let mut cfg = CfgUiSettings::write();

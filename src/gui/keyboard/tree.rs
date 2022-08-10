@@ -135,8 +135,12 @@ impl ShortcutTreeNode {
                                 if ui
                                     .add_sized(
                                         egui::vec2(50.0, ui.spacing().interact_size.y),
-                                        egui::Button::new(shortcuts.keys_for(shortcut))
+                                        egui::Button::new(
+                                            egui::RichText::new(
+                                                shortcuts.keys_for(shortcut).to_string(),
+                                            )
                                             .text_style(egui::TextStyle::Monospace),
+                                        ),
                                     )
                                     .clicked()
                                 {
@@ -147,13 +151,13 @@ impl ShortcutTreeNode {
                                     .get_conflicts()
                                     .binding_conflicts_for_name(shortcut)
                                 {
-                                    ui.add(egui::Label::new("\u{1F5D9}").text_color(Color32::RED))
+                                    ui.label(egui::RichText::new("\u{1F5D9}").color(Color32::RED))
                                         .on_hover_text(format!(
                                             "Conflicts with: {}",
                                             conflicts.iter().format(", ")
                                         ));
                                 } else {
-                                    ui.add(egui::Label::new("\u{2714}").text_color(Color32::GREEN));
+                                    ui.label(egui::RichText::new("\u{2714}").color(Color32::GREEN));
                                 }
 
                                 ui.add_enabled_ui(shortcuts.is_shortcut_modified(shortcut), |ui| {

@@ -1,0 +1,104 @@
+{% include "globals.wgsl.liquid" %}
+{% include "fragment_data.wgsl.liquid" %}
+{% include "util/color.wgsl.liquid" %}
+{% include "util/complex_f32.wgsl.liquid" %}
+{% include "smoothing.wgsl.liquid" %}
+
+//
+// fragment_shader_main.wgsl.liquid - This file describes the general process
+// for generating fractals using WGPU. This file is a template. Key constants
+// and functions are replaced when this file is loaded, allowing efficient
+// manipulation of the fractal generator.
+//
+
+//
+// Structs
+//
+
+struct View {
+    image_size: vec2<f32>,
+    image_scale: vec2<f32>,
+    plane_start: vec2<f32>,
+};
+
+struct Uniforms {
+    view: View,
+};
+
+//
+// Constants
+//
+
+let offset: vec2<f32> = vec2<f32>(-0.5, -0.5);
+
+//
+// Uniforms
+//
+
+@group(0) @binding(0)
+var<uniform> uniforms: Uniforms;
+
+//
+// Template Functions
+//
+
+// This function is designed to have its contents replaced.
+fn t_f(z: vec2<f32>, c: vec2<f32>) -> vec2<f32> {
+    return complex_add(complex_sqr(z), c);
+}
+
+//
+// Generator Functions
+//
+
+fn gen_pixel(pixel_location: vec2<f32>) -> vec4<f32> {
+    let loc = uniforms.view.plane_start + (pixel_location + offset) * uniforms.view.image_scale;
+
+    var z: vec2<f32>;
+    var c: vec2<f32>;
+
+    if (t_mandelbrot) {
+        z = vec2<f32>(0.0, 0.0);
+        c = loc;
+    } else {
+        z = loc;
+        c = vec2<f32>(t_c_real, t_c_imag);
+    }
+
+    var z_prev: vec2<f32> = z;
+    var n: u32 = 0u;
+    for (; n < t_iterations; n = n + 1u) {
+        if (complex_length_sqr(z) > t_radius_squared) {
+            break;
+        }
+
+        z_prev = z;
+        z = t_f(z, c);
+    }
+
+    if (n >= t_iterations) {
+        return vec4<f32>(0.0, 0.0, 0.0, 1.0);
+    } else {
+        let v = t_smooth(n, z, z_prev);
+        return fromHSB((v * 3.3 / 256.0) % 1.0, 1.0, (v / 16.0) % 1.0, 1.0);
+    }
+}
+
+@fragment
+fn frag_main(data: FragmentData) -> @location(0) vec4<f32> {
+    // Only generate fractals for the requested area.
+    if (data.position.x >= uniforms.view.image_size.x || data.position.y >= uniforms.view.image_size.y) {
+        return vec4<f32>(0.0, 0.0, 0.0, 1.0);
+    }
+
+    let sample_count_f32 = f32(t_sample_count);
+    var sample_offsets = t_sample_offsets;
+
+    var color = vec4<f32>(0.0, 0.0, 0.0, 0.0);
+
+    for (var i = 0u; i < t_sample_count; i = i + 1u) {
+        color = color + gen_pixel(data.position.xy + sample_offsets[i]) / sample_count_f32;
+    }
+
+    return color;
+}

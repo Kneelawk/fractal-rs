@@ -4,6 +4,7 @@
 // Because this file is coped often, not all projects use all the methods supplied here.
 #![allow(dead_code)]
 
+use crate::util::result::ResultExt;
 use bytemuck::{cast_slice, Pod};
 use std::{marker::PhantomData, mem::size_of};
 use wgpu::{
@@ -136,7 +137,12 @@ impl<D: Encodable + Sized> BufferWrapper<D> {
 
         {
             let staging_slice = staging_buffer.slice(..);
-            staging_slice.map_async(MapMode::Write).await?;
+            let (tx, rx) = tokio::sync::oneshot::channel();
+            staging_slice.map_async(MapMode::Write, move |res| {
+                tx.send(res)
+                    .on_err(|_| error!("Failed to send buffer map completion!"));
+            });
+            rx.await??;
             let mut mapping = staging_slice.get_mapped_range_mut();
             D::encode_slice(data, mapping.as_mut());
         }
@@ -181,7 +187,12 @@ impl<D: Encodable + Sized> BufferWrapper<D> {
 
         {
             let staging_slice = staging_buffer.slice(..);
-            staging_slice.map_async(MapMode::Write).await?;
+            let (tx, rx) = tokio::sync::oneshot::channel();
+            staging_slice.map_async(MapMode::Write, move |res| {
+                tx.send(res)
+                    .on_err(|_| error!("Failed to send buffer map completion!"));
+            });
+            rx.await??;
             let mut mapping = staging_slice.get_mapped_range_mut();
             D::encode_slice(data, mapping.as_mut());
         }
@@ -226,11 +237,19 @@ pub enum BufferWriteError {
     InsufficientCapacity,
     #[error("Buffer Async Error")]
     BufferAsyncError,
+    #[error("Synchronization Error")]
+    SyncError,
 }
 
 impl From<BufferAsyncError> for BufferWriteError {
     fn from(_: BufferAsyncError) -> Self {
         BufferWriteError::BufferAsyncError
+    }
+}
+
+impl From<tokio::sync::oneshot::error::RecvError> for BufferWriteError {
+    fn from(_: tokio::sync::oneshot::error::RecvError) -> Self {
+        BufferWriteError::SyncError
     }
 }
 

@@ -1,0 +1,44 @@
+{% ifndef UTIL_COLOR_WGSL %}
+{% define UTIL_COLOR_WGSL %}
+
+//
+// color.wgsl.liquid - This file contains the color utility functions.
+//
+
+// fromHSB - This function converts HSBA values into an RGBA color.
+fn fromHSB(hue: f32, saturation: f32, brightness: f32, alpha: f32) -> vec4<f32> {
+    if (saturation == 0.0) {
+        return vec4<f32>(brightness, brightness, brightness, alpha);
+    } else {
+        let sector = (hue % 1.0) * 6.0;
+        let offset = sector - floor(sector);
+        let off = brightness * (1.0 - saturation);
+        let fadeOut = brightness * (1.0 - (saturation * offset));
+        let fadeIn = brightness * (1.0 - (saturation * (1.0 - offset)));
+        switch(i32(sector)) {
+            case 0: {
+                return vec4<f32>(brightness, fadeIn, off, alpha);
+            }
+            case 1: {
+                return vec4<f32>(fadeOut, brightness, off, alpha);
+            }
+            case 2: {
+                return vec4<f32>(off, brightness, fadeIn, alpha);
+            }
+            case 3: {
+                return vec4<f32>(off, fadeOut, brightness, alpha);
+            }
+            case 4: {
+                return vec4<f32>(fadeIn, off, brightness, alpha);
+            }
+            case 5: {
+                return vec4<f32>(brightness, off, fadeOut, alpha);
+            }
+            default: {
+                return vec4<f32>(0.0, 0.0, 0.0, alpha);
+            }
+        }
+    }
+}
+
+{% endifndef %}

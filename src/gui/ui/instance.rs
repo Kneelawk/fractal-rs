@@ -1,6 +1,6 @@
 use crate::{
     generator::{
-        args::{Multisampling, Smoothing},
+        args::{Multisampling, Smoothing, DEFAULT_RADIUS_SQUARED},
         manager::{GeneratorManager, PollError, WriteError},
         view::View,
         FractalGeneratorFactory, FractalOpts,
@@ -16,8 +16,8 @@ use crate::{
     util::result::ResultExt,
 };
 use egui::{
-    vec2, Button, Color32, ComboBox, CtxRef, DragValue, Label, Layout, ProgressBar, TextEdit,
-    TextStyle, Ui,
+    vec2, Button, Color32, ComboBox, Context, DragValue, Label, Layout, ProgressBar, RichText,
+    TextEdit, TextStyle, Ui,
 };
 use egui_wgpu_backend::RenderPass;
 use num_complex::Complex32;
@@ -133,6 +133,8 @@ pub struct UIInstanceUpdateContext<'a> {
     pub render_pass: &'a mut RenderPass,
     /// The maximum size of generation chunks.
     pub chunk_size: usize,
+    /// Whether to cache pipelines if starting a new fractal.
+    pub cache_generators: bool,
     /// A vec into which operation requests are inserted.
     pub operations: &'a mut UIOperations,
 }
@@ -140,7 +142,7 @@ pub struct UIInstanceUpdateContext<'a> {
 /// Context passed to a UIInstance when rendering.
 pub struct UIInstanceRenderContext<'a> {
     /// Egui context reference.
-    pub ctx: &'a CtxRef,
+    pub ctx: &'a Context,
     /// The currently pressed keyboard shortcut if any.
     pub shortcuts: &'a ShortcutMap,
     /// A list of the tabs this application has open.
@@ -284,6 +286,7 @@ impl UIInstance {
                     smoothing: Smoothing::from_logarithmic_distance(4.0, 2.0),
                     multisampling: Multisampling::Linear { axial_points: 16 },
                     c: self.c,
+                    radius_squared: DEFAULT_RADIUS_SQUARED,
                 };
 
                 // subdivide the view
@@ -298,6 +301,7 @@ impl UIInstance {
                             .start_to_gui(
                                 opts,
                                 views,
+                                ctx.cache_generators,
                                 self.present.clone(),
                                 self.viewer.get_texture(),
                                 self.viewer.get_texture_view(),
@@ -309,7 +313,13 @@ impl UIInstance {
                     },
                     UIInstanceGenerationType::Image => {
                         self.manager
-                            .start_to_image(opts, view, views, PathBuf::from(&self.output_location))
+                            .start_to_image(
+                                opts,
+                                view,
+                                views,
+                                ctx.cache_generators,
+                                PathBuf::from(&self.output_location),
+                            )
                             .expect(
                                 "Attempted to start a new gractal generator while one was \
                                 already running! (This is a bug)",
@@ -523,7 +533,10 @@ impl UIInstance {
             .default_size([340.0, 500.0])
             .open(&mut self.show_generator_controls)
             .show(ctx.ctx, |ui| {
-                ui.add(ProgressBar::new(self.generation_fraction).text(&self.generation_message));
+                ui.add(
+                    ProgressBar::new(self.generation_fraction)
+                        .text(self.generation_message.as_ref()),
+                );
 
                 ui.add_enabled_ui(self.generation_running, |ui| {
                     if ui.button("Cancel Generation").clicked() {
@@ -580,7 +593,10 @@ impl UIInstance {
                 egui::CollapsingHeader::new("Generate to Exported Image")
                     .default_open(false)
                     .show(ui, |ui| {
-                        ui.add(ProgressBar::new(self.writer_fraction).text(&self.writer_message));
+                        ui.add(
+                            ProgressBar::new(self.writer_fraction)
+                                .text(self.writer_message.as_ref()),
+                        );
 
                         ui.add_enabled_ui(!self.generation_running, |ui| {
                             ui.add_enabled_ui(!self.output_location.is_empty(), |ui| {
@@ -914,11 +930,11 @@ impl UIInstance {
                         )
                         .show_ui(ui, |ui| {
                             if ui
-                                .add(
-                                    Button::new("None")
-                                        .text_color(Color32::BLUE)
+                                .add(Button::new(
+                                    RichText::new("None")
+                                        .color(Color32::BLUE)
                                         .text_style(TextStyle::Monospace),
-                                )
+                                ))
                                 .clicked()
                             {
                                 self.new_target_instance = None;
@@ -954,14 +970,12 @@ impl UIInstance {
                         });
                         let lacks_parent = parent.is_none();
 
-                        let mut label = Label::new(parent.unwrap_or("None".to_string()));
+                        let mut text = RichText::new(parent.unwrap_or("None".to_string()));
                         if lacks_parent {
-                            label = label
-                                .text_color(Color32::BLUE)
-                                .text_style(TextStyle::Monospace);
+                            text = text.color(Color32::BLUE).text_style(TextStyle::Monospace);
                         }
 
-                        ui.add(label);
+                        ui.add(Label::new(text));
                     });
 
                     ui.add_enabled_ui(self.parent_instance.is_some(), |ui| {

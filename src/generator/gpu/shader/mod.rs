@@ -1,54 +1,119 @@
 pub mod opts;
+pub mod source;
 
 use crate::{
-    generator::{gpu::shader::opts::GpuFractalOpts, FractalOpts},
+    generator::{
+        gpu::shader::{opts::GpuFractalOpts, source::ShaderTemplateOpts},
+        FractalOpts,
+    },
     util::files::debug_dir,
 };
+use anyhow::Context;
 use naga::{
-    back, front,
+    front,
     valid::{ValidationFlags, Validator},
 };
-use std::borrow::Cow;
+use std::{borrow::Cow, path::Path};
 use tokio::{fs::File, io::AsyncWriteExt};
 use wgpu::ShaderSource;
 
-const TEMPLATE_SOURCE: &str = include_str!("template.wgsl");
+const VERTEX_SHADER_PATH: &str = "screen_rect_vertex_shader.wgsl.liquid";
+const FRAGMENT_SHADER_PATH: &str = "fragment_shader_main.wgsl.liquid";
 
-pub async fn load_shaders(opts: FractalOpts) -> anyhow::Result<ShaderSource<'static>> {
-    info!("Loading utility functions...");
-    let mut module = front::wgsl::parse_str(TEMPLATE_SOURCE).unwrap();
+/// Both
+pub struct LoadedShaders {
+    pub vertex: ShaderSource<'static>,
+    pub fragment: ShaderSource<'static>,
+}
 
-    opts.install(&mut module)?;
+pub async fn load_shaders(opts: FractalOpts) -> anyhow::Result<LoadedShaders> {
+    info!("Getting shader loader...");
+    let loader = source::obtain_loader().context("Error obtaining shader loader")?;
 
-    info!("Writing module as txt...");
-    let mut file = File::create(debug_dir().join("debug.txt")).await.unwrap();
+    //
+    // Fragment Shader
+    //
+
+    info!("Loading fragment shader template...");
+    let frag_str = loader
+        .compile_template(ShaderTemplateOpts {
+            path: Cow::Borrowed(FRAGMENT_SHADER_PATH),
+            globals: &opts
+                .globals()
+                .context("Error creating globals for fractal options")?,
+        })
+        .context("Error loading fragment shader template")?;
+
+    info!("Writing fragment shader WGSL to debug file...");
+    let frag_path = debug_dir().join("debug_fragment.wgsl");
+    let mut file = File::create(&frag_path)
+        .await
+        .with_context(|| format!("Error opening {:?} for writing", &frag_path))?;
+    file.write_all(frag_str.as_bytes())
+        .await
+        .with_context(|| format!("Error writing to {:?}", &frag_path))?;
+
+    validate(&frag_str, &frag_path, "fragment").await?;
+
+    //
+    // Vertex Shader
+    //
+
+    info!("Loading vertex shader template...");
+    let vert_str = loader
+        .compile_template(ShaderTemplateOpts {
+            path: Cow::Borrowed(VERTEX_SHADER_PATH),
+            ..Default::default()
+        })
+        .context("Error loading vertex shader template")?;
+
+    info!("Writing vertex shader WGSL to debug file...");
+    let vert_path = debug_dir().join("debug_vertex.wgsl");
+    let mut wgsl_file = File::create(&vert_path)
+        .await
+        .with_context(|| format!("Error opening {:?} for writing", &vert_path))?;
+    wgsl_file
+        .write_all(vert_str.as_bytes())
+        .await
+        .with_context(|| format!("Error writing to {:?}", &vert_path))?;
+
+    validate(&vert_str, &vert_path, "vertex").await?;
+
+    Ok(LoadedShaders {
+        vertex: ShaderSource::Wgsl(Cow::Owned(vert_str)),
+        fragment: ShaderSource::Wgsl(Cow::Owned(frag_str)),
+    })
+}
+
+async fn validate(source: &str, source_file: &Path, shader_name: &str) -> anyhow::Result<()> {
+    info!("Validating {} source...", shader_name);
+    let module = front::wgsl::parse_str(source)
+        .map_err(|e| {
+            anyhow!(
+                "Error in template file: {:?}\n{}",
+                source_file,
+                e.emit_to_string(source)
+            )
+        })
+        .with_context(|| format!("Error parsing {} shader", shader_name))?;
+
+    info!("Writing {} module as txt...", shader_name);
+    let path = debug_dir().join(format!("debug_{}.txt", shader_name));
+    let mut file = File::create(&path)
+        .await
+        .with_context(|| format!("Error opening {:?} for writing", &path))?;
     file.write_all(format!("{:#?}", &module).as_bytes())
         .await
-        .unwrap();
+        .with_context(|| format!("Error writing to {:?}", &path))?;
 
-    info!("Validating module...");
+    info!("Validating {} module...", shader_name);
     let mut validator = Validator::new(ValidationFlags::all(), Default::default());
-    let module_info = validator.validate(&module).unwrap();
+    let _ = validator
+        .validate(&module)
+        .with_context(|| format!("Error validating {} shader", shader_name))?;
 
-    info!("Compiling WGSL...");
-    let mut wgsl_str = String::new();
-    let mut writer = back::wgsl::Writer::new(&mut wgsl_str);
-    writer.write(&module, &module_info).unwrap();
-    writer.finish();
-
-    info!("Writing WGSL...");
-    let mut wgsl_file = File::create(debug_dir().join("debug.wgsl")).await.unwrap();
-    wgsl_file.write_all(wgsl_str.as_bytes()).await.unwrap();
-
-    Ok(ShaderSource::Wgsl(Cow::Owned(wgsl_str)))
+    Ok(())
 }
 
 #[derive(Error, Debug)]
-pub enum ShaderError {
-    #[error("Missing template function '{}'", .0)]
-    MissingTemplateFunction(String),
-    #[error("Missing template constant '{}'", .0)]
-    MissingTemplateConstant(String),
-    #[error("Missing template type '{}'", .0)]
-    MissingTemplateType(String),
-}
+pub enum ShaderError {}

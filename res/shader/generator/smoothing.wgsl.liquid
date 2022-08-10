@@ -1,0 +1,22 @@
+{% ifndef SMOOTHING_WGSL %}
+{% define SMOOTHING_WGSL %}
+
+{% if opts.smoothing.kind == "linear" %}{% include "util/linear_intersection_f32.wgsl.liquid" %}{% endif %}
+
+//
+// smoothing.wgsl.liquid - This file contains the iteration-count smoothing
+// mechanism as well as the systems for switching which smoothing algorithm is
+// used.
+//
+
+fn t_smooth(iterations: u32, z_curr: vec2<f32>, z_prev: vec2<f32>) -> f32 {
+{% if opts.smoothing.kind == "none" %}
+    return f32(iterations);
+{% elsif opts.smoothing.kind == "linear" %}
+    return linear_intersection(iterations, z_curr, z_prev);
+{% elsif opts.smoothing.kind == "log" %}
+    return (f32(iterations) - (log(log(dot(z_curr, z_curr))) / {{ opts.smoothing.divisor }}f)) + {{ opts.smoothing.addend }}f;
+{% endif %}
+}
+
+{% endifndef %}

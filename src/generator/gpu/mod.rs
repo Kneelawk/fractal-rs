@@ -14,8 +14,9 @@ use crate::{
         util::{create_texture, create_texture_buffer},
         GPUContext, GPUContextType,
     },
-    util::{display_duration, running_guard::RunningGuard},
+    util::{display_duration, result::ResultExt, running_guard::RunningGuard},
 };
+use anyhow::Context;
 use chrono::{DateTime, Utc};
 use futures::{
     future::{ready, BoxFuture},
@@ -59,7 +60,7 @@ impl GpuFractalGeneratorFactory {
                 label: Some("Uniform Bind Group Layout"),
                 entries: &[BindGroupLayoutEntry {
                     binding: 0,
-                    visibility: ShaderStages::VERTEX_FRAGMENT,
+                    visibility: ShaderStages::FRAGMENT,
                     ty: BindingType::Buffer {
                         ty: BufferBindingType::Uniform,
                         has_dynamic_offset: false,
@@ -126,11 +127,16 @@ impl GpuFractalGenerator {
         uniform_bind_group_layout: Arc<BindGroupLayout>,
         render_pipeline_layout: Arc<PipelineLayout>,
     ) -> anyhow::Result<GpuFractalGenerator> {
-        info!("Creating shader module...");
-        let shader = load_shaders(opts).await?;
-        let module = gpu.device.create_shader_module(&ShaderModuleDescriptor {
+        info!("Creating shader modules...");
+        let shaders = load_shaders(opts).await.context("Error loading shaders")?;
+        let frag_module = gpu.device.create_shader_module(ShaderModuleDescriptor {
+            label: Some("Fragment Shader"),
+            source: shaders.fragment,
+        });
+
+        let vert_module = gpu.device.create_shader_module(ShaderModuleDescriptor {
             label: Some("Vertex Shader"),
-            source: shader,
+            source: shaders.vertex,
         });
 
         info!("Creating render pipeline...");
@@ -139,27 +145,27 @@ impl GpuFractalGenerator {
                 label: Some("Render Pipeline"),
                 layout: Some(&render_pipeline_layout),
                 vertex: VertexState {
-                    module: &module,
+                    module: &vert_module,
                     entry_point: "vert_main",
                     buffers: &[],
                 },
                 fragment: Some(FragmentState {
-                    module: &module,
+                    module: &frag_module,
                     entry_point: "frag_main",
-                    targets: &[ColorTargetState {
+                    targets: &[Some(ColorTargetState {
                         format: TextureFormat::Rgba8Unorm,
                         blend: Some(BlendState::REPLACE),
                         write_mask: ColorWrites::ALL,
-                    }],
+                    })],
                 }),
                 primitive: PrimitiveState {
                     topology: PrimitiveTopology::TriangleList,
                     strip_index_format: None,
                     front_face: FrontFace::Ccw,
                     cull_mode: Some(Face::Back),
-                    clamp_depth: false,
                     polygon_mode: PolygonMode::Fill,
                     conservative: false,
+                    unclipped_depth: false,
                 },
                 depth_stencil: None,
                 multisample: MultisampleState {
@@ -167,6 +173,7 @@ impl GpuFractalGenerator {
                     mask: !0,
                     alpha_to_coverage_enabled: false,
                 },
+                multiview: None,
             },
         ));
 
@@ -354,7 +361,13 @@ impl GpuFractalGeneratorInstance {
                         view.image_x, view.image_y
                     );
                     let buffer_slice = buffer.slice(..);
-                    buffer_slice.map_async(MapMode::Read).await.unwrap();
+
+                    let (tx, rx) = tokio::sync::oneshot::channel();
+                    buffer_slice.map_async(MapMode::Read, move |res| {
+                        tx.send(res)
+                            .on_err(|_| error!("Failed to send map_async completion!"));
+                    });
+                    rx.await.unwrap().unwrap();
 
                     let data = buffer_slice.get_mapped_range();
 
@@ -631,7 +644,13 @@ impl GpuFractalGeneratorInstance {
                     view.image_x, view.image_y
                 );
                 let buffer_slice = buffer.slice(..);
-                buffer_slice.map_async(MapMode::Read).await.unwrap();
+
+                let (tx, rx) = tokio::sync::oneshot::channel();
+                buffer_slice.map_async(MapMode::Read, move |res| {
+                    tx.send(res)
+                        .on_err(|_| error!("Failed to send map_async completion!"));
+                });
+                rx.await.unwrap().unwrap();
 
                 let data = buffer_slice.get_mapped_range();
 
@@ -802,7 +821,7 @@ fn encode_render_pass(
 ) {
     let mut render_pass = encoder.begin_render_pass(&RenderPassDescriptor {
         label: Some("Render Pass"),
-        color_attachments: &[RenderPassColorAttachment {
+        color_attachments: &[Some(RenderPassColorAttachment {
             view: texture_view,
             resolve_target: None,
             ops: Operations {
@@ -814,7 +833,7 @@ fn encode_render_pass(
                 }),
                 store: true,
             },
-        }],
+        })],
         depth_stencil_attachment: None,
     });
 

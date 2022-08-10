@@ -7,7 +7,11 @@
 #![feature(never_type)]
 
 #[macro_use]
+extern crate anyhow;
+#[macro_use]
 extern crate lazy_static;
+#[macro_use]
+extern crate liquid_derive;
 #[macro_use]
 extern crate log;
 #[macro_use]
@@ -22,6 +26,7 @@ use crate::storage::{CfgGeneral, CfgSingleton};
 mod generator;
 mod gpu;
 mod gui;
+mod liquid;
 mod logging;
 mod storage;
 mod util;

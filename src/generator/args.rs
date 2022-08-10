@@ -15,11 +15,7 @@ static ref SMOOTHING_REGEX: Regex = RegexBuilder::new(r"^logarithmic(distance)? 
 #[derive(Debug, Copy, Clone, PartialOrd, PartialEq)]
 pub enum Smoothing {
     None,
-    LogarithmicDistance {
-        radius_squared: f32,
-        divisor: f32,
-        addend: f32,
-    },
+    LogarithmicDistance { divisor: f32, addend: f32 },
     LinearIntersection,
 }
 
@@ -29,7 +25,6 @@ impl Smoothing {
     pub fn from_logarithmic_distance(radius: f32, max_power: f32) -> Smoothing {
         let divisor = max_power.ln();
         Smoothing::LogarithmicDistance {
-            radius_squared: radius * radius,
             divisor,
             addend: (2f32.ln() + radius.ln().ln()) / divisor,
         }

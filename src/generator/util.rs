@@ -92,12 +92,14 @@ pub fn build_linear_offsets(axial_points: u32) -> Vec<Vector2<f32>> {
 
 /// Designed to allow the use of `f32` and `f64` as map keys.
 #[derive(Debug, Copy, Clone, PartialOrd, PartialEq, Ord, Eq, Hash)]
+#[allow(unused)]
 pub struct FloatKey {
     mantissa: u64,
     exponent: i16,
     sign: i8,
 }
 
+#[allow(unused)]
 impl FloatKey {
     /// Constructs a FloatKey from a f32.
     pub fn from_f32(value: f32) -> FloatKey {
