@@ -27,4 +27,32 @@ fn complex_length_sqr(a: vec2<f32>) -> f32 {
     return dot(a, a);
 }
 
+// complex_arg - This function gets the arg (angle) that the complex number is
+// at.
+fn complex_arg(a: vec2<f32>) -> f32 {
+    return atan2(a.y, a.x);
+}
+
+// compelx_log - Gets the log base e of the complex number.
+fn complex_log(a: vec2<f32>) -> vec2<f32> {
+    return vec2<f32>(log(complex_length(a)), complex_arg(a));
+}
+
+// complex_divide_by_2i - Divides a complex number by 2i.
+fn complex_divide_by_2i(a: vec2<f32>) -> vec2<f32> {
+    return vec2<f32>(a.y / -2.0, a.x / 2.0);
+}
+
+// complex_multiply_by_i - Multiplies a complex number by i.
+fn complex_multiply_by_i(a: vec2<f32>) -> vec2<f32> {
+    return vec2<f32>(-a.y, a.x);
+}
+
+// complex_atan - gets the arctangent of a complex number.
+fn complex_atan(a: vec2<f32>) -> vec2<f32> {
+    let inner = complex_multiply_by_i(a);
+    let one = vec2<f32>(1.0, 0.0);
+    return complex_divide_by_2i(complex_log(complex_divide(one + inner, one - inner)));
+}
+
 {% endifndef %}
