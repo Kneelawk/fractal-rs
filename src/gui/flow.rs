@@ -28,7 +28,7 @@ use winit::{
     dpi::PhysicalSize,
     error::OsError,
     event::{Event, WindowEvent},
-    event_loop::{ControlFlow, EventLoop, EventLoopProxy},
+    event_loop::{ControlFlow, EventLoopBuilder, EventLoopProxy},
     window::{Fullscreen, Window, WindowBuilder},
 };
 
@@ -124,7 +124,7 @@ impl Flow {
         let runtime = runtime::Builder::new_multi_thread().enable_all().build()?;
 
         info!("Creating event loop...");
-        let event_loop = EventLoop::<FlowSignal>::with_user_event();
+        let event_loop = EventLoopBuilder::<FlowSignal>::with_user_event().build();
 
         info!("Creating window...");
         let window = {

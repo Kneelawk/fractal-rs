@@ -689,17 +689,14 @@ impl FractalRSUI {
                             ));
                             ui.label("This tab has unsaved changes.");
                             ui.add_space(20.0);
-                            ui.with_layout(
-                                Layout::right_to_left().with_cross_align(Align::Min),
-                                |ui| {
-                                    if ui.button("Close Tab").clicked() {
-                                        close = true;
-                                    }
-                                    if ui.button("Keep Tab Open").clicked() {
-                                        self.tab_close_requested = None;
-                                    }
-                                },
-                            );
+                            ui.with_layout(Layout::right_to_left(Align::Min), |ui| {
+                                if ui.button("Close Tab").clicked() {
+                                    close = true;
+                                }
+                                if ui.button("Keep Tab Open").clicked() {
+                                    self.tab_close_requested = None;
+                                }
+                            });
                         });
                 }
             }
@@ -880,7 +877,7 @@ impl FractalRSUI {
 
                     ui.add_space(20.0);
 
-                    ui.with_layout(Layout::right_to_left().with_cross_align(Align::Min), |ui| {
+                    ui.with_layout(Layout::right_to_left(Align::Min), |ui| {
                         if ui.button("Apply New Shortcut").clicked() {
                             self.apply_shortcut_binding = true;
                         }

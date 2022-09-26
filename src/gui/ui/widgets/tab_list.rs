@@ -11,7 +11,7 @@ pub fn tab_list<T: TabX, F1: FnMut(&mut T) -> String, F2: FnMut(&mut Ui, &mut T)
 ) -> TabListResponse {
     let mut close_tab = false;
 
-    ui.with_layout(Layout::right_to_left().with_cross_align(Align::Min), |ui| {
+    ui.with_layout(Layout::right_to_left(Align::Min), |ui| {
         let mut tab_y = 0.0;
         let mut tab_height = 0.0;
         ui.add_enabled_ui(!tabs.is_empty(), |ui| {
@@ -26,7 +26,7 @@ pub fn tab_list<T: TabX, F1: FnMut(&mut T) -> String, F2: FnMut(&mut Ui, &mut T)
                 }
             }
         });
-        ui.with_layout(Layout::left_to_right(), |ui| {
+        ui.with_layout(Layout::left_to_right(Align::Center), |ui| {
             ScrollArea::horizontal()
                 .always_show_scroll(true)
                 .show(ui, |ui| {
@@ -74,7 +74,7 @@ pub fn tab_list<T: TabX, F1: FnMut(&mut T) -> String, F2: FnMut(&mut Ui, &mut T)
                                     pos2(instance.tab_x().unwrap() - half_width + offset, tab_y),
                                     tab_size,
                                 ),
-                                Layout::left_to_right(),
+                                Layout::left_to_right(Align::Center),
                             );
 
                             // get a unique label id
@@ -129,7 +129,7 @@ pub fn tab_list<T: TabX, F1: FnMut(&mut T) -> String, F2: FnMut(&mut Ui, &mut T)
                                 pos2(instance.tab_x_or(0.0) - tab_size.x / 2.0 + offset, tab_y),
                                 tab_size,
                             ),
-                            Layout::left_to_right(),
+                            Layout::left_to_right(Align::Center),
                         );
 
                         // get a unique label id
