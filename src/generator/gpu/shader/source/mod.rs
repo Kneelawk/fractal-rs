@@ -2,7 +2,7 @@ use crate::{
     generator::gpu::shader::source::{
         dynamic::DynamicShaderTemplateLoader, r#static::StaticShaderTemplateLoader,
     },
-    liquid::default_language,
+    liquid::language::default_language,
 };
 use anyhow::Context;
 use liquid::object;

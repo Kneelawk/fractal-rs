@@ -14,7 +14,7 @@ use std::{io::Write, sync::Arc};
 ///
 /// # Syntax
 /// ```liquid
-/// {% begindef 'name' [<'argument-1', 'argument-2' = 'default, ...>] %}
+/// {% begindef 'name' [<'argument-1', 'argument-2' = default, ...>] %}
 ///   <macro contents>
 /// {% enddef %}
 /// ```

@@ -7,7 +7,7 @@ macro_rules! test_liquid {
         input($input:expr)
         assert_output($output:expr$(, $($args:tt)+)?)
     ) => {{
-        use crate::liquid::LanguageBuilder;
+        use crate::liquid::language::LanguageBuilder;
 
         let options = LanguageBuilder::default()$($(.tag($tags))+)?$($(.block($blocks))+)?$($(.filter($filters))+)?.build();
 
@@ -21,7 +21,7 @@ macro_rules! test_liquid {
         input($input:expr)
         block(|$runtime:ident, $rendered:ident| $test:block)
     ) => {{
-        use crate::liquid::LanguageBuilder;
+        use crate::liquid::language::LanguageBuilder;
 
         let options = LanguageBuilder::default()$($(.tag($tags))+)?$($(.block($blocks))+)?$($(.filter($filters))+)?.build();
 
