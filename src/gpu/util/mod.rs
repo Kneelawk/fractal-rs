@@ -26,6 +26,7 @@ pub fn create_texture(
         dimension: TextureDimension::D2,
         format,
         usage,
+        view_formats: &[],
     });
     let texture_view = texture.create_view(&Default::default());
 
@@ -95,7 +96,7 @@ pub fn print_adapter_info(adapter: &Adapter) {
         multi_draw_indirect_count = features.contains(Features::MULTI_DRAW_INDIRECT_COUNT),
         pipeline_statistics_query = features.contains(Features::PIPELINE_STATISTICS_QUERY),
         push_constants = features.contains(Features::PUSH_CONSTANTS),
-        shader_float64 = features.contains(Features::SHADER_FLOAT64),
+        shader_float64 = features.contains(Features::SHADER_F64),
         texture_binding_array = features.contains(Features::TEXTURE_BINDING_ARRAY)
     );
 }

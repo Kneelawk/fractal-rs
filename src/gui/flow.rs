@@ -56,7 +56,7 @@ pub struct FlowModelInit {
 pub trait FlowModel: Sized {
     fn init(init: FlowModelInit) -> Self;
 
-    fn event(&mut self, _event: &WindowEvent<'_>) -> Option<FlowSignal>;
+    fn event(&mut self, _event: &WindowEvent) -> Option<FlowSignal>;
 
     fn all_events(&mut self, _event: &Event<FlowSignal>) {}
 
@@ -176,7 +176,8 @@ impl Flow {
         }));
 
         info!("Configuring surface...");
-        let supported_formats = surface.get_supported_formats(&adapter);
+        let surface_caps = surface.get_capabilities(&adapter);
+        let supported_formats = surface_caps.formats;
         info!("Surface supported formats: {:?}", &supported_formats);
 
         if !supported_formats.contains(&TextureFormat::Bgra8Unorm) {
@@ -196,6 +197,8 @@ impl Flow {
             width: window_size.width,
             height: window_size.height,
             present_mode: PresentMode::Fifo,
+            alpha_mode: Default::default(),
+            view_formats: vec![],
         };
 
         surface.configure(&device, &config);

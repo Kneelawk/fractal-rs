@@ -18,12 +18,9 @@ use rayon::{
     slice::ParallelSliceMut,
     ThreadPool, ThreadPoolBuilder,
 };
-use std::{
-    num::NonZeroU32,
-    sync::{
-        atomic::{AtomicBool, AtomicUsize, Ordering},
-        Arc,
-    },
+use std::sync::{
+    atomic::{AtomicBool, AtomicUsize, Ordering},
+    Arc,
 };
 use tokio::{sync::mpsc::Sender, task};
 use wgpu::{
@@ -314,10 +311,7 @@ impl PixelBlockSink for GpuPixelBlockSink {
             &pixel_block.image,
             ImageDataLayout {
                 offset: 0,
-                bytes_per_row: Some(
-                    NonZeroU32::new((pixel_block.view.image_width * BYTES_PER_PIXEL) as u32)
-                        .unwrap(),
-                ),
+                bytes_per_row: Some((pixel_block.view.image_width * BYTES_PER_PIXEL) as u32),
                 rows_per_image: None,
             },
             Extent3d {

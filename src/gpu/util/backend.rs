@@ -1,6 +1,9 @@
 use std::sync::Arc;
 use tokio::runtime::Handle;
-use wgpu::{Adapter, Backends, Instance, PowerPreference, RequestAdapterOptions, Surface};
+use wgpu::{
+    Adapter, Backends, CreateSurfaceError, Instance, InstanceDescriptor, PowerPreference,
+    RequestAdapterOptions, Surface,
+};
 use winit::window::Window;
 
 pub fn initialize_wgpu(
@@ -23,10 +26,13 @@ pub fn initialize_wgpu(
     };
 
     info!("Creating instance...");
-    let instance = Arc::new(Instance::new(backend));
+    let instance = Arc::new(Instance::new(InstanceDescriptor {
+        backends: backend,
+        ..Default::default()
+    }));
 
     info!("Creating surface...");
-    let surface = unsafe { instance.create_surface(window) };
+    let surface = unsafe { instance.create_surface(window) }?;
 
     info!("Requesting adapter...");
     let adapter = handle.block_on(instance.request_adapter(&RequestAdapterOptions {
@@ -39,10 +45,13 @@ pub fn initialize_wgpu(
         warn!("Unable to use preferred backend, attempting to use system default.");
 
         info!("Creating instance...");
-        let instance = Arc::new(Instance::new(Backends::PRIMARY));
+        let instance = Arc::new(Instance::new(InstanceDescriptor {
+            backends: Backends::PRIMARY,
+            ..Default::default()
+        }));
 
         info!("Creating surface...");
-        let surface = unsafe { instance.create_surface(window) };
+        let surface = unsafe { instance.create_surface(window) }?;
 
         info!("Requesting adapter...");
         let adapter = handle
@@ -63,4 +72,6 @@ pub fn initialize_wgpu(
 pub enum WgpuInitializationError {
     #[error("Unable to obtain an adapter")]
     AdapterUnavailable,
+    #[error("Unable to create surface")]
+    CreateSurfaceError(#[from] CreateSurfaceError),
 }

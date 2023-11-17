@@ -216,7 +216,7 @@ impl FractalViewer {
 
         // handle scroll events, but only if we're being hovered over
         if response.hovered() {
-            let scroll = ui.input().scroll_delta.y;
+            let scroll = ui.input(|input| input.scroll_delta.y);
 
             match &mut self.scroll_mode {
                 ScrollMode::Image => {
@@ -378,8 +378,8 @@ impl FractalViewer {
                         font_id,
                         POSITION_SELECTION_COLOR,
                     );
-                } else if clip_rect.x_range().contains(&pixel_rect.min.x)
-                    || clip_rect.x_range().contains(&pixel_rect.max.x)
+                } else if clip_rect.x_range().contains(pixel_rect.min.x)
+                    || clip_rect.x_range().contains(pixel_rect.max.x)
                 {
                     // vertical bar to selected pixel is on screen
                     clip_painter.rect_filled(
@@ -443,8 +443,8 @@ impl FractalViewer {
                             POSITION_SELECTION_COLOR,
                         );
                     }
-                } else if clip_rect.y_range().contains(&pixel_rect.min.y)
-                    || clip_rect.y_range().contains(&pixel_rect.max.y)
+                } else if clip_rect.y_range().contains(pixel_rect.min.y)
+                    || clip_rect.y_range().contains(pixel_rect.max.y)
                 {
                     // horizontal bar to selected pixel is on screen
                     clip_painter.rect_filled(

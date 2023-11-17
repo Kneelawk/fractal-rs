@@ -24,7 +24,7 @@ use futures::{
 };
 use std::{
     collections::HashMap,
-    num::{NonZeroU32, NonZeroU64},
+    num::NonZeroU64,
     sync::{
         atomic::{AtomicBool, AtomicUsize, Ordering},
         Arc,
@@ -39,8 +39,8 @@ use wgpu::{
     FrontFace, ImageCopyBuffer, ImageCopyTexture, ImageDataLayout, LoadOp, MapMode,
     MultisampleState, Operations, Origin3d, PipelineLayout, PipelineLayoutDescriptor, PolygonMode,
     PrimitiveState, PrimitiveTopology, RenderPassColorAttachment, RenderPassDescriptor,
-    RenderPipeline, RenderPipelineDescriptor, ShaderModuleDescriptor, ShaderStages, Texture,
-    TextureAspect, TextureFormat, TextureUsages, TextureView, VertexState,
+    RenderPipeline, RenderPipelineDescriptor, ShaderModuleDescriptor, ShaderStages, StoreOp,
+    Texture, TextureAspect, TextureFormat, TextureUsages, TextureView, VertexState,
 };
 
 mod shader;
@@ -332,11 +332,8 @@ impl GpuFractalGeneratorInstance {
                             buffer,
                             layout: ImageDataLayout {
                                 offset: 0,
-                                bytes_per_row: Some(
-                                    NonZeroU32::new(BYTES_PER_PIXEL as u32 * texture_width)
-                                        .unwrap(),
-                                ),
-                                rows_per_image: Some(NonZeroU32::new(texture_height).unwrap()),
+                                bytes_per_row: Some(BYTES_PER_PIXEL as u32 * texture_width),
+                                rows_per_image: Some(texture_height),
                             },
                         },
                         Extent3d {
@@ -622,10 +619,8 @@ impl GpuFractalGeneratorInstance {
                         buffer,
                         layout: ImageDataLayout {
                             offset: 0,
-                            bytes_per_row: Some(
-                                NonZeroU32::new(BYTES_PER_PIXEL as u32 * texture_width).unwrap(),
-                            ),
-                            rows_per_image: Some(NonZeroU32::new(texture_height).unwrap()),
+                            bytes_per_row: Some(BYTES_PER_PIXEL as u32 * texture_width),
+                            rows_per_image: Some(texture_height),
                         },
                     },
                     Extent3d {
@@ -672,9 +667,7 @@ impl GpuFractalGeneratorInstance {
                     data.as_ref(),
                     ImageDataLayout {
                         offset: 0,
-                        bytes_per_row: Some(
-                            NonZeroU32::new((view.image_width * BYTES_PER_PIXEL) as u32).unwrap(),
-                        ),
+                        bytes_per_row: Some((view.image_width * BYTES_PER_PIXEL) as u32),
                         rows_per_image: None,
                     },
                     Extent3d {
@@ -831,10 +824,12 @@ fn encode_render_pass(
                     b: 0.0,
                     a: 1.0,
                 }),
-                store: true,
+                store: StoreOp::Store,
             },
         })],
         depth_stencil_attachment: None,
+        timestamp_writes: None,
+        occlusion_query_set: None,
     });
 
     render_pass.set_pipeline(render_pipeline);

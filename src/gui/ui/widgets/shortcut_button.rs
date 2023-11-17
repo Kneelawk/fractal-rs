@@ -167,11 +167,13 @@ impl Widget for ShortcutButton {
         } else {
             f32::INFINITY
         };
-        let shortcut_galley = ui.fonts().layout_delayed_color(
-            shortcut_text,
-            shortcut_style.resolve(ui.style()),
-            shortcut_wrap_width,
-        );
+        let shortcut_galley = ui.fonts(|font| {
+            font.layout_delayed_color(
+                shortcut_text,
+                shortcut_style.resolve(ui.style()),
+                shortcut_wrap_width,
+            )
+        });
         let shortcut_size = shortcut_galley.size();
 
         let wrap_width = if wrap {
@@ -179,9 +181,9 @@ impl Widget for ShortcutButton {
         } else {
             f32::INFINITY
         };
-        let galley =
-            ui.fonts()
-                .layout_delayed_color(text, text_style.resolve(ui.style()), wrap_width);
+        let galley = ui.fonts(|font| {
+            font.layout_delayed_color(text, text_style.resolve(ui.style()), wrap_width)
+        });
         let galley_size = galley.size();
 
         let mut desired_size = vec2(
@@ -316,11 +318,13 @@ impl<'a> Widget for ShortcutCheckbox<'a> {
         } else {
             f32::INFINITY
         };
-        let shortcut_galley = ui.fonts().layout_delayed_color(
-            shortcut_text,
-            shortcut_style.resolve(ui.style()),
-            shortcut_wrap_width,
-        );
+        let shortcut_galley = ui.fonts(|font| {
+            font.layout_delayed_color(
+                shortcut_text,
+                shortcut_style.resolve(ui.style()),
+                shortcut_wrap_width,
+            )
+        });
         let shortcut_size = shortcut_galley.size();
 
         let wrap_width = if wrap {
@@ -328,9 +332,9 @@ impl<'a> Widget for ShortcutCheckbox<'a> {
         } else {
             f32::INFINITY
         };
-        let galley =
-            ui.fonts()
-                .layout_delayed_color(text, text_style.resolve(ui.style()), wrap_width);
+        let galley = ui.fonts(|font| {
+            font.layout_delayed_color(text, text_style.resolve(ui.style()), wrap_width)
+        });
         let galley_size = galley.size();
 
         let mut desired_size = vec2(
@@ -360,12 +364,12 @@ impl<'a> Widget for ShortcutCheckbox<'a> {
             rect.center().y - 0.5 * galley_size.y,
         );
         let (small_icon_rect, big_icon_rect) = ui.spacing().icon_rectangles(rect);
-        ui.painter().add(epaint::RectShape {
-            rect: big_icon_rect.expand(visuals.expansion),
-            rounding: visuals.rounding,
-            fill: visuals.bg_fill,
-            stroke: visuals.bg_stroke,
-        });
+        ui.painter().add(epaint::RectShape::new(
+            big_icon_rect.expand(visuals.expansion),
+            visuals.rounding,
+            visuals.bg_fill,
+            visuals.bg_stroke,
+        ));
 
         if *checked {
             // Check mark:

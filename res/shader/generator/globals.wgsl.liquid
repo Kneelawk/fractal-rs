@@ -6,20 +6,20 @@
 // used everywhere else.
 //
 
-let t_c_real: f32 = {{ opts.c_real }}f;
+const t_c_real: f32 = {{ opts.c_real }}f;
 
-let t_c_imag: f32 = {{ opts.c_imag }}f;
+const t_c_imag: f32 = {{ opts.c_imag }}f;
 
-let t_iterations: u32 = {{ opts.iterations }}u;
+const t_iterations: u32 = {{ opts.iterations }}u;
 
-let t_mandelbrot: bool = {{ opts.mandelbrot }};
+const t_mandelbrot: bool = {{ opts.mandelbrot }};
 
-let t_radius_squared: f32 = {{ opts.radius_squared }}f;
+const t_radius_squared: f32 = {{ opts.radius_squared }}f;
 
-let t_sample_count: u32 = {{ opts.multisampling.sample_count }}u;
+const t_sample_count: u32 = {{ opts.multisampling.sample_count }}u;
 
 {% whitespace nl, sp %}
-let {% sp %} t_sample_offsets: {% sp %} array<vec2<f32>, {% sp %} t_sample_count>
+const {% sp %} t_sample_offsets: {% sp %} array<vec2<f32>, {% sp %} t_sample_count>
     {% sp %} = {% sp %} array<vec2<f32>, {% sp %} t_sample_count>(
 
 {% assign sample_index = 0 %}

@@ -116,7 +116,7 @@ impl FlowModel for FractalRSGuiMain {
         }
     }
 
-    fn event(&mut self, event: &WindowEvent<'_>) -> Option<FlowSignal> {
+    fn event(&mut self, event: &WindowEvent) -> Option<FlowSignal> {
         if let WindowEvent::Resized(new_size) = event {
             self.window_size = *new_size;
         }

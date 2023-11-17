@@ -1,5 +1,8 @@
 use crate::gui::ui::widgets::selected_label::SelectableLabel2;
-use egui::{pos2, vec2, Align, Id, Layout, Rect, ScrollArea, Sense, TextStyle, Ui};
+use egui::{
+    pos2, scroll_area::ScrollBarVisibility, vec2, Align, Id, Layout, Rect, ScrollArea, Sense,
+    TextStyle, Ui,
+};
 
 pub fn tab_list<T: TabX, F1: FnMut(&mut T) -> String, F2: FnMut(&mut Ui, &mut T) -> Id>(
     ui: &mut Ui,
@@ -28,7 +31,7 @@ pub fn tab_list<T: TabX, F1: FnMut(&mut T) -> String, F2: FnMut(&mut Ui, &mut T)
         });
         ui.with_layout(Layout::left_to_right(Align::Center), |ui| {
             ScrollArea::horizontal()
-                .always_show_scroll(true)
+                .scroll_bar_visibility(ScrollBarVisibility::AlwaysVisible)
                 .show(ui, |ui| {
                     let mut total_tab_x = 0.0;
                     let offset = ui.max_rect().left();
@@ -42,11 +45,13 @@ pub fn tab_list<T: TabX, F1: FnMut(&mut T) -> String, F2: FnMut(&mut Ui, &mut T)
                         // get the tab size
                         let tab_padding = ui.ctx().style().spacing.button_padding;
                         let tab_extra = tab_padding + tab_padding;
-                        let tab_galley = ui.ctx().fonts().layout_delayed_color(
-                            name.to_string(),
-                            TextStyle::Button.resolve(ui.style()),
-                            f32::INFINITY,
-                        );
+                        let tab_galley = ui.ctx().fonts(|font| {
+                            font.layout_delayed_color(
+                                name.to_string(),
+                                TextStyle::Button.resolve(ui.style()),
+                                f32::INFINITY,
+                            )
+                        });
                         let tab_size = tab_galley.size() + tab_extra;
                         let half_width = tab_size.x / 2.0;
 
@@ -115,11 +120,13 @@ pub fn tab_list<T: TabX, F1: FnMut(&mut T) -> String, F2: FnMut(&mut Ui, &mut T)
                         // get the tab size
                         let tab_padding = ui.ctx().style().spacing.button_padding;
                         let tab_extra = tab_padding + tab_padding;
-                        let tab_galley = ui.ctx().fonts().layout_delayed_color(
-                            name.to_string(),
-                            TextStyle::Button.resolve(ui.style()),
-                            f32::INFINITY,
-                        );
+                        let tab_galley = ui.ctx().fonts(|font| {
+                            font.layout_delayed_color(
+                                name.to_string(),
+                                TextStyle::Button.resolve(ui.style()),
+                                f32::INFINITY,
+                            )
+                        });
                         let tab_size = tab_galley.size() + tab_extra;
 
                         // get a ui to contain the tab, specifically at the tab's
