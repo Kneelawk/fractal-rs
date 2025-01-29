@@ -4,3 +4,4 @@ members = [
     "crates/gen-cpu", "crates/gen-gpu",
     "crates/gen-gpu"
 ]
+resolver = "2"

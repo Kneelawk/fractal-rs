@@ -1,14 +1,6 @@
-pub fn add(left: u64, right: u64) -> u64 {
-    left + right
-}
+//! This crate is the primary API that various fractal generator backends will implement.
 
-#[cfg(test)]
-mod tests {
-    use super::*;
+pub mod generator;
 
-    #[test]
-    fn it_works() {
-        let result = add(2, 2);
-        assert_eq!(result, 4);
-    }
-}
+/// Rug multi-precision complex numbers are used by this API.
+pub use rug;

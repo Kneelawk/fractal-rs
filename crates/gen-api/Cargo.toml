@@ -4,3 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+anyhow = "1.0.95"
+futures-core = "0.3.31"
+rug = { version = "1.27.0", features = ["num-traits", "serde"] }
+serde = { version = "1.0.217", features = ["derive"] }
