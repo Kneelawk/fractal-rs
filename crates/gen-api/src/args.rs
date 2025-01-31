@@ -1,5 +1,6 @@
 use regex::{Regex, RegexBuilder};
 use std::{num::ParseFloatError, str::FromStr};
+use serde::{Deserialize, Serialize};
 use crate::util::{build_four_points_offsets, build_linear_offsets};
 
 pub const DEFAULT_RADIUS: f32 = 4f32;
@@ -11,7 +12,7 @@ static ref SMOOTHING_REGEX: Regex = RegexBuilder::new(r"^logarithmic(distance)? 
 
 /// Represents an operation for smoothing an integer iteration count into a
 /// floating point value.
-#[derive(Debug, Copy, Clone, PartialOrd, PartialEq)]
+#[derive(Debug, Copy, Clone, PartialOrd, PartialEq, Serialize, Deserialize)]
 pub enum Smoothing {
     None,
     LogarithmicDistance { divisor: f32, addend: f32 },
@@ -66,7 +67,7 @@ impl From<ParseFloatError> for ParseSmoothingError {
 
 /// Represents an image multisampling function.
 #[allow(dead_code)]
-#[derive(Copy, Clone, Debug, PartialOrd, PartialEq)]
+#[derive(Copy, Clone, Debug, PartialOrd, PartialEq, Serialize, Deserialize)]
 pub enum Multisampling {
     None,
     /// Samples the fractal at four points within the pixel. Each point is

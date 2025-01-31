@@ -2,7 +2,7 @@
 
 pub mod generator;
 pub mod args;
-mod util;
+pub mod util;
 
 /// Rug multi-precision complex numbers are used by this API.
 pub use rug;

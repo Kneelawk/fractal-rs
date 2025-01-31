@@ -1,4 +1,3 @@
-use std::mem;
 use std::ops::{Add, Div, Mul, Sub};
 use num_traits::One;
 
@@ -103,7 +102,7 @@ pub struct FloatKey {
 impl FloatKey {
     /// Constructs a FloatKey from a f32.
     pub fn from_f32(value: f32) -> FloatKey {
-        let bits: u32 = unsafe { mem::transmute(value) };
+        let bits: u32 = value.to_bits();
         let sign: i8 = if bits >> 31 == 0 { 1 } else { -1 };
         let mut exponent: i16 = ((bits >> 23) & 0xff) as i16;
         let mantissa = if exponent == 0 {
