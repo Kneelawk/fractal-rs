@@ -7,16 +7,17 @@
 // the fractal generators.
 #![allow(dead_code)]
 
-use std::cmp::Ordering;
-use std::ops::DivAssign;
-use rug::Float;
 use rug::ops::{CompleteRound, SubFrom};
+use rug::{Assign, Float};
 use serde::{Deserialize, Serialize};
+use std::cmp::Ordering;
+use std::ops::{AddAssign, DivAssign, MulAssign};
 
 /// A view represents an image's width, height, and mapping onto the complex
 /// plane.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct View {
+    pub prec: u32,
     pub image_width: usize,
     pub image_height: usize,
     pub image_x: usize,
@@ -30,7 +31,12 @@ pub struct View {
 impl View {
     /// Creates a view centered at (0 + 0i) on the complex plane with the same
     /// scaling for both x and y axis.
-    pub fn new_centered_uniform(prec: u32, image_width: usize, image_height: usize, plane_width: &Float) -> View {
+    pub fn new_centered_uniform(
+        prec: u32,
+        image_width: usize,
+        image_height: usize,
+        plane_width: &Float,
+    ) -> View {
         let image_scale = (plane_width / image_width).complete(prec);
         let plane_height = (image_height * &image_scale).complete(prec);
 
@@ -38,6 +44,7 @@ impl View {
         plane_width.set_prec(prec);
 
         View {
+            prec,
             image_width,
             image_height,
             image_x: 0,
@@ -72,6 +79,7 @@ impl View {
         plane_start_y.sub_from(center_y);
 
         View {
+            prec,
             image_width,
             image_height,
             image_x: 0,
@@ -83,20 +91,34 @@ impl View {
         }
     }
 
+    pub fn new_empty(prec: u32) -> View {
+        View {
+            prec,
+            image_width: 0,
+            image_height: 0,
+            image_x: 0,
+            image_y: 0,
+            image_scale_x: Float::new(prec),
+            image_scale_y: Float::new(prec),
+            plane_start_x: Float::new(prec),
+            plane_start_y: Float::new(prec),
+        }
+    }
+
     /// Divides this view into a set of consecutive sub-views each of which
     /// containing no more pixels than `pixel_count`.
     pub fn subdivide_to_pixel_count(&self, pixel_count: usize) -> SubViewIter {
-        SubViewIter::new_per_pixel(self.clone(), pixel_count)
+        SubViewIter::new_per_pixel(self, pixel_count)
     }
 
     /// Divides this view into a set of `pieces` consecutive sub-views.
     pub fn subdivide_height(&self, pieces: usize) -> SubViewIter {
-        SubViewIter::new_split_height(*self, pieces)
+        SubViewIter::new_split_height(self, pieces)
     }
 
     /// Divides this view into a set of consecutive rectangle sub-views.
     pub fn subdivide_rectangles(&self, max_width: usize, max_height: usize) -> SubViewIter {
-        SubViewIter::new_rectangles(*self, max_width, max_height)
+        SubViewIter::new_rectangles(self, max_width, max_height)
     }
 
     /// Gets the coordinates on the complex plane for a given local pixel
@@ -225,10 +247,10 @@ impl<T> ConstrainedValue<T> {
     }
 }
 
-#[derive(Debug, Copy, Clone)]
-pub enum SubViewIter {
+#[derive(Debug, Clone)]
+pub enum SubViewIter<'a> {
     SplitHeight {
-        view: View,
+        view: &'a View,
         pieces: usize,
         remainder: usize,
 
@@ -237,7 +259,7 @@ pub enum SubViewIter {
         image_y: usize,
     },
     SplitRow {
-        view: View,
+        view: &'a View,
         width_pieces: usize,
         remainder: usize,
 
@@ -247,7 +269,7 @@ pub enum SubViewIter {
         index: usize,
     },
     Rectangles {
-        view: View,
+        view: &'a View,
         width_pieces: usize,
         height_pieces: usize,
         remainder_x: usize,
@@ -259,35 +281,35 @@ pub enum SubViewIter {
         index_x: usize,
         index_y: usize,
     },
-    Single(Option<View>),
+    Single(Option<&'a View>),
 }
 
-impl SubViewIter {
-    fn new_split_height(view: View, pieces: usize) -> SubViewIter {
+impl<'a> SubViewIter<'a> {
+    fn new_split_height(view: &View, pieces: usize) -> SubViewIter {
+        let remainder = view.image_height % pieces;
         SubViewIter::SplitHeight {
             view,
             pieces,
-            remainder: view.image_height % pieces,
+            remainder,
             index: 0,
             image_y: 0,
         }
     }
 
-    fn new_per_pixel(view: View, pixel_count: usize) -> SubViewIter {
+    fn new_per_pixel(view: &View, pixel_count: usize) -> SubViewIter {
         if view.image_width * view.image_height < pixel_count {
             SubViewIter::Single(Some(view))
         } else if view.image_width <= pixel_count {
             let chunk_height = pixel_count / view.image_width;
-            SubViewIter::new_split_height(
-                view,
-                (view.image_height + chunk_height - 1) / chunk_height,
-            )
+            let pieces = (view.image_height + chunk_height - 1) / chunk_height;
+            SubViewIter::new_split_height(view, pieces)
         } else {
             let width_pieces = (view.image_width + pixel_count - 1) / pixel_count;
+            let remainder = view.image_height % width_pieces;
             SubViewIter::SplitRow {
                 view,
                 width_pieces,
-                remainder: view.image_height % width_pieces,
+                remainder,
                 image_y: 0,
                 image_x: 0,
                 index: 0,
@@ -295,25 +317,25 @@ impl SubViewIter {
         }
     }
 
-    fn new_rectangles(view: View, max_width: usize, max_height: usize) -> SubViewIter {
+    fn new_rectangles(view: &View, max_width: usize, max_height: usize) -> SubViewIter {
         if view.image_width <= max_width {
             if view.image_height <= max_height {
                 SubViewIter::Single(Some(view))
             } else {
-                SubViewIter::new_split_height(
-                    view,
-                    (view.image_height + max_height - 1) / max_height,
-                )
+                let pieces = (view.image_height + max_height - 1) / max_height;
+                SubViewIter::new_split_height(view, pieces)
             }
         } else {
             let width_pieces = (view.image_width + max_width - 1) / max_width;
             let height_pieces = (view.image_height + max_height - 1) / max_height;
+            let remainder_x = view.image_width % width_pieces;
+            let remainder_y = view.image_height % height_pieces;
             SubViewIter::Rectangles {
                 view,
                 width_pieces,
                 height_pieces,
-                remainder_x: view.image_width % width_pieces,
-                remainder_y: view.image_height % height_pieces,
+                remainder_x,
+                remainder_y,
                 image_x: 0,
                 image_y: 0,
                 index_x: 0,
@@ -323,7 +345,7 @@ impl SubViewIter {
     }
 }
 
-impl Iterator for SubViewIter {
+impl<'a> Iterator for SubViewIter<'a> {
     type Item = View;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -341,23 +363,25 @@ impl Iterator for SubViewIter {
                     let image_height =
                         view.image_height / *pieces + if index < remainder { 1 } else { 0 };
 
-                    let res = Some(View {
-                        image_width: view.image_width,
-                        image_height,
-                        image_x: view.image_x,
-                        image_y: view.image_y + *image_y,
-                        image_scale_x: view.image_scale_x,
-                        image_scale_y: view.image_scale_y,
-                        plane_start_x: view.plane_start_x,
-                        plane_start_y: view.plane_start_y + *image_y as f32 * view.image_scale_y,
-                    });
+                    let mut temp = View::new_empty(view.prec);
+                    temp.image_width = view.image_width;
+                    temp.image_height = image_height;
+                    temp.image_x = view.image_x;
+                    temp.image_y + *image_y;
+                    temp.image_scale_x.assign(&view.image_scale_x);
+                    temp.image_scale_y.assign(&view.image_scale_y);
+                    temp.plane_start_x.assign(&view.plane_start_x);
+
+                    temp.plane_start_y.assign(&view.image_scale_y);
+                    temp.plane_start_y.mul_assign(*image_y);
+                    temp.plane_start_y.add_assign(&view.plane_start_y);
 
                     *image_y += image_height;
                     *index += 1;
 
-                    res
+                    Some(temp)
                 }
-            },
+            }
             SubViewIter::SplitRow {
                 view,
                 width_pieces,
@@ -378,23 +402,28 @@ impl Iterator for SubViewIter {
                     let image_width =
                         view.image_width / *width_pieces + if index < remainder { 1 } else { 0 };
 
-                    let res = Some(View {
-                        image_width,
-                        image_height: 1,
-                        image_x: view.image_x + *image_x,
-                        image_y: view.image_y + *image_y,
-                        image_scale_x: view.image_scale_x,
-                        image_scale_y: view.image_scale_y,
-                        plane_start_x: view.plane_start_x + *image_x as f32 * view.image_scale_x,
-                        plane_start_y: view.plane_start_y + *image_y as f32 * view.image_scale_y,
-                    });
+                    let mut temp = View::new_empty(view.prec);
+                    temp.image_width = image_width;
+                    temp.image_height = 1;
+                    temp.image_x = view.image_x + *image_x;
+                    temp.image_y = view.image_y + *image_y;
+                    temp.image_scale_x.assign(&view.image_scale_x);
+                    temp.image_scale_y.assign(&view.image_scale_y);
+
+                    temp.plane_start_x.assign(&view.image_scale_x);
+                    temp.plane_start_x.mul_assign(*image_x);
+                    temp.plane_start_x.add_assign(&view.plane_start_x);
+
+                    temp.plane_start_y.assign(&view.image_scale_y);
+                    temp.plane_start_y.mul_assign(*image_y);
+                    temp.plane_start_y.add_assign(&view.plane_start_y);
 
                     *image_x += image_width;
                     *index += 1;
 
-                    res
+                    Some(temp)
                 }
-            },
+            }
             SubViewIter::Rectangles {
                 view,
                 width_pieces,
@@ -425,24 +454,29 @@ impl Iterator for SubViewIter {
                     let image_width = view.image_width / *width_pieces
                         + if index_x < remainder_x { 1 } else { 0 };
 
-                    let res = Some(View {
-                        image_width,
-                        image_height,
-                        image_x: view.image_x + *image_x,
-                        image_y: view.image_y + *image_y,
-                        image_scale_x: view.image_scale_x,
-                        image_scale_y: view.image_scale_y,
-                        plane_start_x: view.plane_start_x + *image_x as f32 * view.image_scale_x,
-                        plane_start_y: view.plane_start_y + *image_y as f32 * view.image_scale_y,
-                    });
+                    let mut temp = View::new_empty(view.prec);
+                    temp.image_width = image_width;
+                    temp.image_height = image_height;
+                    temp.image_x = view.image_x + *image_x;
+                    temp.image_y = view.image_y + *image_y;
+                    temp.image_scale_x.assign(&view.image_scale_x);
+                    temp.image_scale_y.assign(&view.image_scale_y);
+
+                    temp.plane_start_x.assign(&view.image_scale_x);
+                    temp.plane_start_x.mul_assign(*image_x);
+                    temp.plane_start_x.add_assign(&view.plane_start_x);
+
+                    temp.plane_start_y.assign(&view.image_scale_y);
+                    temp.plane_start_y.mul_assign(*image_y);
+                    temp.plane_start_y.add_assign(&view.plane_start_y);
 
                     *image_x += image_width;
                     *index_x += 1;
 
-                    res
+                    Some(temp)
                 }
-            },
-            SubViewIter::Single(single) => single.take(),
+            }
+            SubViewIter::Single(single) => single.take().cloned(),
         }
     }
 
@@ -454,7 +488,7 @@ impl Iterator for SubViewIter {
             } => {
                 let pieces = *width_pieces * view.image_height;
                 (pieces, Some(pieces))
-            },
+            }
             SubViewIter::Rectangles {
                 width_pieces,
                 height_pieces,
@@ -462,7 +496,7 @@ impl Iterator for SubViewIter {
             } => {
                 let pieces = *width_pieces * *height_pieces;
                 (pieces, Some(pieces))
-            },
+            }
             SubViewIter::Single(_) => (1, Some(1)),
         }
     }
@@ -792,10 +826,10 @@ mod tests {
         match new_coord {
             (ConstrainedValue::WithinConstraint(x), ConstrainedValue::WithinConstraint(y)) => {
                 assert_eq!((x, y), coord);
-            },
+            }
             (x, y) => {
                 panic!("X or Y is outside bounds! X: {:?}, Y: {:?}", x, y);
-            },
+            }
         }
     }
 
@@ -834,10 +868,10 @@ mod tests {
                                 subpixel_y,
                                 y
                             );
-                        },
+                        }
                         (x, y) => {
                             panic!("X or Y is outside bounds! Input X: {}, Output X: {:?}, Input Y: {}, Output Y: {:?}", subpixel_x, x, subpixel_y, y);
-                        },
+                        }
                     }
                 }
             }
