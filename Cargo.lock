@@ -30,6 +30,28 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7b7e4c2464d97fe331d41de9d5db0def0a96f4d823b8b32a2efd503578988973"
 
 [[package]]
+name = "fractal-rs-3-gen-api"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "futures-core",
+ "lazy_static",
+ "num-traits",
+ "regex",
+ "rug",
+ "serde",
+ "streaming-iterator",
+]
+
+[[package]]
+name = "fractal-rs-3-gen-cpu"
+version = "0.1.0"
+
+[[package]]
+name = "fractal-rs-3-gen-gpu"
+version = "0.1.0"
+
+[[package]]
 name = "futures-core"
 version = "0.3.31"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -44,27 +66,6 @@ dependencies = [
  "libc",
  "windows-sys",
 ]
-
-[[package]]
-name = "kfractal-gen-api"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "futures-core",
- "lazy_static",
- "num-traits",
- "regex",
- "rug",
- "serde",
-]
-
-[[package]]
-name = "kfractal-gen-cpu"
-version = "0.1.0"
-
-[[package]]
-name = "kfractal-gen-gpu"
-version = "0.1.0"
 
 [[package]]
 name = "lazy_static"
@@ -189,6 +190,12 @@ dependencies = [
  "quote",
  "syn",
 ]
+
+[[package]]
+name = "streaming-iterator"
+version = "0.1.9"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2b2231b7c3057d5e4ad0156fb3dc807d900806020c5ffa3ee6ff2c8c76fb8520"
 
 [[package]]
 name = "syn"

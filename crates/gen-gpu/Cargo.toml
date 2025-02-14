@@ -1,5 +1,5 @@
 [package]
-name = "kfractal-gen-gpu"
+name = "fractal-rs-3-gen-gpu"
 version = "0.1.0"
 edition = "2021"
 

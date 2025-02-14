@@ -1,5 +1,5 @@
 [package]
-name = "kfractal-gen-cpu"
+name = "fractal-rs-3-gen-cpu"
 version = "0.1.0"
 edition = "2021"
 
