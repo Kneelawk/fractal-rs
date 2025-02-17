@@ -1,3 +1,5 @@
+//! Specialized arguments for fractal generators.
+
 use regex::{Regex, RegexBuilder};
 use std::{num::ParseFloatError, str::FromStr};
 use serde::{Deserialize, Serialize};

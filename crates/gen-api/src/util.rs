@@ -1,3 +1,5 @@
+//! Utilities for fractal generators.
+
 use std::ops::{Add, Div, Mul, Sub};
 use num_traits::One;
 

@@ -1,6 +1,7 @@
 //! This crate is the primary API that various fractal generator backends will implement.
 
 pub mod args;
+pub mod target;
 pub mod util;
 pub mod view;
 
@@ -12,12 +13,12 @@ pub use rug;
 pub use streaming_iterator;
 
 use crate::args::{Multisampling, Smoothing};
+use crate::target::GeneratorTargetSet;
 use crate::view::View;
 use futures_core::future::BoxFuture;
 use rug::Complex;
 use serde::{Deserialize, Serialize};
-use std::fmt::{Debug, Display, Formatter};
-use downcast_rs::{impl_downcast, DowncastSync};
+use std::fmt::{Debug, Formatter};
 
 /// Represents a set of options passed to a fractal generator at initialization.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -73,7 +74,11 @@ pub trait ConfiguredGenerator {
     fn min_views_hint(&self) -> BoxFuture<'static, anyhow::Result<usize>>;
 
     /// Starts the generation of a fractal.
-    fn start_generation(&self, views: &[View], target: &(dyn GeneratorTarget)) -> BoxFuture<'static, anyhow::Result<Box<dyn RunningGenerator + Send + 'static>>>;
+    fn start_generation(
+        &self,
+        views: &[View],
+        target: &GeneratorTargetSet,
+    ) -> BoxFuture<'static, anyhow::Result<Box<dyn RunningGenerator + Send + 'static>>>;
 }
 
 /// Represents a running fractal generator.
@@ -86,37 +91,4 @@ pub trait RunningGenerator {
 
     /// Checks whether this fractal generator instance is still running.
     fn running(&self) -> BoxFuture<'static, anyhow::Result<bool>>;
-}
-
-/// Something that can have fractal image data written to it.
-pub trait GeneratorTarget: DowncastSync {
-    /// Accept a pixel block and write it to where ever this target writes its data.
-    fn accept(&self, pixel_block: PixelBlock) -> BoxFuture<'static, Result<(), BlockAcceptError>>;
-}
-impl_downcast!(sync GeneratorTarget);
-
-/// An error potentially produced when attempting to provide a pixel block to a generator target.
-pub struct BlockAcceptError {
-    /// The pixel block that would have been sent to the generator target.
-    pub pixel_block: PixelBlock,
-    /// The error the prevented the pixel block from being sent.
-    pub error: anyhow::Error,
-}
-
-impl Debug for BlockAcceptError {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        Debug::fmt(&self.error, f)
-    }
-}
-
-impl Display for BlockAcceptError {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        Display::fmt(&self.error, f)
-    }
-}
-
-impl From<BlockAcceptError> for anyhow::Error {
-    fn from(value: BlockAcceptError) -> Self {
-        value.error
-    }
 }

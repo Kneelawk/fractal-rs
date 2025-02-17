@@ -1,4 +1,4 @@
-//! view.rs - This file contains the general purpose `View` struct as well as
+//! This module contains the general purpose `View` struct as well as
 //! its dependencies. This file is designed to be copied from fractal generator
 //! to fractal generator.
 
@@ -439,7 +439,7 @@ impl<'a> SubViewIter<'a> {
     }
 }
 
-impl<'a> StreamingIterator for SubViewIter<'a> {
+impl StreamingIterator for SubViewIter<'_> {
     type Item = View;
 
     fn advance(&mut self) {
@@ -582,7 +582,7 @@ impl<'a> StreamingIterator for SubViewIter<'a> {
             SubViewIter::SplitHeight { temp, .. } => temp.as_ref(),
             SubViewIter::SplitRow { temp, .. } => temp.as_ref(),
             SubViewIter::Rectangles { temp, .. } => temp.as_ref(),
-            SubViewIter::Single { view, .. } => view.clone(),
+            SubViewIter::Single { view, .. } => *view,
         }
     }
 
