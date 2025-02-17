@@ -4,9 +4,7 @@ use crate::PixelBlock;
 use dyn_clone::DynClone;
 use futures::FutureExt;
 use futures_core::future::BoxFuture;
-use std::any::Any;
 use std::fmt::{Debug, Display, Formatter};
-use std::mem::replace;
 use tokio::sync::mpsc;
 
 /// A set of generator targets.
@@ -14,17 +12,15 @@ use tokio::sync::mpsc;
 /// Only a [`CpuGeneratorTarget`] is guaranteed to be present.
 #[derive(Debug, Clone)]
 pub struct GeneratorTargetSet {
-    cpu: CpuGeneratorTarget,
     extensions: anymap::Map<dyn anymap::any::CloneAny + Send + Sync>,
 }
 
 impl GeneratorTargetSet {
     /// Creates a new generator set with just cpu target.
     pub fn new(cpu: CpuGeneratorTarget) -> Self {
-        Self {
-            cpu,
-            extensions: anymap::Map::new(),
-        }
+        let mut extensions = anymap::Map::new();
+        extensions.insert(cpu);
+        Self { extensions }
     }
 
     /// Creates a new generator set from a box of the cpu target.
@@ -42,28 +38,11 @@ impl GeneratorTargetSet {
         &mut self,
         extension: T,
     ) -> Option<T> {
-        // I sure hope the compiler optimizes out all these temp heap allocations lmao
-        let extension = Box::new(extension);
-        let extension = match (extension as Box<dyn Any>).downcast::<CpuGeneratorTarget>() {
-            Ok(cpu) => {
-                return Some(
-                    *(Box::new(replace(&mut self.cpu, *cpu)) as Box<dyn Any>)
-                        .downcast()
-                        .unwrap(),
-                )
-            }
-            Err(extension) => extension.downcast().unwrap(),
-        };
-
-        self.extensions.insert(*extension)
+        self.extensions.insert(extension)
     }
 
     /// Gets an extension.
     pub fn get_extension<T: anymap::any::CloneAny + Send + Sync>(&self) -> Option<&T> {
-        if let Some(t) = ((&self.cpu) as &(dyn Any)).downcast_ref::<T>() {
-            return Some(t);
-        }
-
         self.extensions.get()
     }
 }
