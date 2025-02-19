@@ -4,6 +4,7 @@ pub mod args;
 pub mod target;
 pub mod util;
 pub mod view;
+pub mod color;
 
 /// Anyhow is used by this API.
 pub use anyhow;
