@@ -12,6 +12,17 @@ lazy_static::lazy_static! {
 static ref SMOOTHING_REGEX: Regex = RegexBuilder::new(r"^logarithmic(distance)? *\( *(?P<radius>\d+(\.\d+)?|\.\d+) *, *(?P<max_power>\d+(\.\d+)?|\.\d+) *\)$").case_insensitive(true).build().unwrap();
 }
 
+// TODO: add continuous-tracking approach from https://stackoverflow.com/a/1243788/1687581
+// Complex z = new Complex(x,y);
+// double smoothcolor = Math.exp(-z.abs());
+//
+// for(i=0;i<max_iter && z.abs() < 30;i++) {
+//     z = f(z);
+//     smoothcolor += Math.exp(-z.abs());
+// }
+//
+// Then smoothcolor is in the interval (0,max_iter).
+
 /// Represents an operation for smoothing an integer iteration count into a
 /// floating point value.
 #[derive(Debug, Copy, Clone, PartialOrd, PartialEq, Serialize, Deserialize)]

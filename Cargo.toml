@@ -1,7 +1,8 @@
 [workspace]
 members = [
     "crates/gen-api",
-    "crates/gen-cpu", "crates/gen-gpu",
-    "crates/gen-gpu"
+    "crates/gen-cpu",
+    "crates/gen-gpu",
+    "crates/lang"
 ]
 resolver = "2"
