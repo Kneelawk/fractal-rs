@@ -1,14 +1,17 @@
-pub fn add(left: u64, right: u64) -> u64 {
-    left + right
-}
+//! This is the language module of the fractal-rs project. This module houses the AST and the parser
+//! for the custom language used to define fractal types and fractal colors.
 
-#[cfg(test)]
-mod tests {
-    use super::*;
+pub mod ast;
 
-    #[test]
-    fn it_works() {
-        let result = add(2, 2);
-        assert_eq!(result, 4);
-    }
+/// All the types available in the fractal language
+pub enum Type {
+    Boolean,
+    Color,
+    Complex,
+    Function {
+        arguments: Vec<Type>,
+        result: Box<Type>,
+    },
+    Number,
+    Unit,
 }
