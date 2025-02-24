@@ -1,0 +1,16 @@
+integer = { ASCII_DIGIT+ }
+float = { (ASCII_DIGIT+ ~ "." ~ ASCII_DIGIT*) | ("." ~ ASCII_DIGIT+) }
+
+literal_char = _{ ASCII_ALPHANUMERIC | "_" }
+literal_start_char = _{ ASCII_ALPHA | "_" }
+literal = { literal_start_char ~ literal_char* }
+
+terminator = { ";" | NEWLINE }
+
+binary_op = { plus_op | minus_op }
+plus_op = { "+" }
+minus_op = { "-" }
+times_op = { "*" }
+divide_op = { "/" }
+
+WHITESPACE = _{ " " }

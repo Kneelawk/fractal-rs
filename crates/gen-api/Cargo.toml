@@ -5,7 +5,7 @@ edition = "2024"
 
 [dependencies]
 anyhow = "1"
-anymap = "0.12.1"
+anymap = "1.0.0-beta.2"
 dyn-clone = "1.0.18"
 futures = "0.3.31"
 futures-core = "0.3"

@@ -4,5 +4,7 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-pest = { version = "2.7", features = ["miette-error"] }
-pest_derive = "2.7.15"
+anymap = "1.0.0-beta.2"
+chumsky = "1.0.0-alpha.8"
+rug = { version = "1.27", features = ["num-traits", "serde"] }
+serde = { version = "1", features = ["derive"] }

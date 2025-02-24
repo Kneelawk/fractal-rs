@@ -12,7 +12,7 @@ use tokio::sync::mpsc;
 /// Only a [`CpuGeneratorTarget`] is guaranteed to be present.
 #[derive(Debug, Clone)]
 pub struct GeneratorTargetSet {
-    extensions: anymap::Map<dyn anymap::any::CloneAny + Send + Sync>,
+    extensions: anymap::Map<dyn anymap::CloneAny + Send + Sync>,
 }
 
 impl GeneratorTargetSet {
@@ -34,7 +34,7 @@ impl GeneratorTargetSet {
     }
 
     /// Inserts an extension.
-    pub fn insert_extension<T: anymap::any::CloneAny + Send + Sync>(
+    pub fn insert_extension<T: anymap::CloneAny + Send + Sync>(
         &mut self,
         extension: T,
     ) -> Option<T> {
@@ -42,7 +42,7 @@ impl GeneratorTargetSet {
     }
 
     /// Gets an extension.
-    pub fn get_extension<T: anymap::any::CloneAny + Send + Sync>(&self) -> Option<&T> {
+    pub fn get_extension<T: anymap::CloneAny + Send + Sync>(&self) -> Option<&T> {
         self.extensions.get()
     }
 }
