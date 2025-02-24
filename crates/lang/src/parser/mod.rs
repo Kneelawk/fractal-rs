@@ -54,7 +54,7 @@ fn mk_span<'a, 'b, 'src>(
 ) -> ProgramSpan {
     ProgramSpan {
         source: map_extra.ctx().clone(),
-        range: Default::default(),
+        range: map_extra.span().into_range(),
     }
 }
 
