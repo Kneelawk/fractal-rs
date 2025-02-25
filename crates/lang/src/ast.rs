@@ -1,10 +1,10 @@
 //! Fractal program AST constructs.
 
-use crate::{ExpressionType, VariableDeclaration};
+use crate::ExpressionType;
 use anymap::{CloneAny, Map};
+use rug::{Complex, Float};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use rug::{Complex, Float};
 
 /// Dynamic traits implemented by all ast attachments
 pub type AstAttachment = dyn CloneAny + Send + Sync;
@@ -13,25 +13,31 @@ pub type AstAttachment = dyn CloneAny + Send + Sync;
 #[derive(Default, Debug, Clone)]
 pub struct AstProgram {
     pub functions: HashMap<String, AstFunction>,
-    pub globals: HashMap<String, VariableDeclaration>,
+    pub globals: HashMap<String, AstVariable>,
     pub attachments: Map<AstAttachment>,
+}
+
+impl PartialEq for AstProgram {
+    fn eq(&self, other: &Self) -> bool {
+        self.functions == other.functions && self.globals == other.globals
+    }
 }
 
 #[derive(Debug, Clone)]
 pub struct AstFunction {
     pub name: String,
-    pub args: Vec<VariableDeclaration>,
-    pub return_type: ExpressionType,
+    pub args: Vec<AstVariable>,
+    pub explicit_ret: Option<ExpressionType>,
     pub expr: AstExpression,
     pub attachments: Map<AstAttachment>,
 }
 
 impl AstFunction {
-    pub fn new(name: String, args: Vec<VariableDeclaration>, return_type: ExpressionType) -> Self {
+    pub fn new(name: String, args: Vec<AstVariable>, return_type: Option<ExpressionType>) -> Self {
         Self {
             name,
             args,
-            return_type,
+            explicit_ret: return_type,
             expr: Default::default(),
             attachments: Map::new(),
         }
@@ -40,6 +46,15 @@ impl AstFunction {
     pub fn with_attachment<A: CloneAny + Send + Sync>(mut self, attachment: A) -> Self {
         self.attachments.insert(attachment);
         self
+    }
+}
+
+impl PartialEq for AstFunction {
+    fn eq(&self, other: &Self) -> bool {
+        self.name == other.name
+            && self.args == other.args
+            && self.explicit_ret == other.explicit_ret
+            && self.expr == other.expr
     }
 }
 
@@ -63,7 +78,13 @@ impl AstExpression {
     }
 }
 
-#[derive(Debug, Clone)]
+impl PartialEq for AstExpression {
+    fn eq(&self, other: &Self) -> bool {
+        self.expr == other.expr
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub enum AstExpressionImpl {
     Block {
         block: AstBlock,
@@ -86,6 +107,7 @@ pub enum AstExpressionImpl {
     },
     VarDeclare {
         name: String,
+        mutable: bool,
     },
     VarAssign {
         name: String,
@@ -94,6 +116,10 @@ pub enum AstExpressionImpl {
     VarDeclareAssign {
         name: String,
         assign: Box<AstExpression>,
+        mutable: bool,
+    },
+    Terminated {
+        expr: Box<AstExpression>,
     },
     Return {
         expr: Box<AstExpression>,
@@ -136,6 +162,12 @@ pub struct AstIfBlock {
     pub attachments: Map<AstAttachment>,
 }
 
+impl PartialEq for AstIfBlock {
+    fn eq(&self, other: &Self) -> bool {
+        self.condition == other.condition && self.block == other.block
+    }
+}
+
 #[derive(Default, Debug, Clone)]
 pub struct AstBlock {
     pub name: Option<String>,
@@ -143,7 +175,13 @@ pub struct AstBlock {
     pub attachments: Map<AstAttachment>,
 }
 
-#[derive(Default, Debug, Clone)]
+impl PartialEq for AstBlock {
+    fn eq(&self, other: &Self) -> bool {
+        self.name == other.name && self.exprs == other.exprs
+    }
+}
+
+#[derive(Default, Debug, Clone, PartialEq)]
 pub enum AstConstant {
     Boolean(bool),
     /// RGBA color
@@ -153,6 +191,21 @@ pub enum AstConstant {
     Number(Float),
     #[default]
     Unit,
+}
+
+/// A variable name and type
+#[derive(Debug, Clone)]
+pub struct AstVariable {
+    pub name: String,
+    pub ty: ExpressionType,
+    pub init: Option<AstConstant>,
+    pub attachments: Map<AstAttachment>,
+}
+
+impl PartialEq for AstVariable {
+    fn eq(&self, other: &Self) -> bool {
+        self.name == other.name && self.ty == other.ty
+    }
 }
 
 #[derive(Debug, Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Serialize, Deserialize)]

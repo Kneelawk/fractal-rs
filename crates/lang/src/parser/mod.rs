@@ -1,10 +1,13 @@
 //! Fractal program parser constructs.
 
+mod lexer;
+
 use crate::ast::{AstConstant, AstExpression, AstExpressionImpl};
 use chumsky::input::MapExtra;
 use chumsky::{Parser, error, extra, text};
 use std::ops::Range;
 use std::sync::Arc;
+use chumsky::span::Span;
 
 /// This type is usually an attachment to [`crate::ast::AstProgram`]s
 #[derive(Debug, Clone)]
@@ -45,6 +48,27 @@ struct ProgramSourceImpl {
 pub struct ProgramSpan {
     pub source: ProgramSource,
     pub range: Range<usize>,
+}
+
+impl Span for ProgramSpan {
+    type Context = ();
+    type Offset = ();
+
+    fn new(context: Self::Context, range: Range<Self::Offset>) -> Self {
+        todo!()
+    }
+
+    fn context(&self) -> Self::Context {
+        todo!()
+    }
+
+    fn start(&self) -> Self::Offset {
+        todo!()
+    }
+
+    fn end(&self) -> Self::Offset {
+        todo!()
+    }
 }
 
 type ProgramExtra<'a> = extra::Full<error::Rich<'a, char>, (), ProgramSource>;

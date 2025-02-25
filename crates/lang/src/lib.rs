@@ -46,10 +46,3 @@ pub struct FunctionDeclaration {
     name: FunctionName,
     ret: ExpressionType,
 }
-
-/// A variable name and type
-#[derive(Debug, Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Serialize, Deserialize)]
-pub struct VariableDeclaration {
-    name: String,
-    ty: ExpressionType,
-}
