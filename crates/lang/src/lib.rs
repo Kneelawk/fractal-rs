@@ -15,7 +15,6 @@ pub enum ExpressionType {
     Color,
     Complex,
     Integer,
-    Number,
     #[default]
     Unit,
 }

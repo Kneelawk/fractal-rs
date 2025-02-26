@@ -174,7 +174,6 @@ pub enum AstConstant {
     Color([f32; 4]),
     Complex(Complex),
     Integer(i32),
-    Number(Float),
     #[default]
     Unit,
 }
