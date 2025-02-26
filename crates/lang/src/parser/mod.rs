@@ -2,12 +2,14 @@
 
 mod lexer;
 
-use crate::ast::{AstConstant, AstExpression, AstExpressionImpl};
+use crate::ast::{AstConstant, AstExpression, AstExpressionImpl, AstProgram};
+use crate::parser::lexer::LexerToken;
 use chumsky::input::MapExtra;
-use chumsky::{Parser, error, extra, text};
+use chumsky::prelude::recursive;
+use chumsky::span::Span;
+use chumsky::{Parser, error, extra, select, text};
 use std::ops::Range;
 use std::sync::Arc;
-use chumsky::span::Span;
 
 /// This type is usually an attachment to [`crate::ast::AstProgram`]s
 #[derive(Debug, Clone)]
@@ -50,28 +52,7 @@ pub struct ProgramSpan {
     pub range: Range<usize>,
 }
 
-impl Span for ProgramSpan {
-    type Context = ();
-    type Offset = ();
-
-    fn new(context: Self::Context, range: Range<Self::Offset>) -> Self {
-        todo!()
-    }
-
-    fn context(&self) -> Self::Context {
-        todo!()
-    }
-
-    fn start(&self) -> Self::Offset {
-        todo!()
-    }
-
-    fn end(&self) -> Self::Offset {
-        todo!()
-    }
-}
-
-type ProgramExtra<'a> = extra::Full<error::Rich<'a, char>, (), ProgramSource>;
+type ProgramExtra<'src> = extra::Full<error::Rich<'src, char>, (), ProgramSource>;
 
 fn mk_span<'a, 'b, 'src>(
     map_extra: &'a mut MapExtra<'src, 'b, &'src str, ProgramExtra<'src>>,
@@ -82,13 +63,18 @@ fn mk_span<'a, 'b, 'src>(
     }
 }
 
-fn integer<'a>() -> impl Parser<'a, &'a str, AstExpression, ProgramExtra<'a>> {
-    text::int(10).map_with(|s: &str, metadata| {
-        AstExpression::new(AstExpressionImpl::Constant {
-            value: AstConstant::Integer(s.parse().unwrap()),
-        })
-            .with_attachment(mk_span(metadata))
-    })
-}
-
-fn test() {}
+// fn expr_parser<'src>(
+//     prec: u32,
+// ) -> impl Parser<'src, LexerToken<'src>, AstExpression, ProgramExtra<'src>> {
+//     recursive(|expr| {
+//         let constant = select! {
+//             LexerToken::Boolean(b) => AstExpressionImpl::Constant(AstConstant::Boolean(b)),
+//             LexerToken::Integer(i) => AstExpressionImpl::Constant(AstConstant::Integer(i)),
+//             // LexerToken::
+//         };
+//     })
+// }
+//
+// fn parser<'src>(prec: u32) -> impl Parser<'src, LexerToken<'src>, AstProgram, ProgramExtra<'src>> {}
+//
+// fn test() {}

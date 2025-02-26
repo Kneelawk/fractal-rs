@@ -86,12 +86,8 @@ impl PartialEq for AstExpression {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum AstExpressionImpl {
-    Block {
-        block: AstBlock,
-    },
-    Constant {
-        value: AstConstant,
-    },
+    Block(AstBlock),
+    Constant(AstConstant),
     BinaryOp {
         ty: BinaryOpType,
         left: Box<AstExpression>,
@@ -118,18 +114,10 @@ pub enum AstExpressionImpl {
         assign: Box<AstExpression>,
         mutable: bool,
     },
-    Terminated {
-        expr: Box<AstExpression>,
-    },
-    Return {
-        expr: Box<AstExpression>,
-    },
-    Break {
-        block: Option<String>,
-    },
-    Continue {
-        block: Option<String>,
-    },
+    Terminated(Box<AstExpression>),
+    Return(Box<AstExpression>),
+    Break(Option<String>),
+    Continue(Option<String>),
     IfElse {
         start: AstIfBlock,
         chain: Vec<AstIfBlock>,
@@ -149,9 +137,7 @@ pub enum AstExpressionImpl {
 
 impl Default for AstExpressionImpl {
     fn default() -> Self {
-        Self::Block {
-            block: Default::default(),
-        }
+        Self::Block(Default::default())
     }
 }
 
