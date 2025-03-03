@@ -1,3 +1,4 @@
+use crate::parser::Spanned;
 use chumsky::input::MapExtra;
 use chumsky::prelude::*;
 use rug::Float;
@@ -16,6 +17,7 @@ pub enum LexerToken<'src> {
     I,
     Op(&'src str),
     Delim(char),
+    Lifetime(&'src str),
     Ident(&'src str),
     Terminator,
     Fn,
@@ -34,42 +36,36 @@ impl LexerToken<'_> {
     fn spanned<'a, 'b, 'src>(
         self,
         map_extra: &'a mut MapExtra<'src, 'b, &'src str, LexerExtra<'src>>,
-    ) -> (Self, SimpleSpan) {
-        (self, map_extra.span())
+    ) -> Spanned<Self> {
+        Spanned(self, map_extra.span())
     }
 }
 
 pub fn lexer<'src>(
     prec: u32,
-) -> impl Parser<'src, &'src str, Vec<(LexerToken<'src>, SimpleSpan)>, LexerExtra<'src>> {
-    let dec_int = text::digits(10)
-        .to_slice()
-        .from_str()
-        .unwrapped();
+) -> impl Parser<'src, &'src str, Vec<Spanned<LexerToken<'src>>>, LexerExtra<'src>> {
+    let dec_int = text::digits(10).to_slice().from_str().unwrapped();
 
-    let hex_int = just("0x")
-        .ignore_then(
-            text::digits(16)
-                .to_slice()
-                .map(|s| i32::from_str_radix(s, 16))
-                .unwrapped(),
-        );
+    let hex_int = just("0x").ignore_then(
+        text::digits(16)
+            .to_slice()
+            .map(|s| i32::from_str_radix(s, 16))
+            .unwrapped(),
+    );
 
-    let oct_int = just("0o")
-        .ignore_then(
-            text::digits(8)
-                .to_slice()
-                .map(|s| i32::from_str_radix(s, 8))
-                .unwrapped(),
-        );
+    let oct_int = just("0o").ignore_then(
+        text::digits(8)
+            .to_slice()
+            .map(|s| i32::from_str_radix(s, 8))
+            .unwrapped(),
+    );
 
-    let bin_int = just("0b")
-        .ignore_then(
-            text::digits(2)
-                .to_slice()
-                .map(|s| i32::from_str_radix(s, 2))
-                .unwrapped(),
-        );
+    let bin_int = just("0b").ignore_then(
+        text::digits(2)
+            .to_slice()
+            .map(|s| i32::from_str_radix(s, 2))
+            .unwrapped(),
+    );
 
     let int = choice((hex_int, oct_int, bin_int, dec_int));
     let real_int = int.map(LexerToken::RealInteger);
@@ -90,27 +86,26 @@ pub fn lexer<'src>(
     let hex_num_exp =
         just('p').ignore_then(one_of("+-").or_not().then(text::digits(10)).to_slice());
     let hex_parse_float = move |s: &str| Float::parse_radix(s, 16).unwrap().complete(prec);
-    let hex_num = just("0x")
-        .ignore_then(
-            text::digits(16)
-                .then(just('.').then(text::digits(16).or_not()))
+    let hex_num = just("0x").ignore_then(
+        text::digits(16)
+            .then(just('.').then(text::digits(16).or_not()))
+            .to_slice()
+            .or(just('.').then(text::digits(16)).to_slice())
+            .map(hex_parse_float)
+            .then(hex_num_exp.or_not())
+            .map(move |(f, e)| {
+                if let Some(e) = e {
+                    f.mul(Float::parse(e).unwrap().complete(prec).exp2())
+                } else {
+                    f
+                }
+            })
+            .or(text::digits(16)
                 .to_slice()
-                .or(just('.').then(text::digits(16)).to_slice())
                 .map(hex_parse_float)
-                .then(hex_num_exp.or_not())
-                .map(move |(f, e)| {
-                    if let Some(e) = e {
-                        f.mul(Float::parse(e).unwrap().complete(prec).exp2())
-                    } else {
-                        f
-                    }
-                })
-                .or(text::digits(16)
-                    .to_slice()
-                    .map(hex_parse_float)
-                    .then(hex_num_exp)
-                    .map(move |(f, e)| f.mul(Float::parse(e).unwrap().complete(prec).exp2()))),
-        );
+                .then(hex_num_exp)
+                .map(move |(f, e)| f.mul(Float::parse(e).unwrap().complete(prec).exp2()))),
+    );
 
     let num = hex_num.or(dec_num);
     let real_num = num.map(LexerToken::RealNumber);
@@ -125,6 +120,10 @@ pub fn lexer<'src>(
     let delim = one_of("()[]{}:,").map(LexerToken::Delim);
 
     let term = just(';').to(LexerToken::Terminator);
+
+    let lifetime = just('\'')
+        .ignore_then(text::ascii::ident())
+        .map(LexerToken::Lifetime);
 
     let ident = text::ascii::ident().map(|ident: &str| match ident {
         "i" => LexerToken::I,
@@ -142,7 +141,7 @@ pub fn lexer<'src>(
     });
 
     let token = choice((
-        imag_num, real_num, imag_int, real_int, op, delim, term, ident,
+        imag_num, real_num, imag_int, real_int, op, delim, term, lifetime, ident,
     ));
 
     // let token = hex_num;
@@ -168,6 +167,7 @@ pub fn lexer<'src>(
 
 #[cfg(test)]
 mod tests {
+    use crate::parser::Spanned;
     use crate::parser::lexer::{LexerToken, lexer};
     use chumsky::Parser;
     use chumsky::span::SimpleSpan;
@@ -180,7 +180,10 @@ mod tests {
             let s = format!("{i}");
             let vec = lexer(24).parse(&s).unwrap();
             assert_eq!(
-                vec![(LexerToken::RealInteger(i), SimpleSpan::new(0, s.len()))],
+                vec![Spanned(
+                    LexerToken::RealInteger(i),
+                    SimpleSpan::new(0, s.len())
+                )],
                 vec,
                 "Attempted to parse {}",
                 &s
@@ -192,7 +195,10 @@ mod tests {
     fn test_dec_imag_int() {
         let vec = lexer(24).parse("32i").unwrap();
         assert_eq!(
-            vec![(LexerToken::ImaginaryInteger(32), SimpleSpan::new(0, 3))],
+            vec![Spanned(
+                LexerToken::ImaginaryInteger(32),
+                SimpleSpan::new(0, 3)
+            )],
             vec,
             "Attempted to parse 32i",
         );
@@ -204,7 +210,10 @@ mod tests {
             let s = format!("0x{i:x}");
             let vec = lexer(24).parse(&s).unwrap();
             assert_eq!(
-                vec![(LexerToken::RealInteger(i), SimpleSpan::new(0, s.len()))],
+                vec![Spanned(
+                    LexerToken::RealInteger(i),
+                    SimpleSpan::new(0, s.len())
+                )],
                 vec,
                 "Attempted to parse {}",
                 &s
@@ -216,7 +225,10 @@ mod tests {
     fn test_hex_imag_int() {
         let vec = lexer(24).parse("0x20i").unwrap();
         assert_eq!(
-            vec![(LexerToken::ImaginaryInteger(0x20), SimpleSpan::new(0, 5))],
+            vec![Spanned(
+                LexerToken::ImaginaryInteger(0x20),
+                SimpleSpan::new(0, 5)
+            )],
             vec,
             "Attempted to parse 0x20i",
         );
@@ -228,7 +240,10 @@ mod tests {
             let s = format!("0o{i:o}");
             let vec = lexer(24).parse(&s).unwrap();
             assert_eq!(
-                vec![(LexerToken::RealInteger(i), SimpleSpan::new(0, s.len()))],
+                vec![Spanned(
+                    LexerToken::RealInteger(i),
+                    SimpleSpan::new(0, s.len())
+                )],
                 vec,
                 "Attempted to parse {}",
                 &s
@@ -240,7 +255,10 @@ mod tests {
     fn test_oct_imag_int() {
         let vec = lexer(24).parse("0o40i").unwrap();
         assert_eq!(
-            vec![(LexerToken::ImaginaryInteger(0o40), SimpleSpan::new(0, 5))],
+            vec![Spanned(
+                LexerToken::ImaginaryInteger(0o40),
+                SimpleSpan::new(0, 5)
+            )],
             vec,
             "Attempted to parse 0o40i",
         );
@@ -252,7 +270,10 @@ mod tests {
             let s = format!("0b{i:b}");
             let vec = lexer(24).parse(&s).unwrap();
             assert_eq!(
-                vec![(LexerToken::RealInteger(i), SimpleSpan::new(0, s.len()))],
+                vec![Spanned(
+                    LexerToken::RealInteger(i),
+                    SimpleSpan::new(0, s.len())
+                )],
                 vec,
                 "Attempted to parse {}",
                 &s
@@ -264,7 +285,10 @@ mod tests {
     fn test_bin_imag_int() {
         let vec = lexer(24).parse("0b100i").unwrap();
         assert_eq!(
-            vec![(LexerToken::ImaginaryInteger(0b100), SimpleSpan::new(0, 6))],
+            vec![Spanned(
+                LexerToken::ImaginaryInteger(0b100),
+                SimpleSpan::new(0, 6)
+            )],
             vec,
             "Attempted to parse 0b100i",
         );
@@ -280,7 +304,7 @@ mod tests {
             }
             let vec = lexer(24).parse(&s).unwrap();
             assert_eq!(
-                vec![(
+                vec![Spanned(
                     LexerToken::RealNumber(Float::with_val(24, f)),
                     SimpleSpan::new(0, s.len())
                 )],
@@ -295,7 +319,10 @@ mod tests {
     fn test_dec_imag_num() {
         let vec = lexer(24).parse("3.2i").unwrap();
         assert_eq!(
-            vec![(LexerToken::ImaginaryNumber(Float::with_val(24, 3.2f32)), SimpleSpan::new(0, 4))],
+            vec![Spanned(
+                LexerToken::ImaginaryNumber(Float::with_val(24, 3.2f32)),
+                SimpleSpan::new(0, 4)
+            )],
             vec,
             "Attempted to parse 3.2i",
         );
@@ -307,7 +334,7 @@ mod tests {
         let s = f.to_hex();
         let vec = lexer(24).parse(&s).unwrap();
         assert_eq!(
-            vec![(
+            vec![Spanned(
                 LexerToken::RealNumber(Float::with_val(24, f)),
                 SimpleSpan::new(0, s.len())
             )],
@@ -324,7 +351,7 @@ mod tests {
             let s = f.to_hex();
             let vec = lexer(24).parse(&s).unwrap();
             assert_eq!(
-                vec![(
+                vec![Spanned(
                     LexerToken::RealNumber(Float::with_val(24, f)),
                     SimpleSpan::new(0, s.len())
                 )],
@@ -339,7 +366,10 @@ mod tests {
     fn test_hex_imag_num() {
         let vec = lexer(24).parse("0x3.2i").unwrap();
         assert_eq!(
-            vec![(LexerToken::ImaginaryNumber(Float::with_val(24, 3.125f32)), SimpleSpan::new(0, 6))],
+            vec![Spanned(
+                LexerToken::ImaginaryNumber(Float::with_val(24, 3.125f32)),
+                SimpleSpan::new(0, 6)
+            )],
             vec,
             "Attempted to parse 0x3.2i",
         );
@@ -353,22 +383,22 @@ mod tests {
         hello /*+ 3*/ * 2.0
         "#
     }, expected = {
-        vec![(LexerToken::Ident("hello"), SimpleSpan::new(0, 5))],
-        vec![(LexerToken::RealInteger(1), SimpleSpan::new(0, 1)), (LexerToken::Op("+"), SimpleSpan::new(2, 3)), (LexerToken::RealInteger(2), SimpleSpan::new(4, 5))],
+        vec![Spanned(LexerToken::Ident("hello"), SimpleSpan::new(0, 5))],
+        vec![Spanned(LexerToken::RealInteger(1), SimpleSpan::new(0, 1)), Spanned(LexerToken::Op("+"), SimpleSpan::new(2, 3)), Spanned(LexerToken::RealInteger(2), SimpleSpan::new(4, 5))],
         vec![
-            (LexerToken::Let, SimpleSpan::new(21, 24)),
-            (LexerToken::Ident("hello"), SimpleSpan::new(25, 30)),
-            (LexerToken::Op("="), SimpleSpan::new(31, 32)),
-            (LexerToken::Ident("c"), SimpleSpan::new(33, 34)),
-            (LexerToken::Op("+"), SimpleSpan::new(35, 36)),
-            (LexerToken::RealInteger(2), SimpleSpan::new(37, 38)),
-            (LexerToken::Terminator, SimpleSpan::new(38, 39)),
-            (LexerToken::Ident("hello"), SimpleSpan::new(48, 53)),
-            (LexerToken::Op("*"), SimpleSpan::new(62, 63)),
-            (LexerToken::RealNumber(Float::with_val(24, 2.0)), SimpleSpan::new(64, 67))
+            Spanned(LexerToken::Let, SimpleSpan::new(21, 24)),
+            Spanned(LexerToken::Ident("hello"), SimpleSpan::new(25, 30)),
+            Spanned(LexerToken::Op("="), SimpleSpan::new(31, 32)),
+            Spanned(LexerToken::Ident("c"), SimpleSpan::new(33, 34)),
+            Spanned(LexerToken::Op("+"), SimpleSpan::new(35, 36)),
+            Spanned(LexerToken::RealInteger(2), SimpleSpan::new(37, 38)),
+            Spanned(LexerToken::Terminator, SimpleSpan::new(38, 39)),
+            Spanned(LexerToken::Ident("hello"), SimpleSpan::new(48, 53)),
+            Spanned(LexerToken::Op("*"), SimpleSpan::new(62, 63)),
+            Spanned(LexerToken::RealNumber(Float::with_val(24, 2.0)), SimpleSpan::new(64, 67))
         ]
     })]
-    fn test_tokens(input: &str, expected: Vec<(LexerToken, SimpleSpan)>) {
+    fn test_tokens(input: &str, expected: Vec<Spanned<LexerToken>>) {
         let vec = lexer(24).parse(input).unwrap();
         assert_eq!(expected, vec, "Attempted to parse '{input}'");
     }

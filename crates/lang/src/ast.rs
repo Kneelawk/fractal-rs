@@ -97,10 +97,6 @@ pub enum AstExpressionImpl {
         ty: UnaryOpType,
         expr: Box<AstExpression>,
     },
-    FnCall {
-        name: String,
-        args: Vec<AstExpression>,
-    },
     VarDeclare {
         name: String,
         mutable: bool,
@@ -113,6 +109,11 @@ pub enum AstExpressionImpl {
         name: String,
         assign: Box<AstExpression>,
         mutable: bool,
+    },
+    VarUse(String),
+    FnCall {
+        name: String,
+        args: Vec<AstExpression>,
     },
     Terminated(Box<AstExpression>),
     Return(Box<AstExpression>),
@@ -133,6 +134,7 @@ pub enum AstExpressionImpl {
         after: Box<AstExpression>,
         block: AstBlock,
     },
+    Error,
 }
 
 impl Default for AstExpressionImpl {
