@@ -2,7 +2,7 @@
 
 use crate::ExpressionType;
 use anymap::{CloneAny, Map};
-use rug::{Complex, Float};
+use rug::Complex;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 

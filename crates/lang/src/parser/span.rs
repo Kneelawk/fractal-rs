@@ -1,6 +1,7 @@
 use crate::parser::ProgramExtra;
 use crate::parser::lexer::LexerToken;
-use chumsky::input::{Input, MapExtra};
+use chumsky::input::{Checkpoint, Cursor, Input, MapExtra};
+use chumsky::inspector::Inspector;
 use chumsky::prelude::SimpleSpan;
 use std::ops::Range;
 use std::sync::Arc;
@@ -16,9 +17,12 @@ impl ProgramSource {
     ///
     /// [`code`] is the actual source code of the program that is being parsed.
     /// [`source`] is a string describing to the user where the code came from.
-    pub fn new(code: String, source: String) -> Self {
+    pub fn new(code: impl ToString, source: impl ToString) -> Self {
         Self {
-            source: Arc::new(ProgramSourceImpl { code, source }),
+            source: Arc::new(ProgramSourceImpl {
+                code: code.to_string(),
+                source: source.to_string(),
+            }),
         }
     }
 
@@ -29,6 +33,16 @@ impl ProgramSource {
     pub fn source(&self) -> &str {
         &self.source.source
     }
+}
+
+impl<'a, I: Input<'a>> Inspector<'a, I> for ProgramSource {
+    type Checkpoint = ();
+
+    fn on_token(&mut self, token: &I::Token) {}
+
+    fn on_save<'parse>(&self, cursor: &Cursor<'a, 'parse, I>) -> Self::Checkpoint {}
+
+    fn on_rewind<'parse>(&mut self, marker: &Checkpoint<'a, 'parse, I, Self::Checkpoint>) {}
 }
 
 #[derive(Debug, Clone)]
@@ -53,7 +67,7 @@ where
     I: Input<'src, Token = LexerToken<'src>, Span = SimpleSpan>,
 {
     ProgramSpan {
-        source: map_extra.ctx().clone(),
+        source: map_extra.state().clone(),
         range: map_extra.span().into_range(),
     }
 }
