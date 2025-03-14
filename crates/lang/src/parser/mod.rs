@@ -6,7 +6,7 @@ mod span;
 use crate::ast::{
     AstBlock, AstConstant, AstExpression, AstExpressionImpl, AstFunction, BinaryOpType, UnaryOpType,
 };
-use crate::parser::lexer::LexerToken;
+use crate::parser::lexer::{LexerToken, lexer};
 use crate::parser::span::mk_span;
 use chumsky::input::ValueInput;
 use chumsky::pratt::{infix, left, prefix, right};
@@ -17,7 +17,23 @@ use span::ProgramSource;
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
 struct Spanned<T>(T, SimpleSpan);
 
-type ProgramExtra<'src> = extra::Full<Rich<'src, LexerToken<'src>>, ProgramSource, ()>;
+type ProgramExtra<'src> = extra::Full<Rich<'src, LexerToken<'src>>, (), ProgramSource>;
+
+pub fn parse(source: ProgramSource, prec: u32) -> AstExpression {
+    let tokens = lexer(prec).parse(source.code()).unwrap();
+
+    let parser = parser(prec).with_ctx(source.clone());
+    let ast = Parser::<_, _, ProgramExtra>::parse(
+        &parser,
+        tokens
+            .as_slice()
+            .map((tokens.len()..tokens.len()).into(), |spanned| {
+                (&spanned.0, &spanned.1)
+            }),
+    )
+    .unwrap();
+    ast
+}
 
 fn parser<'src, I>(prec: u32) -> impl Parser<'src, I, AstExpression, ProgramExtra<'src>>
 where
@@ -173,28 +189,14 @@ where
 #[cfg(test)]
 mod tests {
     use crate::ast::{AstBlock, AstConstant, AstExpression, AstExpressionImpl, BinaryOpType};
-    use crate::parser::lexer::lexer;
-    use crate::parser::parser;
+    use crate::parser::parse;
     use crate::parser::span::ProgramSource;
-    use chumsky::Parser;
-    use chumsky::input::Input;
 
     #[test]
     fn test_simple_ast() {
         let source = ProgramSource::new("'myBlock: {x + 2}", "test-impl");
 
-        let tokens = lexer(24).parse(source.code()).unwrap();
-
-        let ast = parser(24)
-            .parse_with_state(
-                tokens
-                    .as_slice()
-                    .map((tokens.len()..tokens.len()).into(), |spanned| {
-                        (&spanned.0, &spanned.1)
-                    }),
-                &mut source.clone(),
-            )
-            .unwrap();
+        let ast = parse(source, 24);
 
         let expected = AstExpression::new(AstExpressionImpl::Block(AstBlock {
             name: Some("myBlock".to_string()),

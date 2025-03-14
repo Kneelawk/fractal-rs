@@ -12,6 +12,12 @@ pub struct ProgramSource {
     source: Arc<ProgramSourceImpl>,
 }
 
+impl Default for ProgramSource {
+    fn default() -> Self {
+        Self::new("", "<no source>")
+    }
+}
+
 impl ProgramSource {
     /// Construct a new program source holder.
     ///
@@ -67,7 +73,7 @@ where
     I: Input<'src, Token = LexerToken<'src>, Span = SimpleSpan>,
 {
     ProgramSpan {
-        source: map_extra.state().clone(),
+        source: map_extra.ctx().clone(),
         range: map_extra.span().into_range(),
     }
 }
