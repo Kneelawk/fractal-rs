@@ -35,128 +35,8 @@ where
         LexerToken::I => AstExpressionImpl::Constant(AstConstant::Complex(Complex::with_val(prec, (0, 1))))
     }.map(AstExpression::new).labelled("value");
 
-    let block = recursive(move |block| {
-        let expr = recursive(move |expr| {
-            let items = expr
-                .clone()
-                .separated_by(just(LexerToken::Delim(',')))
-                .allow_trailing()
-                .collect::<Vec<_>>();
-
-            let let_ = just(LexerToken::Let)
-                .ignore_then(ident)
-                .then_ignore(just(LexerToken::Op("=")))
-                .then(expr.clone())
-                .map(|(name, value)| {
-                    AstExpression::new(AstExpressionImpl::VarDeclareAssign {
-                        name: name.to_string(),
-                        assign: Box::new(value),
-                        mutable: false,
-                    })
-                });
-
-            let parens = just(LexerToken::Delim('('))
-                .ignore_then(expr.clone())
-                .then_ignore(just(LexerToken::Delim(')')));
-
-            let call = ident
-                .then(
-                    items.delimited_by(just(LexerToken::Delim('(')), just(LexerToken::Delim(')'))),
-                )
-                .map_with(|(name, args), m| {
-                    AstExpression::new(AstExpressionImpl::FnCall {
-                        name: name.to_string(),
-                        args,
-                    })
-                    .with_attachment(mk_span(m))
-                });
-
-            let local = ident
-                .map_with(|s, m| {
-                    AstExpression::new(AstExpressionImpl::VarUse(s.to_string()))
-                        .with_attachment(mk_span(m))
-                })
-                .labelled("local");
-
-            let atom = constant
-                .or(let_)
-                .or(call)
-                .or(local)
-                .or(parens)
-                .or(block)
-                .recover_with(via_parser(nested_delimiters(
-                    LexerToken::Delim('('),
-                    LexerToken::Delim(')'),
-                    [
-                        (LexerToken::Delim('['), LexerToken::Delim(']')),
-                        (LexerToken::Delim('{'), LexerToken::Delim('}')),
-                    ],
-                    |span| AstExpression::new(AstExpressionImpl::Error),
-                )))
-                .recover_with(via_parser(nested_delimiters(
-                    LexerToken::Delim('{'),
-                    LexerToken::Delim('}'),
-                    [
-                        (LexerToken::Delim('['), LexerToken::Delim(']')),
-                        (LexerToken::Delim('('), LexerToken::Delim(')')),
-                    ],
-                    |span| AstExpression::new(AstExpressionImpl::Error),
-                )));
-
-            let op = |s| just(LexerToken::Op(s));
-
-            atom.pratt((
-                infix(right(4), op("^"), |a, _, b, m| {
-                    AstExpression::new(AstExpressionImpl::BinaryOp {
-                        ty: BinaryOpType::Power,
-                        left: Box::new(a),
-                        right: Box::new(b),
-                    })
-                    .with_attachment(mk_span(m))
-                }),
-                prefix(3, op("-"), |_, e, m| {
-                    AstExpression::new(AstExpressionImpl::UnaryOp {
-                        ty: UnaryOpType::Minus,
-                        expr: Box::new(e),
-                    })
-                    .with_attachment(mk_span(m))
-                }),
-                infix(left(2), op("*"), |a, _, b, m| {
-                    AstExpression::new(AstExpressionImpl::BinaryOp {
-                        ty: BinaryOpType::Times,
-                        left: Box::new(a),
-                        right: Box::new(b),
-                    })
-                    .with_attachment(mk_span(m))
-                }),
-                infix(left(2), op("/"), |a, _, b, m| {
-                    AstExpression::new(AstExpressionImpl::BinaryOp {
-                        ty: BinaryOpType::Divide,
-                        left: Box::new(a),
-                        right: Box::new(b),
-                    })
-                    .with_attachment(mk_span(m))
-                }),
-                infix(left(1), op("+"), |a, _, b, m| {
-                    AstExpression::new(AstExpressionImpl::BinaryOp {
-                        ty: BinaryOpType::Plus,
-                        left: Box::new(a),
-                        right: Box::new(b),
-                    })
-                    .with_attachment(mk_span(m))
-                }),
-                infix(left(1), op("-"), |a, _, b, m| {
-                    AstExpression::new(AstExpressionImpl::BinaryOp {
-                        ty: BinaryOpType::Minus,
-                        left: Box::new(a),
-                        right: Box::new(b),
-                    })
-                    .with_attachment(mk_span(m))
-                }),
-            ))
-        });
-
-        lifetime
+    let expr = recursive(move |expr| {
+        let block = lifetime
             .then_ignore(just(LexerToken::Delim(':')))
             .or_not()
             .then_ignore(just(LexerToken::Delim('{')))
@@ -168,10 +48,126 @@ where
                     name: name.map(str::to_string),
                     ..Default::default()
                 }))
+            });
+
+        let items = expr
+            .clone()
+            .separated_by(just(LexerToken::Delim(',')))
+            .allow_trailing()
+            .collect::<Vec<_>>();
+
+        let let_ = just(LexerToken::Let)
+            .ignore_then(ident)
+            .then_ignore(just(LexerToken::Op("=")))
+            .then(expr.clone())
+            .map(|(name, value)| {
+                AstExpression::new(AstExpressionImpl::VarDeclareAssign {
+                    name: name.to_string(),
+                    assign: Box::new(value),
+                    mutable: false,
+                })
+            });
+
+        let parens = just(LexerToken::Delim('('))
+            .ignore_then(expr.clone())
+            .then_ignore(just(LexerToken::Delim(')')));
+
+        let call = ident
+            .then(items.delimited_by(just(LexerToken::Delim('(')), just(LexerToken::Delim(')'))))
+            .map_with(|(name, args), m| {
+                AstExpression::new(AstExpressionImpl::FnCall {
+                    name: name.to_string(),
+                    args,
+                })
+                .with_attachment(mk_span(m))
+            });
+
+        let local = ident
+            .map_with(|s, m| {
+                AstExpression::new(AstExpressionImpl::VarUse(s.to_string()))
+                    .with_attachment(mk_span(m))
             })
+            .labelled("local");
+
+        let atom = constant
+            .or(let_)
+            .or(call)
+            .or(local)
+            .or(parens)
+            .or(block)
+            .recover_with(via_parser(nested_delimiters(
+                LexerToken::Delim('('),
+                LexerToken::Delim(')'),
+                [
+                    (LexerToken::Delim('['), LexerToken::Delim(']')),
+                    (LexerToken::Delim('{'), LexerToken::Delim('}')),
+                ],
+                |span| AstExpression::new(AstExpressionImpl::Error),
+            )))
+            .recover_with(via_parser(nested_delimiters(
+                LexerToken::Delim('{'),
+                LexerToken::Delim('}'),
+                [
+                    (LexerToken::Delim('['), LexerToken::Delim(']')),
+                    (LexerToken::Delim('('), LexerToken::Delim(')')),
+                ],
+                |span| AstExpression::new(AstExpressionImpl::Error),
+            )));
+
+        let op = |s| just(LexerToken::Op(s));
+
+        atom.pratt((
+            infix(right(4), op("^"), |a, _, b, m| {
+                AstExpression::new(AstExpressionImpl::BinaryOp {
+                    ty: BinaryOpType::Power,
+                    left: Box::new(a),
+                    right: Box::new(b),
+                })
+                .with_attachment(mk_span(m))
+            }),
+            prefix(3, op("-"), |_, e, m| {
+                AstExpression::new(AstExpressionImpl::UnaryOp {
+                    ty: UnaryOpType::Minus,
+                    expr: Box::new(e),
+                })
+                .with_attachment(mk_span(m))
+            }),
+            infix(left(2), op("*"), |a, _, b, m| {
+                AstExpression::new(AstExpressionImpl::BinaryOp {
+                    ty: BinaryOpType::Times,
+                    left: Box::new(a),
+                    right: Box::new(b),
+                })
+                .with_attachment(mk_span(m))
+            }),
+            infix(left(2), op("/"), |a, _, b, m| {
+                AstExpression::new(AstExpressionImpl::BinaryOp {
+                    ty: BinaryOpType::Divide,
+                    left: Box::new(a),
+                    right: Box::new(b),
+                })
+                .with_attachment(mk_span(m))
+            }),
+            infix(left(1), op("+"), |a, _, b, m| {
+                AstExpression::new(AstExpressionImpl::BinaryOp {
+                    ty: BinaryOpType::Plus,
+                    left: Box::new(a),
+                    right: Box::new(b),
+                })
+                .with_attachment(mk_span(m))
+            }),
+            infix(left(1), op("-"), |a, _, b, m| {
+                AstExpression::new(AstExpressionImpl::BinaryOp {
+                    ty: BinaryOpType::Minus,
+                    left: Box::new(a),
+                    right: Box::new(b),
+                })
+                .with_attachment(mk_span(m))
+            }),
+        ))
     });
 
-    block
+    expr
 }
 
 #[cfg(test)]
@@ -186,7 +182,6 @@ mod tests {
     #[test]
     fn test_simple_ast() {
         let source = ProgramSource::new("'myBlock: {x + 2}", "test-impl");
-        let mut source2 = source.clone();
 
         let tokens = lexer(24).parse(source.code()).unwrap();
 
@@ -197,7 +192,7 @@ mod tests {
                     .map((tokens.len()..tokens.len()).into(), |spanned| {
                         (&spanned.0, &spanned.1)
                     }),
-                &mut source2,
+                &mut source.clone(),
             )
             .unwrap();
 
