@@ -4,7 +4,8 @@ mod lexer;
 mod span;
 
 use crate::ast::{
-    AstBlock, AstConstant, AstExpression, AstExpressionImpl, AstFunction, BinaryOpType, UnaryOpType,
+    AstBlock, AstConstant, AstExpression, AstExpressionImpl, AstFunction, AstProgram, BinaryOpType,
+    UnaryOpType,
 };
 use crate::parser::lexer::{LexerToken, lexer};
 use crate::parser::span::mk_span;
@@ -19,7 +20,7 @@ struct Spanned<T>(T, SimpleSpan);
 
 type ProgramExtra<'src> = extra::Full<Rich<'src, LexerToken<'src>>, (), ProgramSource>;
 
-pub fn parse(source: ProgramSource, prec: u32) -> AstExpression {
+pub fn parse(source: ProgramSource, prec: u32) -> AstProgram {
     let tokens = lexer(prec).parse(source.code()).unwrap();
 
     let parser = parser(prec).with_ctx(source.clone());
@@ -35,7 +36,7 @@ pub fn parse(source: ProgramSource, prec: u32) -> AstExpression {
     ast
 }
 
-fn parser<'src, I>(prec: u32) -> impl Parser<'src, I, AstExpression, ProgramExtra<'src>>
+fn parser<'src, I>(prec: u32) -> impl Parser<'src, I, AstProgram, ProgramExtra<'src>>
 where
     I: ValueInput<'src, Token = LexerToken<'src>, Span = SimpleSpan>,
 {
@@ -182,35 +183,57 @@ where
             }),
         ))
     });
+    
+    // let function = just(LexerToken::Fn).ignore_then(ident).
 
-    expr
+    todo!()
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::ast::{AstBlock, AstConstant, AstExpression, AstExpressionImpl, BinaryOpType};
+    use crate::ast::{
+        AstBlock, AstConstant, AstExpression, AstExpressionImpl, AstFunction, AstProgram,
+        BinaryOpType,
+    };
     use crate::parser::parse;
     use crate::parser::span::ProgramSource;
+    use std::collections::HashMap;
 
     #[test]
     fn test_simple_ast() {
-        let source = ProgramSource::new("'myBlock: {x + 2}", "test-impl");
+        let source = ProgramSource::new("fn main() 'my_block: {x + 2}", "test-impl");
 
         let ast = parse(source, 24);
 
-        let expected = AstExpression::new(AstExpressionImpl::Block(AstBlock {
-            name: Some("myBlock".to_string()),
-            exprs: vec![AstExpression::new(AstExpressionImpl::BinaryOp {
-                ty: BinaryOpType::Plus,
-                left: Box::new(AstExpression::new(AstExpressionImpl::VarUse(
-                    "x".to_string(),
-                ))),
-                right: Box::new(AstExpression::new(AstExpressionImpl::Constant(
-                    AstConstant::Integer(2),
-                ))),
-            })],
-            attachments: Default::default(),
-        }));
+        let expected = AstProgram {
+            functions: {
+                let mut map = HashMap::new();
+                map.insert(
+                    "main".to_string(),
+                    AstFunction {
+                        name: "main".to_string(),
+                        args: vec![],
+                        explicit_ret: None,
+                        expr: AstExpression::new(AstExpressionImpl::Block(AstBlock {
+                            name: Some("my_block".to_string()),
+                            exprs: vec![AstExpression::new(AstExpressionImpl::BinaryOp {
+                                ty: BinaryOpType::Plus,
+                                left: Box::new(AstExpression::new(AstExpressionImpl::VarUse(
+                                    "x".to_string(),
+                                ))),
+                                right: Box::new(AstExpression::new(AstExpressionImpl::Constant(
+                                    AstConstant::Integer(2),
+                                ))),
+                            })],
+                            attachments: Default::default(),
+                        })),
+                        attachments: Default::default(),
+                    },
+                );
+                map
+            },
+            ..Default::default()
+        };
 
         assert_eq!(expected, ast);
     }

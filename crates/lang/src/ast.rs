@@ -33,9 +33,9 @@ pub struct AstFunction {
 }
 
 impl AstFunction {
-    pub fn new(name: String, args: Vec<AstVariable>, return_type: Option<ExpressionType>) -> Self {
+    pub fn new(name: impl ToString, args: Vec<AstVariable>, return_type: Option<ExpressionType>) -> Self {
         Self {
-            name,
+            name: name.to_string(),
             args,
             explicit_ret: return_type,
             expr: Default::default(),
