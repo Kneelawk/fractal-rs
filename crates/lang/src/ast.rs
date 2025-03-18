@@ -33,7 +33,11 @@ pub struct AstFunction {
 }
 
 impl AstFunction {
-    pub fn new(name: impl ToString, args: Vec<AstVariable>, return_type: Option<ExpressionType>) -> Self {
+    pub fn new(
+        name: impl ToString,
+        args: Vec<AstVariable>,
+        return_type: Option<ExpressionType>,
+    ) -> Self {
         Self {
             name: name.to_string(),
             args,
@@ -178,6 +182,18 @@ pub enum AstConstant {
     Integer(i32),
     #[default]
     Unit,
+}
+
+impl AstConstant {
+    pub fn ty(&self) -> ExpressionType {
+        match self {
+            AstConstant::Boolean(_) => ExpressionType::Boolean,
+            AstConstant::Color(_) => ExpressionType::Color,
+            AstConstant::Complex(_) => ExpressionType::Complex,
+            AstConstant::Integer(_) => ExpressionType::Integer,
+            AstConstant::Unit => ExpressionType::Unit,
+        }
+    }
 }
 
 /// A variable name and type

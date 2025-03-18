@@ -3,9 +3,10 @@
 mod lexer;
 mod span;
 
+use crate::ExpressionType;
 use crate::ast::{
-    AstBlock, AstConstant, AstExpression, AstExpressionImpl, AstFunction, AstProgram, BinaryOpType,
-    UnaryOpType,
+    AstBlock, AstConstant, AstExpression, AstExpressionImpl, AstFunction, AstProgram, AstVariable,
+    BinaryOpType, UnaryOpType,
 };
 use crate::parser::lexer::{LexerToken, lexer};
 use crate::parser::span::mk_span;
@@ -19,6 +20,11 @@ use span::ProgramSource;
 struct Spanned<T>(T, SimpleSpan);
 
 type ProgramExtra<'src> = extra::Full<Rich<'src, LexerToken<'src>>, (), ProgramSource>;
+
+enum ProgramComponent {
+    Global(AstVariable),
+    Function(AstFunction),
+}
 
 pub fn parse(source: ProgramSource, prec: u32) -> AstProgram {
     let tokens = lexer(prec).parse(source.code()).unwrap();
@@ -43,14 +49,23 @@ where
     let ident = select! { LexerToken::Ident(s) => s }.labelled("identifier");
     let lifetime = select! { LexerToken::Lifetime(name) => name }.labelled("lifetime");
 
+    let ty = select! {
+        LexerToken::Ident("Boolean") => ExpressionType::Boolean,
+        LexerToken::Ident("Color") => ExpressionType::Color,
+        LexerToken::Ident("Complex") => ExpressionType::Complex,
+        LexerToken::Ident("Integer") => ExpressionType::Integer,
+        LexerToken::Ident("Unit") => ExpressionType::Unit,
+    };
+
     let constant = select! {
-        LexerToken::Boolean(b) => AstExpressionImpl::Constant(AstConstant::Boolean(b)),
-        LexerToken::RealInteger(i) => AstExpressionImpl::Constant(AstConstant::Integer(i)),
-        LexerToken::RealNumber(n) => AstExpressionImpl::Constant(AstConstant::Complex(Complex::with_val(prec, (n, 0)))),
-        LexerToken::ImaginaryInteger(i) => AstExpressionImpl::Constant(AstConstant::Complex(Complex::with_val(prec, (0, i)))),
-        LexerToken::ImaginaryNumber(n) => AstExpressionImpl::Constant(AstConstant::Complex(Complex::with_val(prec, (0, n)))),
-        LexerToken::I => AstExpressionImpl::Constant(AstConstant::Complex(Complex::with_val(prec, (0, 1))))
-    }.map(AstExpression::new).labelled("value");
+        LexerToken::Boolean(b) => AstConstant::Boolean(b),
+        LexerToken::RealInteger(i) => AstConstant::Integer(i),
+        LexerToken::RealNumber(n) => AstConstant::Complex(Complex::with_val(prec, (n, 0))),
+        LexerToken::ImaginaryInteger(i) => AstConstant::Complex(Complex::with_val(prec, (0, i))),
+        LexerToken::ImaginaryNumber(n) => AstConstant::Complex(Complex::with_val(prec, (0, n))),
+        LexerToken::I => AstConstant::Complex(Complex::with_val(prec, (0, 1))),
+    }
+    .labelled("value");
 
     let expr = recursive(move |expr| {
         let block = lifetime
@@ -107,6 +122,7 @@ where
             .labelled("local");
 
         let atom = constant
+            .map(|c| AstExpression::new(AstExpressionImpl::Constant(c)))
             .or(let_)
             .or(call)
             .or(local)
@@ -183,10 +199,79 @@ where
             }),
         ))
     });
-    
-    // let function = just(LexerToken::Fn).ignore_then(ident).
 
-    todo!()
+    let arg_decl = ident
+        .then_ignore(just(LexerToken::Delim(':')))
+        .then(ty)
+        .map_with(|(name, ty), m| AstVariable {
+            name: name.to_string(),
+            ty,
+            init: None,
+            attachments: {
+                let mut map = anymap::Map::new();
+                map.insert(mk_span(m));
+                map
+            },
+        });
+
+    let arg_list = arg_decl
+        .separated_by(just(LexerToken::Delim(',')))
+        .allow_trailing()
+        .collect::<Vec<_>>()
+        .delimited_by(just(LexerToken::Delim('(')), just(LexerToken::Delim(')')));
+
+    let function = just(LexerToken::Fn)
+        .ignore_then(ident)
+        .then(arg_list)
+        .then(just(LexerToken::Delim(':')).ignore_then(ty).or_not())
+        .then(expr)
+        .map_with(|(((name, args), ty), expr), m| AstFunction {
+            name: name.to_string(),
+            args,
+            explicit_ret: ty,
+            expr,
+            attachments: {
+                let mut map = anymap::Map::new();
+                map.insert(mk_span(m));
+                map
+            },
+        });
+
+    let global = ident
+        .then_ignore(just(LexerToken::Op("=")))
+        .then(constant)
+        .map_with(|(name, value), m| AstVariable {
+            name: name.to_string(),
+            ty: value.ty(),
+            init: Some(value),
+            attachments: {
+                let mut map = anymap::Map::new();
+                map.insert(mk_span(m));
+                map
+            },
+        });
+
+    global
+        .map(ProgramComponent::Global)
+        .or(function.map(ProgramComponent::Function))
+        .repeated()
+        .collect::<Vec<_>>()
+        .map_with(|components, m| {
+            let mut program = AstProgram::default();
+
+            for component in components {
+                match component {
+                    ProgramComponent::Global(global) => {
+                        program.globals.insert(global.name.clone(), global);
+                    }
+                    ProgramComponent::Function(function) => {
+                        program.functions.insert(function.name.clone(), function);
+                    }
+                }
+            }
+
+            program
+        })
 }
 
 #[cfg(test)]
@@ -225,6 +310,64 @@ mod tests {
                                     AstConstant::Integer(2),
                                 ))),
                             })],
+                            attachments: Default::default(),
+                        })),
+                        attachments: Default::default(),
+                    },
+                );
+                map
+            },
+            ..Default::default()
+        };
+
+        assert_eq!(expected, ast);
+    }
+
+    #[test]
+    fn test_multiple_expressions() {
+        let source = ProgramSource::new("fn main() 'my_block: {let y = x + 2 x + y}", "test-impl");
+
+        let ast = parse(source, 24);
+
+        let expected = AstProgram {
+            functions: {
+                let mut map = HashMap::new();
+                map.insert(
+                    "main".to_string(),
+                    AstFunction {
+                        name: "main".to_string(),
+                        args: vec![],
+                        explicit_ret: None,
+                        expr: AstExpression::new(AstExpressionImpl::Block(AstBlock {
+                            name: Some("my_block".to_string()),
+                            exprs: vec![
+                                AstExpression::new(AstExpressionImpl::VarDeclareAssign {
+                                    name: "y".to_string(),
+                                    assign: Box::new(AstExpression::new(
+                                        AstExpressionImpl::BinaryOp {
+                                            ty: BinaryOpType::Plus,
+                                            left: Box::new(AstExpression::new(
+                                                AstExpressionImpl::VarUse("x".to_string()),
+                                            )),
+                                            right: Box::new(AstExpression::new(
+                                                AstExpressionImpl::Constant(AstConstant::Integer(
+                                                    2,
+                                                )),
+                                            )),
+                                        },
+                                    )),
+                                    mutable: false,
+                                }),
+                                AstExpression::new(AstExpressionImpl::BinaryOp {
+                                    ty: BinaryOpType::Plus,
+                                    left: Box::new(AstExpression::new(AstExpressionImpl::VarUse(
+                                        "x".to_string(),
+                                    ))),
+                                    right: Box::new(AstExpression::new(AstExpressionImpl::VarUse(
+                                        "y".to_string(),
+                                    ))),
+                                }),
+                            ],
                             attachments: Default::default(),
                         })),
                         attachments: Default::default(),
