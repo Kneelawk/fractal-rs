@@ -72,7 +72,12 @@ where
             .then_ignore(just(LexerToken::Delim(':')))
             .or_not()
             .then_ignore(just(LexerToken::Delim('{')))
-            .then(expr.clone().repeated().collect::<Vec<_>>())
+            .then(
+                expr.clone()
+                    .then_ignore(just(LexerToken::Terminator).or_not())
+                    .repeated()
+                    .collect::<Vec<_>>(),
+            )
             .then_ignore(just(LexerToken::Delim('}')))
             .map(|(name, exprs)| {
                 AstExpression::new(AstExpressionImpl::Block(AstBlock {
@@ -278,8 +283,9 @@ where
 mod tests {
     use crate::ast::{
         AstBlock, AstConstant, AstExpression, AstExpressionImpl, AstFunction, AstProgram,
-        BinaryOpType,
+        BinaryOpType, UnaryOpType,
     };
+    use crate::ast_expr;
     use crate::parser::parse;
     use crate::parser::span::ProgramSource;
     use std::collections::HashMap;
@@ -366,6 +372,173 @@ mod tests {
                                     right: Box::new(AstExpression::new(AstExpressionImpl::VarUse(
                                         "y".to_string(),
                                     ))),
+                                }),
+                            ],
+                            attachments: Default::default(),
+                        })),
+                        attachments: Default::default(),
+                    },
+                );
+                map
+            },
+            ..Default::default()
+        };
+
+        assert_eq!(expected, ast);
+    }
+
+    #[test]
+    fn test_multiple_and_unary_expressions() {
+        let source =
+            ProgramSource::new("fn main() 'my_block: {let y = x + 2; - x + y}", "test-impl");
+
+        let ast = parse(source, 24);
+
+        let expected = AstProgram {
+            functions: {
+                let mut map = HashMap::new();
+                map.insert(
+                    "main".to_string(),
+                    AstFunction {
+                        name: "main".to_string(),
+                        args: vec![],
+                        explicit_ret: None,
+                        expr: AstExpression::new(AstExpressionImpl::Block(AstBlock {
+                            name: Some("my_block".to_string()),
+                            exprs: vec![
+                                AstExpression::new(AstExpressionImpl::VarDeclareAssign {
+                                    name: "y".to_string(),
+                                    assign: Box::new(AstExpression::new(
+                                        AstExpressionImpl::BinaryOp {
+                                            ty: BinaryOpType::Plus,
+                                            left: Box::new(AstExpression::new(
+                                                AstExpressionImpl::VarUse("x".to_string()),
+                                            )),
+                                            right: Box::new(AstExpression::new(
+                                                AstExpressionImpl::Constant(AstConstant::Integer(
+                                                    2,
+                                                )),
+                                            )),
+                                        },
+                                    )),
+                                    mutable: false,
+                                }),
+                                AstExpression::new(AstExpressionImpl::BinaryOp {
+                                    ty: BinaryOpType::Plus,
+                                    left: Box::new(AstExpression::new(
+                                        AstExpressionImpl::UnaryOp {
+                                            ty: UnaryOpType::Minus,
+                                            expr: Box::new(AstExpression::new(
+                                                AstExpressionImpl::VarUse("x".to_string()),
+                                            )),
+                                        },
+                                    )),
+                                    right: Box::new(AstExpression::new(AstExpressionImpl::VarUse(
+                                        "y".to_string(),
+                                    ))),
+                                }),
+                            ],
+                            attachments: Default::default(),
+                        })),
+                        attachments: Default::default(),
+                    },
+                );
+                map
+            },
+            ..Default::default()
+        };
+
+        assert_eq!(expected, ast);
+    }
+
+    #[test]
+    fn test_binary_expressions() {
+        let source = ProgramSource::new("fn main() 'my_block: {let y = x + 2 -x + z}", "test-impl");
+
+        let ast = parse(source, 24);
+
+        let expected = AstProgram {
+            functions: {
+                let mut map = HashMap::new();
+                map.insert(
+                    "main".to_string(),
+                    AstFunction {
+                        name: "main".to_string(),
+                        args: vec![],
+                        explicit_ret: None,
+                        expr: ast_expr!(Block(AstBlock {
+                            name: Some("my_block".to_string()),
+                            exprs: vec![ast_expr!(VarDeclareAssign {
+                                name: "y".to_string(),
+                                assign: Box::new(ast_expr!(BinaryOp {
+                                    ty: BinaryOpType::Plus,
+                                    left: Box::new(ast_expr!(BinaryOp {
+                                        ty: BinaryOpType::Minus,
+                                        left: Box::new(ast_expr!(BinaryOp {
+                                            ty: BinaryOpType::Plus,
+                                            left: Box::new(ast_expr!(VarUse("x".to_string()))),
+                                            right: Box::new(ast_expr!(Constant(
+                                                AstConstant::Integer(2)
+                                            ))),
+                                        })),
+                                        right: Box::new(ast_expr!(VarUse("x".to_string())))
+                                    })),
+                                    right: Box::new(ast_expr!(VarUse("z".to_string())))
+                                })),
+                                mutable: false,
+                            })],
+                            attachments: Default::default(),
+                        })),
+                        attachments: Default::default(),
+                    },
+                );
+                map
+            },
+            ..Default::default()
+        };
+
+        assert_eq!(expected, ast);
+    }
+
+    #[test]
+    fn test_multiple_and_parentheses_expressions() {
+        let source = ProgramSource::new(
+            "fn main() 'my_block: {let y = x + 2; - (x + y)}",
+            "test-impl",
+        );
+
+        let ast = parse(source, 24);
+
+        let expected = AstProgram {
+            functions: {
+                let mut map = HashMap::new();
+                map.insert(
+                    "main".to_string(),
+                    AstFunction {
+                        name: "main".to_string(),
+                        args: vec![],
+                        explicit_ret: None,
+                        expr: ast_expr!(Block(AstBlock {
+                            name: Some("my_block".to_string()),
+                            exprs: vec![
+                                ast_expr!(VarDeclareAssign {
+                                    name: "y".to_string(),
+                                    assign: Box::new(ast_expr!(BinaryOp {
+                                        ty: BinaryOpType::Plus,
+                                        left: Box::new(ast_expr!(VarUse("x".to_string()))),
+                                        right: Box::new(ast_expr!(Constant(AstConstant::Integer(
+                                            2,
+                                        )))),
+                                    })),
+                                    mutable: false,
+                                }),
+                                ast_expr!(UnaryOp {
+                                    ty: UnaryOpType::Minus,
+                                    expr: Box::new(ast_expr!(BinaryOp {
+                                        ty: BinaryOpType::Plus,
+                                        left: Box::new(ast_expr!(VarUse("x".to_string()))),
+                                        right: Box::new(ast_expr!(VarUse("y".to_string()))),
+                                    })),
                                 }),
                             ],
                             attachments: Default::default(),

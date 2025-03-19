@@ -6,6 +6,16 @@ use rug::Complex;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
+#[macro_export]
+macro_rules! ast_expr {
+    ($name:ident) => {
+        AstExpression::new(AstExpressionImpl::$name)
+    };
+    ($name:ident $($insides:tt)*) => {
+        AstExpression::new(AstExpressionImpl::$name $($insides)* )
+    };
+}
+
 /// Dynamic traits implemented by all ast attachments
 pub type AstAttachment = dyn CloneAny + Send + Sync;
 
