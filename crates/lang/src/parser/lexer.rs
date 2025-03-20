@@ -117,7 +117,7 @@ pub fn lexer<'src>(
         .to_slice()
         .map(LexerToken::Op);
 
-    let delim = one_of("()[]{}:,").map(LexerToken::Delim);
+    let delim = one_of("()[]{}:,#").map(LexerToken::Delim);
 
     let term = just(';').to(LexerToken::Terminator);
 

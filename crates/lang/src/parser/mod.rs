@@ -5,8 +5,8 @@ mod span;
 
 use crate::ExpressionType;
 use crate::ast::{
-    AstBlock, AstConstant, AstExpression, AstExpressionImpl, AstFunction, AstProgram, AstVariable,
-    BinaryOpType, UnaryOpType,
+    AstAnnotation, AstAnnotationArg, AstBlock, AstConstant, AstExpression, AstExpressionImpl,
+    AstFunction, AstProgram, AstVariable, BinaryOpType, UnaryOpType,
 };
 use crate::parser::lexer::{LexerToken, lexer};
 use crate::parser::span::mk_span;
@@ -66,6 +66,37 @@ where
         LexerToken::I => AstConstant::Complex(Complex::with_val(prec, (0, 1))),
     }
     .labelled("value");
+
+    let annotation_arg = select! {
+        LexerToken::Ident(s) => AstAnnotationArg::Ident(s.to_string()),
+        LexerToken::RealInteger(i) => AstAnnotationArg::Integer(i),
+    }
+    .labelled("annotation argument");
+
+    let annotation = just(LexerToken::Delim('#'))
+        .ignore_then(
+            ident
+                .then(
+                    annotation_arg
+                        .separated_by(just(LexerToken::Delim(',')))
+                        .allow_trailing()
+                        .collect::<Vec<_>>()
+                        .delimited_by(just(LexerToken::Delim('(')), just(LexerToken::Delim(')')))
+                        .or_not(),
+                )
+                .delimited_by(just(LexerToken::Delim('[')), just(LexerToken::Delim(']'))),
+        )
+        .map_with(|(name, args), m| AstAnnotation {
+            name: name.to_string(),
+            args: args.unwrap_or_else(Vec::new),
+            attachments: {
+                let mut map = anymap::Map::new();
+                map.insert(mk_span(m));
+                map
+            },
+        });
+
+    let annotation_vec = annotation.repeated().collect::<Vec<_>>();
 
     let expr = recursive(move |expr| {
         let block = lifetime
@@ -205,13 +236,16 @@ where
         ))
     });
 
-    let arg_decl = ident
+    let arg_decl = annotation_vec
+        .clone()
+        .then(ident)
         .then_ignore(just(LexerToken::Delim(':')))
         .then(ty)
-        .map_with(|(name, ty), m| AstVariable {
+        .map_with(|((annotations, name), ty), m| AstVariable {
             name: name.to_string(),
             ty,
             init: None,
+            annotations,
             attachments: {
                 let mut map = anymap::Map::new();
                 map.insert(mk_span(m));
@@ -225,16 +259,19 @@ where
         .collect::<Vec<_>>()
         .delimited_by(just(LexerToken::Delim('(')), just(LexerToken::Delim(')')));
 
-    let function = just(LexerToken::Fn)
-        .ignore_then(ident)
+    let function = annotation_vec
+        .clone()
+        .then_ignore(just(LexerToken::Fn))
+        .then(ident)
         .then(arg_list)
         .then(just(LexerToken::Delim(':')).ignore_then(ty).or_not())
         .then(expr)
-        .map_with(|(((name, args), ty), expr), m| AstFunction {
+        .map_with(|((((annotations, name), args), ty), expr), m| AstFunction {
             name: name.to_string(),
             args,
             explicit_ret: ty,
             expr,
+            annotations,
             attachments: {
                 let mut map = anymap::Map::new();
                 map.insert(mk_span(m));
@@ -242,13 +279,16 @@ where
             },
         });
 
-    let global = ident
+    let global = annotation_vec
+        .clone()
+        .then(ident)
         .then_ignore(just(LexerToken::Op("=")))
         .then(constant)
-        .map_with(|(name, value), m| AstVariable {
+        .map_with(|((annotations, name), value), m| AstVariable {
             name: name.to_string(),
             ty: value.ty(),
             init: Some(value),
+            annotations,
             attachments: {
                 let mut map = anymap::Map::new();
                 map.insert(mk_span(m));
@@ -282,12 +322,12 @@ where
 #[cfg(test)]
 mod tests {
     use crate::ast::{
-        AstBlock, AstConstant, AstExpression, AstExpressionImpl, AstFunction, AstProgram,
-        BinaryOpType, UnaryOpType,
+        AstAnnotation, AstAnnotationArg, AstBlock, AstConstant, AstExpression, AstExpressionImpl,
+        AstFunction, AstProgram, AstVariable, BinaryOpType, UnaryOpType,
     };
-    use crate::ast_expr;
     use crate::parser::parse;
     use crate::parser::span::ProgramSource;
+    use crate::{ExpressionType, ast_expr};
     use std::collections::HashMap;
 
     #[test]
@@ -318,6 +358,7 @@ mod tests {
                             })],
                             attachments: Default::default(),
                         })),
+                        annotations: vec![],
                         attachments: Default::default(),
                     },
                 );
@@ -376,6 +417,7 @@ mod tests {
                             ],
                             attachments: Default::default(),
                         })),
+                        annotations: vec![],
                         attachments: Default::default(),
                     },
                 );
@@ -440,6 +482,7 @@ mod tests {
                             ],
                             attachments: Default::default(),
                         })),
+                        annotations: vec![],
                         attachments: Default::default(),
                     },
                 );
@@ -489,6 +532,7 @@ mod tests {
                             })],
                             attachments: Default::default(),
                         })),
+                        annotations: vec![],
                         attachments: Default::default(),
                     },
                 );
@@ -543,6 +587,67 @@ mod tests {
                             ],
                             attachments: Default::default(),
                         })),
+                        annotations: vec![],
+                        attachments: Default::default(),
+                    },
+                );
+                map
+            },
+            ..Default::default()
+        };
+
+        assert_eq!(expected, ast);
+    }
+
+    #[test]
+    fn test_annotation_ast() {
+        let source = ProgramSource::new(
+            "#[main] fn main(#[constant(default, 2)] c: Complex) 'my_block: {c + 2}",
+            "test-impl",
+        );
+
+        let ast = parse(source, 24);
+
+        let expected = AstProgram {
+            functions: {
+                let mut map = HashMap::new();
+                map.insert(
+                    "main".to_string(),
+                    AstFunction {
+                        name: "main".to_string(),
+                        args: vec![AstVariable {
+                            name: "c".to_string(),
+                            ty: ExpressionType::Complex,
+                            init: None,
+                            annotations: vec![AstAnnotation {
+                                name: "c".to_string(),
+                                args: vec![
+                                    AstAnnotationArg::Ident("default".to_string()),
+                                    AstAnnotationArg::Integer(2),
+                                ],
+                                attachments: Default::default(),
+                            }],
+                            attachments: Default::default(),
+                        }],
+                        explicit_ret: None,
+                        expr: AstExpression::new(AstExpressionImpl::Block(AstBlock {
+                            name: Some("my_block".to_string()),
+                            exprs: vec![AstExpression::new(AstExpressionImpl::BinaryOp {
+                                ty: BinaryOpType::Plus,
+                                left: Box::new(AstExpression::new(AstExpressionImpl::VarUse(
+                                    "c".to_string(),
+                                ))),
+                                right: Box::new(AstExpression::new(AstExpressionImpl::Constant(
+                                    AstConstant::Integer(2),
+                                ))),
+                            })],
+                            attachments: Default::default(),
+                        })),
+                        annotations: vec![AstAnnotation {
+                            name: "main".to_string(),
+                            args: vec![],
+                            attachments: Default::default(),
+                        }],
                         attachments: Default::default(),
                     },
                 );

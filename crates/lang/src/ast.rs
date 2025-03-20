@@ -39,6 +39,7 @@ pub struct AstFunction {
     pub args: Vec<AstVariable>,
     pub explicit_ret: Option<ExpressionType>,
     pub expr: AstExpression,
+    pub annotations: Vec<AstAnnotation>,
     pub attachments: Map<AstAttachment>,
 }
 
@@ -53,6 +54,7 @@ impl AstFunction {
             args,
             explicit_ret: return_type,
             expr: Default::default(),
+            annotations: vec![],
             attachments: Map::new(),
         }
     }
@@ -212,6 +214,7 @@ pub struct AstVariable {
     pub name: String,
     pub ty: ExpressionType,
     pub init: Option<AstConstant>,
+    pub annotations: Vec<AstAnnotation>,
     pub attachments: Map<AstAttachment>,
 }
 
@@ -219,6 +222,25 @@ impl PartialEq for AstVariable {
     fn eq(&self, other: &Self) -> bool {
         self.name == other.name && self.ty == other.ty
     }
+}
+
+#[derive(Debug, Clone)]
+pub struct AstAnnotation {
+    pub name: String,
+    pub args: Vec<AstAnnotationArg>,
+    pub attachments: Map<AstAttachment>,
+}
+
+impl PartialEq for AstAnnotation {
+    fn eq(&self, other: &Self) -> bool {
+        self.name == other.name && self.args == other.args
+    }
+}
+
+#[derive(Debug, Clone, Ord, PartialOrd, Eq, PartialEq, Hash)]
+pub enum AstAnnotationArg {
+    Ident(String),
+    Integer(i32),
 }
 
 #[derive(Debug, Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Serialize, Deserialize)]
