@@ -23,16 +23,6 @@ impl GeneratorTargetSet {
         Self { extensions }
     }
 
-    /// Creates a new generator set from a box of the cpu target.
-    pub fn from_boxed(cpu: Box<dyn CpuGeneratorTargetApi>) -> Self {
-        Self::new(CpuGeneratorTarget::from_boxed(cpu))
-    }
-
-    /// Creates a new generator set from an impl of the cpu target.
-    pub fn from_impl(cpu: impl CpuGeneratorTargetApi) -> Self {
-        Self::new(CpuGeneratorTarget::new(cpu))
-    }
-
     /// Inserts an extension.
     pub fn insert_extension<T: anymap::CloneAny + Send + Sync>(
         &mut self,
@@ -50,55 +40,12 @@ impl GeneratorTargetSet {
 /// A generator target that can receive CPU-bound pixel blocks.
 #[derive(Debug, Clone)]
 pub struct CpuGeneratorTarget {
-    target: Box<dyn CpuGeneratorTargetApi>,
-}
-
-impl CpuGeneratorTarget {
-    /// Creates a new CPU-bound generator target from a boxed implementation.
-    pub fn from_boxed(target: Box<dyn CpuGeneratorTargetApi>) -> Self {
-        Self { target }
-    }
-
-    /// Creates a new CPU-bound generator target from an implementation.
-    pub fn new(target: impl CpuGeneratorTargetApi) -> Self {
-        Self::from_boxed(Box::new(target))
-    }
-
-    /// Accepts a pixel block and sends it to the underlying implementation.
-    pub fn accept(
-        &self,
-        pixel_block: anyhow::Result<PixelBlock>,
-    ) -> BoxFuture<'static, Result<(), BlockAcceptError>> {
-        self.target.accept(pixel_block)
-    }
-}
-
-/// Something that can have fractal image data written to it.
-pub trait CpuGeneratorTargetApi: DynClone + Debug + Send + Sync + 'static {
-    /// Accept a pixel block and write it to where ever this target writes its data.
-    fn accept(
-        &self,
-        pixel_block: anyhow::Result<PixelBlock>,
-    ) -> BoxFuture<'static, Result<(), BlockAcceptError>>;
-}
-dyn_clone::clone_trait_object!(CpuGeneratorTargetApi);
-
-/// Simple default implementation of [`CpuGeneratorTargetApi`].
-///
-/// This does not support any platform-specific extensions, like direct-gpu-writes.
-#[derive(Clone)]
-pub struct SimpleCpuGeneratorTarget {
     pub sender: mpsc::Sender<anyhow::Result<PixelBlock>>,
 }
 
-impl Debug for SimpleCpuGeneratorTarget {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "SimpleCpuGeneratorTarget")
-    }
-}
-
-impl CpuGeneratorTargetApi for SimpleCpuGeneratorTarget {
-    fn accept(
+impl CpuGeneratorTarget {
+    /// Accepts a pixel block and sends it to the underlying implementation.
+    pub fn accept(
         &self,
         pixel_block: anyhow::Result<PixelBlock>,
     ) -> BoxFuture<'static, Result<(), BlockAcceptError>> {
