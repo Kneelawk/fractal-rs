@@ -110,12 +110,17 @@ where
                     .collect::<Vec<_>>(),
             )
             .then_ignore(just(LexerToken::Delim('}')))
-            .map(|(name, exprs)| {
+            .map_with(|(name, exprs), m| {
                 AstExpression::new(AstExpressionImpl::Block(AstBlock {
                     exprs,
                     name: name.map(str::to_string),
-                    ..Default::default()
+                    attachments: {
+                        let mut map = anymap::Map::new();
+                        map.insert(mk_span(m));
+                        map
+                    },
                 }))
+                .with_attachment(mk_span(m))
             });
 
         let items = expr
@@ -128,17 +133,19 @@ where
             .ignore_then(ident)
             .then_ignore(just(LexerToken::Op("=")))
             .then(expr.clone())
-            .map(|(name, value)| {
+            .map_with(|(name, value), m| {
                 AstExpression::new(AstExpressionImpl::VarDeclareAssign {
                     name: name.to_string(),
                     assign: Box::new(value),
                     mutable: false,
                 })
+                .with_attachment(mk_span(m))
             });
 
         let parens = just(LexerToken::Delim('('))
             .ignore_then(expr.clone())
-            .then_ignore(just(LexerToken::Delim(')')));
+            .then_ignore(just(LexerToken::Delim(')')))
+            .map_with(|expr, m| expr.with_attachment(mk_span(m)));
 
         let call = ident
             .then(items.delimited_by(just(LexerToken::Delim('(')), just(LexerToken::Delim(')'))))
@@ -314,6 +321,9 @@ where
                     }
                 }
             }
+
+            program.attachments.insert(mk_span(m));
+            program.attachments.insert(m.ctx().clone());
 
             program
         })
