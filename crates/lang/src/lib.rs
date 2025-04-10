@@ -1,10 +1,37 @@
 //! This is the language module of the fractal-rs project. This module houses the AST and the parser
 //! for the custom language used to define fractal types and fractal colors.
 
-use serde::{Deserialize, Serialize};
+use crate::ast::AstProgram;
+use crate::parser::ProgramSource;
+use serde::{Deserialize, Serialize, Serializer};
+use thiserror::Error;
 
 pub mod ast;
 pub mod parser;
+
+#[derive(Default, Debug, Clone)]
+pub struct LangProgram {
+    pub program: AstProgram,
+}
+
+impl LangProgram {
+    pub fn parse(code: impl ToString, source_location: impl ToString) {}
+}
+
+impl Serialize for LangProgram {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        serializer.serialize_str(
+            self.program
+                .attachments
+                .get::<ProgramSource>()
+                .expect("Program missing source attachment")
+                .code(),
+        )
+    }
+}
 
 /// The types that an expression can be
 #[derive(
@@ -45,3 +72,6 @@ pub struct FunctionDeclaration {
     name: FunctionName,
     ret: ExpressionType,
 }
+
+#[derive(Debug, Clone, Error)]
+pub enum ProgramLoadError {}

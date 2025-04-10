@@ -14,7 +14,10 @@ use chumsky::input::ValueInput;
 use chumsky::pratt::{infix, left, prefix, right};
 use chumsky::prelude::*;
 use rug::Complex;
-use span::ProgramSource;
+
+// export these
+pub use span::ProgramSource;
+pub use span::ProgramSpan;
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
 struct Spanned<T>(T, SimpleSpan);

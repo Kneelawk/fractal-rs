@@ -10,3 +10,4 @@ fhex = "1"
 parameterized = "2"
 rug = { version = "1.27", features = ["num-traits", "serde"] }
 serde = { version = "1", features = ["derive"] }
+thiserror = "2"
