@@ -1,10 +1,10 @@
 //! This is the language module of the fractal-rs project. This module houses the AST and the parser
 //! for the custom language used to define fractal types and fractal colors.
 
+use std::fmt::{Debug, Display, Formatter};
 use crate::ast::AstProgram;
-use crate::parser::ProgramSource;
+use crate::parser::{ProgramSource, ProgramSpan};
 use serde::{Deserialize, Serialize, Serializer};
-use thiserror::Error;
 
 pub mod ast;
 pub mod parser;
@@ -49,29 +49,46 @@ pub enum ExpressionType {
 /// A function signature
 #[derive(Default, Debug, Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Serialize, Deserialize)]
 pub struct FunctionSignature {
-    params: Vec<ExpressionType>,
+    pub params: Vec<ExpressionType>,
 }
 
 /// The function signature plus return type
 #[derive(Default, Debug, Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Serialize, Deserialize)]
 pub struct FunctionType {
-    signature: FunctionSignature,
-    ret: ExpressionType,
+    pub signature: FunctionSignature,
+    pub ret: ExpressionType,
 }
 
 /// The function signature plus name
 #[derive(Debug, Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Serialize, Deserialize)]
 pub struct FunctionName {
-    name: String,
-    signature: FunctionSignature,
+    pub name: String,
+    pub signature: FunctionSignature,
 }
 
 /// The function name plus return type
 #[derive(Debug, Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Serialize, Deserialize)]
 pub struct FunctionDeclaration {
-    name: FunctionName,
-    ret: ExpressionType,
+    pub name: FunctionName,
+    pub ret: ExpressionType,
 }
 
-#[derive(Debug, Clone, Error)]
-pub enum ProgramLoadError {}
+/// Holds all errors collected while loading a program
+#[derive(Debug)]
+pub struct ProgramLoadError {
+    pub syntax_errors: Vec<ariadne::Report<'static, ProgramSpan>>,
+    pub semantic_errors: Vec<ariadne::Report<'static, ProgramSpan>>,
+}
+
+impl Display for ProgramLoadError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        writeln!(f, "Syntax errors:\n")?;
+        for se in self.syntax_errors.iter() {
+        }
+        todo!()
+    }
+}
+
+impl std::error::Error for ProgramLoadError {
+    
+}

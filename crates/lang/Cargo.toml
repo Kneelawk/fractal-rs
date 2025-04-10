@@ -5,9 +5,9 @@ edition = "2024"
 
 [dependencies]
 anymap = "1.0.0-beta.2"
+ariadne = "^0.5"
 chumsky = { version = "1.0.0-alpha.8", features = ["pratt"] }
 fhex = "1"
 parameterized = "2"
 rug = { version = "1.27", features = ["num-traits", "serde"] }
 serde = { version = "1", features = ["derive"] }
-thiserror = "2"

@@ -66,6 +66,22 @@ pub struct ProgramSpan {
     pub range: Range<usize>,
 }
 
+impl ariadne::Span for ProgramSpan {
+    type SourceId = str;
+
+    fn source(&self) -> &Self::SourceId {
+        self.source.source()
+    }
+
+    fn start(&self) -> usize {
+        self.range.start
+    }
+
+    fn end(&self) -> usize {
+        self.range.end
+    }
+}
+
 pub fn mk_span<'a, 'b, 'src, I>(
     map_extra: &'a mut MapExtra<'src, 'b, I, ProgramExtra<'src>>,
 ) -> ProgramSpan
