@@ -17,6 +17,7 @@ use rug::Complex;
 
 // export these
 pub use span::ProgramSource;
+pub use span::ProgramSourceSet;
 pub use span::ProgramSpan;
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]

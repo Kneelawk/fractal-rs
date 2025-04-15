@@ -3,8 +3,52 @@ use crate::parser::lexer::LexerToken;
 use chumsky::input::{Checkpoint, Cursor, Input, MapExtra};
 use chumsky::inspector::Inspector;
 use chumsky::prelude::SimpleSpan;
+use serde::ser::SerializeMap;
+use serde::{Serialize, Serializer};
+use std::collections::{BTreeMap, btree_map};
 use std::ops::Range;
 use std::sync::Arc;
+
+/// Holds all source files in a full program
+#[derive(Debug, Default, Clone)]
+pub struct ProgramSourceSet {
+    files: BTreeMap<String, ProgramSource>,
+}
+
+impl ProgramSourceSet {
+    pub fn new(map: BTreeMap<String, ProgramSource>) -> Self {
+        Self { files: map }
+    }
+
+    pub fn put(&mut self, source: ProgramSource) {
+        self.files.insert(source.source().to_string(), source);
+    }
+
+    pub fn get(&self, source: &str) -> Option<ProgramSource> {
+        self.files.get(source).cloned()
+    }
+
+    pub fn len(&self) -> usize {
+        self.files.len()
+    }
+
+    pub fn iter(&self) -> btree_map::Iter<String, ProgramSource> {
+        self.files.iter()
+    }
+}
+
+impl Serialize for ProgramSourceSet {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        let mut map = serializer.serialize_map(Some(self.files.len()))?;
+        for (k, v) in self.files.iter() {
+            map.serialize_entry(k, v.code())?;
+        }
+        map.end()
+    }
+}
 
 /// This type is usually an attachment to [`crate::ast::AstProgram`]s
 #[derive(Debug, Clone)]
@@ -51,6 +95,12 @@ impl<'a, I: Input<'a>> Inspector<'a, I> for ProgramSource {
     fn on_rewind<'parse>(&mut self, marker: &Checkpoint<'a, 'parse, I, Self::Checkpoint>) {}
 }
 
+impl AsRef<str> for ProgramSource {
+    fn as_ref(&self) -> &str {
+        self.source()
+    }
+}
+
 #[derive(Debug, Clone)]
 struct ProgramSourceImpl {
     /// The actual code
@@ -79,6 +129,12 @@ impl ariadne::Span for ProgramSpan {
 
     fn end(&self) -> usize {
         self.range.end
+    }
+}
+
+impl AsRef<str> for ProgramSpan {
+    fn as_ref(&self) -> &str {
+        &self.source.code()[self.range.clone()]
     }
 }
 

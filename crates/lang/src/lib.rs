@@ -1,36 +1,22 @@
 //! This is the language module of the fractal-rs project. This module houses the AST and the parser
 //! for the custom language used to define fractal types and fractal colors.
 
-use std::fmt::{Debug, Display, Formatter};
 use crate::ast::AstProgram;
-use crate::parser::{ProgramSource, ProgramSpan};
-use serde::{Deserialize, Serialize, Serializer};
+use crate::parser::{ProgramSourceSet, ProgramSpan};
+use serde::{Deserialize, Serialize};
+use std::fmt::{Debug, Display, Formatter};
 
 pub mod ast;
 pub mod parser;
 
 #[derive(Default, Debug, Clone)]
 pub struct LangProgram {
+    pub source_set: ProgramSourceSet,
     pub program: AstProgram,
 }
 
 impl LangProgram {
     pub fn parse(code: impl ToString, source_location: impl ToString) {}
-}
-
-impl Serialize for LangProgram {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        serializer.serialize_str(
-            self.program
-                .attachments
-                .get::<ProgramSource>()
-                .expect("Program missing source attachment")
-                .code(),
-        )
-    }
 }
 
 /// The types that an expression can be
@@ -83,12 +69,9 @@ pub struct ProgramLoadError {
 impl Display for ProgramLoadError {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         writeln!(f, "Syntax errors:\n")?;
-        for se in self.syntax_errors.iter() {
-        }
+        for se in self.syntax_errors.iter() {}
         todo!()
     }
 }
 
-impl std::error::Error for ProgramLoadError {
-    
-}
+impl std::error::Error for ProgramLoadError {}
