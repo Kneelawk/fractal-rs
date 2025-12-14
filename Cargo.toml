@@ -5,4 +5,4 @@ members = [
     "crates/gen-gpu",
     "crates/lang"
 ]
-resolver = "2"
+resolver = "3"
