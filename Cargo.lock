@@ -131,8 +131,7 @@ name = "fractal-rs-3-gen-api"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "downcast",
- "dyn-clone",
+ "fractal-rs-3-utils",
  "futures",
  "futures-core",
  "lazy_static",
@@ -159,9 +158,18 @@ dependencies = [
  "ariadne",
  "chumsky",
  "fhex",
+ "fractal-rs-3-utils",
  "parameterized",
  "rug",
  "serde",
+]
+
+[[package]]
+name = "fractal-rs-3-utils"
+version = "0.1.0"
+dependencies = [
+ "downcast",
+ "dyn-clone",
 ]
 
 [[package]]

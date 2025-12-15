@@ -4,9 +4,11 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-ariadne = "^0.6"
-chumsky = { version = "1.0.0-alpha.8", features = ["pratt"] }
-fhex = "1"
-parameterized = "2"
-rug = { version = "1.27", features = ["num-traits", "serde"] }
-serde = { version = "1", features = ["derive"] }
+fractal-rs-3-utils.workspace = true
+
+ariadne.workspace = true
+chumsky.workspace = true
+fhex.workspace = true
+parameterized.workspace = true
+rug.workspace = true
+serde.workspace = true

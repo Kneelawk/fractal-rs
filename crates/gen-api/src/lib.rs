@@ -1,10 +1,10 @@
 //! This crate is the primary API that various fractal generator backends will implement.
 
 pub mod args;
+pub mod color;
 pub mod target;
 pub mod util;
 pub mod view;
-pub mod color;
 
 /// Anyhow is used by this API.
 pub use anyhow;

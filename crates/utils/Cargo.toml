@@ -1,0 +1,8 @@
+[package]
+name = "fractal-rs-3-utils"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+downcast.workspace = true
+dyn-clone.workspace = true

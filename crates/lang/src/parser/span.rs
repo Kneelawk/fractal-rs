@@ -32,7 +32,11 @@ impl ProgramSourceSet {
         self.files.len()
     }
 
-    pub fn iter(&self) -> btree_map::Iter<String, ProgramSource> {
+    pub fn is_empty(&self) -> bool {
+        self.files.is_empty()
+    }
+
+    pub fn iter(&self) -> btree_map::Iter<'_, String, ProgramSource> {
         self.files.iter()
     }
 }
@@ -88,11 +92,11 @@ impl ProgramSource {
 impl<'a, I: Input<'a>> Inspector<'a, I> for ProgramSource {
     type Checkpoint = ();
 
-    fn on_token(&mut self, token: &I::Token) {}
+    fn on_token(&mut self, _token: &I::Token) {}
 
-    fn on_save<'parse>(&self, cursor: &Cursor<'a, 'parse, I>) -> Self::Checkpoint {}
+    fn on_save<'parse>(&self, _cursor: &Cursor<'a, 'parse, I>) -> Self::Checkpoint {}
 
-    fn on_rewind<'parse>(&mut self, marker: &Checkpoint<'a, 'parse, I, Self::Checkpoint>) {}
+    fn on_rewind<'parse>(&mut self, _marker: &Checkpoint<'a, 'parse, I, Self::Checkpoint>) {}
 }
 
 impl AsRef<str> for ProgramSource {

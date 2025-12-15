@@ -13,8 +13,9 @@ use crate::parser::span::mk_span;
 use chumsky::input::ValueInput;
 use chumsky::pratt::{infix, left, prefix, right};
 use chumsky::prelude::*;
+use fractal_rs_3_utils::any_map;
+use fractal_rs_3_utils::anymap::AnyMap;
 use rug::Complex;
-
 // export these
 pub use span::ProgramSource;
 pub use span::ProgramSourceSet;
@@ -93,11 +94,7 @@ where
         .map_with(|(name, args), m| AstAnnotation {
             name: name.to_string(),
             args: args.unwrap_or_else(Vec::new),
-            attachments: {
-                let mut map = anymap::Map::new();
-                map.insert(mk_span(m));
-                map
-            },
+            attachments: any_map![mk_span(m)],
         });
 
     let annotation_vec = annotation.repeated().collect::<Vec<_>>();
@@ -118,11 +115,7 @@ where
                 AstExpression::new(AstExpressionImpl::Block(AstBlock {
                     exprs,
                     name: name.map(str::to_string),
-                    attachments: {
-                        let mut map = anymap::Map::new();
-                        map.insert(mk_span(m));
-                        map
-                    },
+                    attachments: any_map![mk_span(m)],
                 }))
                 .with_attachment(mk_span(m))
             });
@@ -257,11 +250,7 @@ where
             ty,
             init: None,
             annotations,
-            attachments: {
-                let mut map = anymap::Map::new();
-                map.insert(mk_span(m));
-                map
-            },
+            attachments: any_map![mk_span(m)],
         });
 
     let arg_list = arg_decl
@@ -283,11 +272,7 @@ where
             explicit_ret: ty,
             expr,
             annotations,
-            attachments: {
-                let mut map = anymap::Map::new();
-                map.insert(mk_span(m));
-                map
-            },
+            attachments: any_map![mk_span(m)],
         });
 
     let global = annotation_vec
@@ -300,11 +285,7 @@ where
             ty: value.ty(),
             init: Some(value),
             annotations,
-            attachments: {
-                let mut map = anymap::Map::new();
-                map.insert(mk_span(m));
-                map
-            },
+            attachments: any_map![mk_span(m)],
         });
 
     global

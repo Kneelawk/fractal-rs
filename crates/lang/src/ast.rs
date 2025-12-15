@@ -1,7 +1,7 @@
 //! Fractal program AST constructs.
 
 use crate::ExpressionType;
-use anymap::{CloneAny, Map};
+use fractal_rs_3_utils::anymap::{AnyMap, CloneAnySync};
 use rug::Complex;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -16,15 +16,12 @@ macro_rules! ast_expr {
     };
 }
 
-/// Dynamic traits implemented by all ast attachments
-pub type AstAttachment = dyn CloneAny + Send + Sync;
-
 /// A full program
 #[derive(Default, Debug, Clone)]
 pub struct AstProgram {
     pub functions: HashMap<String, AstFunction>,
     pub globals: HashMap<String, AstVariable>,
-    pub attachments: Map<AstAttachment>,
+    pub attachments: AnyMap,
 }
 
 impl PartialEq for AstProgram {
@@ -40,7 +37,7 @@ pub struct AstFunction {
     pub explicit_ret: Option<ExpressionType>,
     pub expr: AstExpression,
     pub annotations: Vec<AstAnnotation>,
-    pub attachments: Map<AstAttachment>,
+    pub attachments: AnyMap,
 }
 
 impl AstFunction {
@@ -55,11 +52,11 @@ impl AstFunction {
             explicit_ret: return_type,
             expr: Default::default(),
             annotations: vec![],
-            attachments: Map::new(),
+            attachments: AnyMap::new(),
         }
     }
 
-    pub fn with_attachment<A: CloneAny + Send + Sync>(mut self, attachment: A) -> Self {
+    pub fn with_attachment<A: CloneAnySync>(mut self, attachment: A) -> Self {
         self.attachments.insert(attachment);
         self
     }
@@ -77,7 +74,7 @@ impl PartialEq for AstFunction {
 #[derive(Default, Debug, Clone)]
 pub struct AstExpression {
     pub expr: AstExpressionImpl,
-    pub attachments: Map<AstAttachment>,
+    pub attachments: AnyMap,
 }
 
 impl AstExpression {
@@ -88,7 +85,7 @@ impl AstExpression {
         }
     }
 
-    pub fn with_attachment<A: CloneAny + Send + Sync>(mut self, attachment: A) -> Self {
+    pub fn with_attachment<A: CloneAnySync>(mut self, attachment: A) -> Self {
         self.attachments.insert(attachment);
         self
     }
@@ -163,7 +160,7 @@ impl Default for AstExpressionImpl {
 pub struct AstIfBlock {
     pub condition: Box<AstExpression>,
     pub block: AstBlock,
-    pub attachments: Map<AstAttachment>,
+    pub attachments: AnyMap,
 }
 
 impl PartialEq for AstIfBlock {
@@ -176,7 +173,7 @@ impl PartialEq for AstIfBlock {
 pub struct AstBlock {
     pub name: Option<String>,
     pub exprs: Vec<AstExpression>,
-    pub attachments: Map<AstAttachment>,
+    pub attachments: AnyMap,
 }
 
 impl PartialEq for AstBlock {
@@ -215,7 +212,7 @@ pub struct AstVariable {
     pub ty: ExpressionType,
     pub init: Option<AstConstant>,
     pub annotations: Vec<AstAnnotation>,
-    pub attachments: Map<AstAttachment>,
+    pub attachments: AnyMap,
 }
 
 impl PartialEq for AstVariable {
@@ -228,7 +225,7 @@ impl PartialEq for AstVariable {
 pub struct AstAnnotation {
     pub name: String,
     pub args: Vec<AstAnnotationArg>,
-    pub attachments: Map<AstAttachment>,
+    pub attachments: AnyMap,
 }
 
 impl PartialEq for AstAnnotation {

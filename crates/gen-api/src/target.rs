@@ -1,25 +1,11 @@
 //! GeneratorTarget trait and default impl.
 
 use crate::PixelBlock;
-use downcast::{AnySync, Downcast, downcast_sync};
-use dyn_clone::{DynClone, clone_trait_object};
+use fractal_rs_3_utils::anymap::{AnyMap, CloneAnySync};
 use futures::FutureExt;
 use futures_core::future::BoxFuture;
-use std::any::TypeId;
-use std::collections::HashMap;
 use std::fmt::{Debug, Display, Formatter};
 use tokio::sync::mpsc;
-
-/// A generator target.
-pub trait GeneratorTarget: DynClone + AnySync {}
-clone_trait_object!(GeneratorTarget);
-downcast_sync!(dyn GeneratorTarget);
-impl<T: Clone + AnySync> GeneratorTarget for T {}
-impl Debug for dyn GeneratorTarget {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("GeneratorTarget").finish_non_exhaustive()
-    }
-}
 
 /// A set of generator targets.
 ///
@@ -27,30 +13,26 @@ impl Debug for dyn GeneratorTarget {
 #[derive(Debug, Clone)]
 pub struct GeneratorTargetSet {
     // extensions: anymap::Map<dyn anymap::CloneAny + Send + Sync>,
-    extensions: HashMap<TypeId, Box<dyn GeneratorTarget>>,
+    // extensions: HashMap<TypeId, Box<dyn GeneratorTarget>>,
+    extensions: AnyMap,
 }
 
 impl GeneratorTargetSet {
     /// Creates a new generator set with just cpu target.
     pub fn new(cpu: CpuGeneratorTarget) -> Self {
-        let mut extensions: HashMap<TypeId, Box<dyn GeneratorTarget>> = HashMap::new();
-        extensions.insert(TypeId::of::<CpuGeneratorTarget>(), Box::new(cpu));
+        let mut extensions: AnyMap = AnyMap::new();
+        extensions.insert(cpu);
         Self { extensions }
     }
 
     /// Inserts an extension.
-    pub fn insert_extension<T: GeneratorTarget>(&mut self, extension: T) -> Option<T> {
-        self.extensions
-            .insert(TypeId::of::<T>(), Box::new(extension))
-            .and_then(|target| target.downcast().ok())
-            .map(|b| *b)
+    pub fn insert_extension<T: CloneAnySync>(&mut self, extension: T) -> Option<T> {
+        self.extensions.insert(extension)
     }
 
     /// Gets an extension.
-    pub fn get_extension<T: GeneratorTarget>(&self) -> Option<&T> {
-        self.extensions
-            .get(&TypeId::of::<T>())
-            .and_then(|target| target.downcast_ref().ok())
+    pub fn get_extension<T: CloneAnySync>(&self) -> Option<&T> {
+        self.extensions.get()
     }
 }
 

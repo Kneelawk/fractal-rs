@@ -3,6 +3,27 @@ members = [
     "crates/gen-api",
     "crates/gen-cpu",
     "crates/gen-gpu",
-    "crates/lang"
+    "crates/lang",
+    "crates/utils"
 ]
 resolver = "3"
+
+[workspace.dependencies]
+fractal-rs-3-utils = { path = "crates/utils" }
+
+anyhow = "1"
+ariadne = "^0.6"
+chumsky = { version = "1.0.0-alpha.8", features = ["pratt"] }
+downcast = "0.11"
+dyn-clone = "1"
+fhex = "1"
+futures = "0.3.31"
+futures-core = "0.3"
+lazy_static = "1.5"
+num-traits = "0.2"
+parameterized = "2"
+regex = "1.11"
+rug = { version = "1.27", features = ["num-traits", "serde"] }
+serde = { version = "1", features = ["derive"] }
+streaming-iterator = "0.1"
+tokio = { version = "1.43", features = ["sync"] }

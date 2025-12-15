@@ -7,12 +7,12 @@
 // the fractal generators.
 #![allow(dead_code)]
 
+use rug::float::Round;
 use rug::ops::{CompleteRound, SubFrom};
 use rug::{Assign, Complex, Float};
 use serde::{Deserialize, Serialize};
 use std::cmp::Ordering;
 use std::ops::{AddAssign, DivAssign, MulAssign};
-use rug::float::Round;
 use streaming_iterator::StreamingIterator;
 
 /// A view represents an image's width, height, and mapping onto the complex
@@ -118,17 +118,17 @@ impl View {
 
     /// Divides this view into a set of consecutive sub-views each of which
     /// containing no more pixels than `pixel_count`.
-    pub fn subdivide_to_pixel_count(&self, pixel_count: usize) -> SubViewIter {
+    pub fn subdivide_to_pixel_count(&self, pixel_count: usize) -> SubViewIter<'_> {
         SubViewIter::new_per_pixel(self, pixel_count)
     }
 
     /// Divides this view into a set of `pieces` consecutive sub-views.
-    pub fn subdivide_height(&self, pieces: usize) -> SubViewIter {
+    pub fn subdivide_height(&self, pieces: usize) -> SubViewIter<'_> {
         SubViewIter::new_split_height(self, pieces)
     }
 
     /// Divides this view into a set of consecutive rectangle sub-views.
-    pub fn subdivide_rectangles(&self, max_width: usize, max_height: usize) -> SubViewIter {
+    pub fn subdivide_rectangles(&self, max_width: usize, max_height: usize) -> SubViewIter<'_> {
         SubViewIter::new_rectangles(self, max_width, max_height)
     }
 
@@ -197,7 +197,9 @@ impl View {
             if plane_coordinates.real() >= &self.plane_start_x {
                 buf.assign(plane_coordinates.real() - &self.plane_start_x);
                 buf.div_assign(&self.image_scale_x);
-                let x = buf.to_integer_round(Round::Down).and_then(|(i, _o)| i.to_usize());
+                let x = buf
+                    .to_integer_round(Round::Down)
+                    .and_then(|(i, _o)| i.to_usize());
 
                 if let Some(x) = x {
                     if x < self.image_width {
@@ -214,7 +216,9 @@ impl View {
             if plane_coordinates.imag() >= &self.plane_start_y {
                 buf.assign(plane_coordinates.imag() - &self.plane_start_y);
                 buf.div_assign(&self.image_scale_y);
-                let y = buf.to_integer_round(Round::Down).and_then(|(i, _o)| i.to_usize());
+                let y = buf
+                    .to_integer_round(Round::Down)
+                    .and_then(|(i, _o)| i.to_usize());
 
                 if let Some(y) = y {
                     if y < self.image_height {
@@ -241,13 +245,17 @@ impl View {
         let mut buf = Float::new(self.prec);
         buf.assign(plane_coordinates.real() - &self.plane_start_x);
         buf.div_assign(&self.image_scale_x);
-        let x = buf.to_integer_round(Round::Down).and_then(|(i, _o)| i.to_isize());
+        let x = buf
+            .to_integer_round(Round::Down)
+            .and_then(|(i, _o)| i.to_isize());
         let nan_x = buf.is_nan();
         let pos_x = buf.is_sign_positive();
 
         buf.assign(plane_coordinates.imag() - &self.plane_start_y);
         buf.div_assign(&self.image_scale_y);
-        let y =  buf.to_integer_round(Round::Down).and_then(|(i, _o)| i.to_isize());
+        let y = buf
+            .to_integer_round(Round::Down)
+            .and_then(|(i, _o)| i.to_isize());
         let nan_y = buf.is_nan();
         let pos_y = buf.is_sign_positive();
 
@@ -1015,7 +1023,10 @@ mod tests {
                             );
                         }
                         (x, y) => {
-                            panic!("X or Y is outside bounds! Input X: {}, Output X: {:?}, Input Y: {}, Output Y: {:?}", subpixel_x, x, subpixel_y, y);
+                            panic!(
+                                "X or Y is outside bounds! Input X: {}, Output X: {:?}, Input Y: {}, Output Y: {:?}",
+                                subpixel_x, x, subpixel_y, y
+                            );
                         }
                     }
                 }
