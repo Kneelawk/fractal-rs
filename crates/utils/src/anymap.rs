@@ -39,11 +39,11 @@ impl Debug for dyn CloneAnySync {
 
 /// A map of different types of things
 #[derive(Debug)]
-pub struct AnyMap<T: ?Sized + DynClone = dyn CloneAnySync> {
+pub struct AnyMap<T: ?Sized = dyn CloneAnySync> {
     map: HashMap<TypeId, Box<T>>,
 }
 
-impl<T: ?Sized + DynClone + Any> Default for AnyMap<T> {
+impl<T: ?Sized + Any> Default for AnyMap<T> {
     fn default() -> Self {
         Self::new()
     }
@@ -61,7 +61,7 @@ impl<T: ?Sized + DynClone> Clone for AnyMap<T> {
     }
 }
 
-impl<T: ?Sized + DynClone + Any> AnyMap<T> {
+impl<T: ?Sized + Any> AnyMap<T> {
     /// Create a new empty `AnyMap`
     pub fn new() -> Self {
         Self {
