@@ -127,6 +127,8 @@ pub fn lexer<'src>(
 
     let ident = text::ascii::ident().map(|ident: &str| match ident {
         "i" => LexerToken::I,
+        "true" => LexerToken::Boolean(true),
+        "false" => LexerToken::Boolean(false),
         "fn" => LexerToken::Fn,
         "let" => LexerToken::Let,
         "mut" => LexerToken::Mut,
