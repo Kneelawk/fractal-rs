@@ -20,7 +20,9 @@ jobs:
             ~/.cargo/git/db/
             target/
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+      - name: Install Binstall
+        run: curl -L --proto '=https' --tlsv1.2 -sSf https://raw.githubusercontent.com/cargo-bins/cargo-binstall/main/install-from-binstall-release.sh | bash
       - name: Install Nextest
-        run: cargo binstall cargo-nextest --secure
+        run: cargo binstall cargo-nextest --secure --no-confirm
       - name: Run Tests
         run: cargo nextest run
