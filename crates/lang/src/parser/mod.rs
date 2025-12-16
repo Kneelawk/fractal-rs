@@ -64,6 +64,7 @@ where
 
     let constant = select! {
         LexerToken::Boolean(b) => AstConstant::Boolean(b),
+        LexerToken::Color(c) => AstConstant::Color(c),
         LexerToken::RealInteger(i) => AstConstant::Integer(i),
         LexerToken::RealNumber(n) => AstConstant::Complex(Complex::with_val(prec, (n, 0))),
         LexerToken::ImaginaryInteger(i) => AstConstant::Complex(Complex::with_val(prec, (0, i))),
