@@ -20,5 +20,7 @@ jobs:
             ~/.cargo/git/db/
             target/
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+      - name: Install Nextest
+        run: cargo binstall cargo-nextest --secure
       - name: Run Tests
         run: cargo nextest run
