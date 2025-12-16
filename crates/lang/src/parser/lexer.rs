@@ -15,6 +15,7 @@ pub enum LexerToken<'src> {
     ImaginaryInteger(i32),
     ImaginaryNumber(Float),
     I,
+    Color([f32; 4]),
     Op(&'src str),
     Delim(char),
     Lifetime(&'src str),
@@ -70,6 +71,39 @@ pub fn lexer<'src>(
     let int = choice((hex_int, oct_int, bin_int, dec_int));
     let real_int = int.map(LexerToken::RealInteger);
     let imag_int = int.then_ignore(just('i')).map(LexerToken::ImaginaryInteger);
+
+    let color = just("#").ignore_then(
+        text::digits(16)
+            .to_slice()
+            .filter(|s: &&str| matches!(s.len(), 3 | 4 | 6 | 8))
+            .map(|s: &str| match s.len() {
+                3 => LexerToken::Color([
+                    u32::from_str_radix(&s[0..1], 16).unwrap() as f32 / 15.0,
+                    u32::from_str_radix(&s[1..2], 16).unwrap() as f32 / 15.0,
+                    u32::from_str_radix(&s[2..3], 16).unwrap() as f32 / 15.0,
+                    1.0,
+                ]),
+                4 => LexerToken::Color([
+                    u32::from_str_radix(&s[0..1], 16).unwrap() as f32 / 15.0,
+                    u32::from_str_radix(&s[1..2], 16).unwrap() as f32 / 15.0,
+                    u32::from_str_radix(&s[2..3], 16).unwrap() as f32 / 15.0,
+                    u32::from_str_radix(&s[3..4], 16).unwrap() as f32 / 15.0,
+                ]),
+                6 => LexerToken::Color([
+                    u32::from_str_radix(&s[0..2], 16).unwrap() as f32 / 255.0,
+                    u32::from_str_radix(&s[2..4], 16).unwrap() as f32 / 255.0,
+                    u32::from_str_radix(&s[4..6], 16).unwrap() as f32 / 255.0,
+                    1.0,
+                ]),
+                8 => LexerToken::Color([
+                    u32::from_str_radix(&s[0..2], 16).unwrap() as f32 / 255.0,
+                    u32::from_str_radix(&s[2..4], 16).unwrap() as f32 / 255.0,
+                    u32::from_str_radix(&s[4..6], 16).unwrap() as f32 / 255.0,
+                    u32::from_str_radix(&s[6..8], 16).unwrap() as f32 / 255.0,
+                ]),
+                _ => unreachable!("Invalid color length: {}", s.len()),
+            }),
+    );
 
     let dec_num_exp = just('e').then(one_of("+-").or_not()).then(text::digits(10));
     let dec_num = text::digits(10)
@@ -143,7 +177,7 @@ pub fn lexer<'src>(
     });
 
     let token = choice((
-        imag_num, real_num, imag_int, real_int, op, delim, term, lifetime, ident,
+        color, imag_num, real_num, imag_int, real_int, op, delim, term, lifetime, ident,
     ));
 
     // let token = hex_num;
@@ -175,6 +209,81 @@ mod tests {
     use chumsky::span::SimpleSpan;
     use fhex::ToHex;
     use rug::Float;
+
+    #[test]
+    fn test_color3() {
+        let s = "#123";
+        let vec = lexer(24).parse(s).unwrap();
+        assert_eq!(
+            vec![Spanned(
+                LexerToken::Color([1.0 / 15.0, 2.0 / 15.0, 3.0 / 15.0, 1.0]),
+                SimpleSpan::from(0..s.len())
+            )],
+            vec,
+            "Attempted to parse {}",
+            &s
+        )
+    }
+
+    #[test]
+    fn test_color4() {
+        let s = "#1234";
+        let vec = lexer(24).parse(s).unwrap();
+        assert_eq!(
+            vec![Spanned(
+                LexerToken::Color([1.0 / 15.0, 2.0 / 15.0, 3.0 / 15.0, 4.0 / 15.0]),
+                SimpleSpan::from(0..s.len())
+            )],
+            vec,
+            "Attempted to parse {}",
+            &s
+        )
+    }
+
+    #[test]
+    fn test_color6() {
+        let s = "#123456";
+        let vec = lexer(24).parse(s).unwrap();
+        assert_eq!(
+            vec![Spanned(
+                LexerToken::Color([18.0 / 255.0, 52.0 / 255.0, 86.0 / 255.0, 1.0]),
+                SimpleSpan::from(0..s.len())
+            )],
+            vec,
+            "Attempted to parse {}",
+            &s
+        )
+    }
+
+    #[test]
+    fn test_color8() {
+        let s = "#12345678";
+        let vec = lexer(24).parse(s).unwrap();
+        assert_eq!(
+            vec![Spanned(
+                LexerToken::Color([18.0 / 255.0, 52.0 / 255.0, 86.0 / 255.0, 120.0 / 255.0]),
+                SimpleSpan::from(0..s.len())
+            )],
+            vec,
+            "Attempted to parse {}",
+            &s
+        )
+    }
+
+    #[test]
+    fn test_color8_2() {
+        let s = "#DEADBEEF";
+        let vec = lexer(24).parse(s).unwrap();
+        assert_eq!(
+            vec![Spanned(
+                LexerToken::Color([222.0 / 255.0, 173.0 / 255.0, 190.0 / 255.0, 239.0 / 255.0]),
+                SimpleSpan::from(0..s.len())
+            )],
+            vec,
+            "Attempted to parse {}",
+            &s
+        )
+    }
 
     #[test]
     fn test_dec_int() {
