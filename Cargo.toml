@@ -13,7 +13,7 @@ fractal-rs-3-utils = { path = "crates/utils" }
 
 anyhow = "1"
 ariadne = "^0.6"
-chumsky = { version = "1.0.0-alpha.8", features = ["pratt"] }
+chumsky = { version = "0.12.0", features = ["pratt"] }
 downcast = "0.11"
 dyn-clone = "1"
 fhex = "1"

@@ -182,7 +182,7 @@ mod tests {
             assert_eq!(
                 vec![Spanned(
                     LexerToken::RealInteger(i),
-                    SimpleSpan::new(0, s.len())
+                    SimpleSpan::from(0..s.len())
                 )],
                 vec,
                 "Attempted to parse {}",
@@ -197,7 +197,7 @@ mod tests {
         assert_eq!(
             vec![Spanned(
                 LexerToken::ImaginaryInteger(32),
-                SimpleSpan::new(0, 3)
+                SimpleSpan::from(0..3)
             )],
             vec,
             "Attempted to parse 32i",
@@ -212,7 +212,7 @@ mod tests {
             assert_eq!(
                 vec![Spanned(
                     LexerToken::RealInteger(i),
-                    SimpleSpan::new(0, s.len())
+                    SimpleSpan::from(0..s.len())
                 )],
                 vec,
                 "Attempted to parse {}",
@@ -227,7 +227,7 @@ mod tests {
         assert_eq!(
             vec![Spanned(
                 LexerToken::ImaginaryInteger(0x20),
-                SimpleSpan::new(0, 5)
+                SimpleSpan::from(0..5)
             )],
             vec,
             "Attempted to parse 0x20i",
@@ -242,7 +242,7 @@ mod tests {
             assert_eq!(
                 vec![Spanned(
                     LexerToken::RealInteger(i),
-                    SimpleSpan::new(0, s.len())
+                    SimpleSpan::from(0..s.len())
                 )],
                 vec,
                 "Attempted to parse {}",
@@ -257,7 +257,7 @@ mod tests {
         assert_eq!(
             vec![Spanned(
                 LexerToken::ImaginaryInteger(0o40),
-                SimpleSpan::new(0, 5)
+                SimpleSpan::from(0..5)
             )],
             vec,
             "Attempted to parse 0o40i",
@@ -272,7 +272,7 @@ mod tests {
             assert_eq!(
                 vec![Spanned(
                     LexerToken::RealInteger(i),
-                    SimpleSpan::new(0, s.len())
+                    SimpleSpan::from(0..s.len())
                 )],
                 vec,
                 "Attempted to parse {}",
@@ -287,7 +287,7 @@ mod tests {
         assert_eq!(
             vec![Spanned(
                 LexerToken::ImaginaryInteger(0b100),
-                SimpleSpan::new(0, 6)
+                SimpleSpan::from(0..6)
             )],
             vec,
             "Attempted to parse 0b100i",
@@ -306,7 +306,7 @@ mod tests {
             assert_eq!(
                 vec![Spanned(
                     LexerToken::RealNumber(Float::with_val(24, f)),
-                    SimpleSpan::new(0, s.len())
+                    SimpleSpan::from(0..s.len())
                 )],
                 vec,
                 "Attempted to parse {}",
@@ -321,7 +321,7 @@ mod tests {
         assert_eq!(
             vec![Spanned(
                 LexerToken::ImaginaryNumber(Float::with_val(24, 3.2f32)),
-                SimpleSpan::new(0, 4)
+                SimpleSpan::from(0..4)
             )],
             vec,
             "Attempted to parse 3.2i",
@@ -336,7 +336,7 @@ mod tests {
         assert_eq!(
             vec![Spanned(
                 LexerToken::RealNumber(Float::with_val(24, f)),
-                SimpleSpan::new(0, s.len())
+                SimpleSpan::from(0..s.len())
             )],
             vec,
             "Attempted to parse {}",
@@ -353,7 +353,7 @@ mod tests {
             assert_eq!(
                 vec![Spanned(
                     LexerToken::RealNumber(Float::with_val(24, f)),
-                    SimpleSpan::new(0, s.len())
+                    SimpleSpan::from(0..s.len())
                 )],
                 vec,
                 "Attempted to parse {}",
@@ -368,7 +368,7 @@ mod tests {
         assert_eq!(
             vec![Spanned(
                 LexerToken::ImaginaryNumber(Float::with_val(24, 3.125f32)),
-                SimpleSpan::new(0, 6)
+                SimpleSpan::from(0..6)
             )],
             vec,
             "Attempted to parse 0x3.2i",
@@ -383,19 +383,19 @@ mod tests {
         hello /*+ 3*/ * 2.0
         "#
     }, expected = {
-        vec![Spanned(LexerToken::Ident("hello"), SimpleSpan::new(0, 5))],
-        vec![Spanned(LexerToken::RealInteger(1), SimpleSpan::new(0, 1)), Spanned(LexerToken::Op("+"), SimpleSpan::new(2, 3)), Spanned(LexerToken::RealInteger(2), SimpleSpan::new(4, 5))],
+        vec![Spanned(LexerToken::Ident("hello"), SimpleSpan::from(0..5))],
+        vec![Spanned(LexerToken::RealInteger(1), SimpleSpan::from(0..1)), Spanned(LexerToken::Op("+"), SimpleSpan::from(2..3)), Spanned(LexerToken::RealInteger(2), SimpleSpan::from(4..5))],
         vec![
-            Spanned(LexerToken::Let, SimpleSpan::new(21, 24)),
-            Spanned(LexerToken::Ident("hello"), SimpleSpan::new(25, 30)),
-            Spanned(LexerToken::Op("="), SimpleSpan::new(31, 32)),
-            Spanned(LexerToken::Ident("c"), SimpleSpan::new(33, 34)),
-            Spanned(LexerToken::Op("+"), SimpleSpan::new(35, 36)),
-            Spanned(LexerToken::RealInteger(2), SimpleSpan::new(37, 38)),
-            Spanned(LexerToken::Terminator, SimpleSpan::new(38, 39)),
-            Spanned(LexerToken::Ident("hello"), SimpleSpan::new(48, 53)),
-            Spanned(LexerToken::Op("*"), SimpleSpan::new(62, 63)),
-            Spanned(LexerToken::RealNumber(Float::with_val(24, 2.0)), SimpleSpan::new(64, 67))
+            Spanned(LexerToken::Let, SimpleSpan::from(21..24)),
+            Spanned(LexerToken::Ident("hello"), SimpleSpan::from(25..30)),
+            Spanned(LexerToken::Op("="), SimpleSpan::from(31..32)),
+            Spanned(LexerToken::Ident("c"), SimpleSpan::from(33..34)),
+            Spanned(LexerToken::Op("+"), SimpleSpan::from(35..36)),
+            Spanned(LexerToken::RealInteger(2), SimpleSpan::from(37..38)),
+            Spanned(LexerToken::Terminator, SimpleSpan::from(38..39)),
+            Spanned(LexerToken::Ident("hello"), SimpleSpan::from(48..53)),
+            Spanned(LexerToken::Op("*"), SimpleSpan::from(62..63)),
+            Spanned(LexerToken::RealNumber(Float::with_val(24, 2.0)), SimpleSpan::from(64..67))
         ]
     })]
     fn test_tokens(input: &str, expected: Vec<Spanned<LexerToken>>) {
