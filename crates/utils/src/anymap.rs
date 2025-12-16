@@ -117,3 +117,24 @@ macro_rules! any_map {
         }
     };
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn normal_operation() {
+        let mut map: AnyMap = AnyMap::new();
+        map.insert(17i32);
+        map.insert("Hello");
+        assert_eq!(Some(&17i32), map.get());
+        assert_eq!(Some(&"Hello"), map.get());
+    }
+
+    #[test]
+    fn missing() {
+        let mut map: AnyMap = AnyMap::new();
+        map.insert(17i32);
+        assert_eq!(None, map.get::<f32>());
+    }
+}
