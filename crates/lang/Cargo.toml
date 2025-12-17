@@ -9,6 +9,9 @@ fractal-rs-3-utils.workspace = true
 ariadne.workspace = true
 chumsky.workspace = true
 fhex.workspace = true
-parameterized.workspace = true
 rug.workspace = true
 serde.workspace = true
+
+[dev-dependencies]
+parameterized.workspace = true
+pretty_assertions.workspace = true

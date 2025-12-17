@@ -37,8 +37,14 @@ impl Debug for dyn CloneAnySync {
     }
 }
 
+/// Alternate 'Debug' type for an [AnyMap]
+pub trait DebugCloneAnySync: DynClone + AnySync + Debug {}
+clone_trait_object!(DebugCloneAnySync);
+downcast_sync!(dyn DebugCloneAnySync);
+into_box!(DebugCloneAnySync);
+impl<T: Clone + AnySync + Debug> DebugCloneAnySync for T {}
+
 /// A map of different types of things
-#[derive(Debug)]
 pub struct AnyMap<T: ?Sized = dyn CloneAnySync> {
     map: HashMap<TypeId, Box<T>>,
 }
@@ -58,6 +64,12 @@ impl<T: ?Sized + DynClone> Clone for AnyMap<T> {
                 .map(|(id, val)| (*id, dyn_clone::clone_box(&**val)))
                 .collect(),
         }
+    }
+}
+
+impl<T: ?Sized + Debug> Debug for AnyMap<T> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        f.debug_set().entries(self.map.values()).finish()
     }
 }
 

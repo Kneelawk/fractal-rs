@@ -47,22 +47,18 @@ pub fn parse(source: ProgramSource, prec: u32) -> AstProgram {
     ast
 }
 
-fn parser<'src, I>(prec: u32) -> impl Parser<'src, I, AstProgram, ProgramExtra<'src>>
+fn ident<'src, I>() -> impl Parser<'src, I, &'src str, ProgramExtra<'src>> + Copy
 where
     I: ValueInput<'src, Token = LexerToken<'src>, Span = SimpleSpan>,
 {
-    let ident = select! { LexerToken::Ident(s) => s }.labelled("identifier");
-    let lifetime = select! { LexerToken::Lifetime(name) => name }.labelled("lifetime");
+    select! { LexerToken::Ident(s) => s }.labelled("identifier")
+}
 
-    let ty = select! {
-        LexerToken::Ident("Boolean") => ExpressionType::Boolean,
-        LexerToken::Ident("Color") => ExpressionType::Color,
-        LexerToken::Ident("Complex") => ExpressionType::Complex,
-        LexerToken::Ident("Integer") => ExpressionType::Integer,
-        LexerToken::Ident("Unit") => ExpressionType::Unit,
-    };
-
-    let constant = select! {
+fn constant<'src, I>(prec: u32) -> impl Parser<'src, I, AstConstant, ProgramExtra<'src>> + Copy
+where
+    I: ValueInput<'src, Token = LexerToken<'src>, Span = SimpleSpan>,
+{
+    select! {
         LexerToken::Boolean(b) => AstConstant::Boolean(b),
         LexerToken::Color(c) => AstConstant::Color(c),
         LexerToken::RealInteger(i) => AstConstant::Integer(i),
@@ -71,36 +67,19 @@ where
         LexerToken::ImaginaryNumber(n) => AstConstant::Complex(Complex::with_val(prec, (0, n))),
         LexerToken::I => AstConstant::Complex(Complex::with_val(prec, (0, 1))),
     }
-    .labelled("value");
+    .labelled("value")
+}
 
-    let annotation_arg = select! {
-        LexerToken::Ident(s) => AstAnnotationArg::Ident(s.to_string()),
-        LexerToken::RealInteger(i) => AstAnnotationArg::Integer(i),
-    }
-    .labelled("annotation argument");
+fn expr<'src, I>(
+    ident: impl Parser<'src, I, &'src str, ProgramExtra<'src>> + Copy + 'src,
+    constant: impl Parser<'src, I, AstConstant, ProgramExtra<'src>> + Copy + 'src,
+) -> impl Parser<'src, I, AstExpression, ProgramExtra<'src>>
+where
+    I: ValueInput<'src, Token = LexerToken<'src>, Span = SimpleSpan>,
+{
+    let lifetime = select! { LexerToken::Lifetime(name) => name }.labelled("lifetime");
 
-    let annotation = just(LexerToken::Delim('#'))
-        .ignore_then(
-            ident
-                .then(
-                    annotation_arg
-                        .separated_by(just(LexerToken::Delim(',')))
-                        .allow_trailing()
-                        .collect::<Vec<_>>()
-                        .delimited_by(just(LexerToken::Delim('(')), just(LexerToken::Delim(')')))
-                        .or_not(),
-                )
-                .delimited_by(just(LexerToken::Delim('[')), just(LexerToken::Delim(']'))),
-        )
-        .map_with(|(name, args), m| AstAnnotation {
-            name: name.to_string(),
-            args: args.unwrap_or_else(Vec::new),
-            attachments: any_map![mk_span(m)],
-        });
-
-    let annotation_vec = annotation.repeated().collect::<Vec<_>>();
-
-    let expr = recursive(move |expr| {
+    recursive(move |expr| {
         let block = lifetime
             .then_ignore(just(LexerToken::Delim(':')))
             .or_not()
@@ -246,7 +225,53 @@ where
                 .with_attachment(mk_span(m))
             }),
         ))
-    });
+    })
+}
+
+fn parser<'src, I>(prec: u32) -> impl Parser<'src, I, AstProgram, ProgramExtra<'src>>
+where
+    I: ValueInput<'src, Token = LexerToken<'src>, Span = SimpleSpan>,
+{
+    let ident = ident();
+
+    let ty = select! {
+        LexerToken::Ident("Boolean") => ExpressionType::Boolean,
+        LexerToken::Ident("Color") => ExpressionType::Color,
+        LexerToken::Ident("Complex") => ExpressionType::Complex,
+        LexerToken::Ident("Integer") => ExpressionType::Integer,
+        LexerToken::Ident("Unit") => ExpressionType::Unit,
+    };
+
+    let constant = constant(prec);
+
+    let annotation_arg = select! {
+        LexerToken::Ident(s) => AstAnnotationArg::Ident(s.to_string()),
+        LexerToken::RealInteger(i) => AstAnnotationArg::Integer(i),
+    }
+    .labelled("annotation argument");
+
+    let annotation = just(LexerToken::Delim('#'))
+        .ignore_then(
+            ident
+                .then(
+                    annotation_arg
+                        .separated_by(just(LexerToken::Delim(',')))
+                        .allow_trailing()
+                        .collect::<Vec<_>>()
+                        .delimited_by(just(LexerToken::Delim('(')), just(LexerToken::Delim(')')))
+                        .or_not(),
+                )
+                .delimited_by(just(LexerToken::Delim('[')), just(LexerToken::Delim(']'))),
+        )
+        .map_with(|(name, args), m| AstAnnotation {
+            name: name.to_string(),
+            args: args.unwrap_or_else(Vec::new),
+            attachments: any_map![mk_span(m)],
+        });
+
+    let annotation_vec = annotation.repeated().collect::<Vec<_>>();
+
+    let expr = expr(ident, constant);
 
     let arg_decl = annotation_vec
         .clone()
@@ -331,11 +356,13 @@ mod tests {
     use crate::parser::parse;
     use crate::parser::span::ProgramSource;
     use crate::{ExpressionType, ast_expr};
+    use pretty_assertions::assert_eq;
     use std::collections::HashMap;
 
     #[test]
     fn test_simple_ast() {
-        let source = ProgramSource::new("fn main() 'my_block: {x + 2}", "test-impl");
+        let code = "fn main() 'my_block: {x + 2}";
+        let source = ProgramSource::new(code, "test-impl");
 
         let ast = parse(source, 24);
 
@@ -370,12 +397,13 @@ mod tests {
             ..Default::default()
         };
 
-        assert_eq!(expected, ast);
+        assert_eq!(expected, ast, "Code: `{}`", code);
     }
 
     #[test]
     fn test_multiple_expressions() {
-        let source = ProgramSource::new("fn main() 'my_block: {let y = x + 2 x + y}", "test-impl");
+        let code = "fn main() 'my_block: {let y = x + 2 x + y}";
+        let source = ProgramSource::new(code, "test-impl");
 
         let ast = parse(source, 24);
 
@@ -429,13 +457,13 @@ mod tests {
             ..Default::default()
         };
 
-        assert_eq!(expected, ast);
+        assert_eq!(expected, ast, "Code: `{}`", code);
     }
 
     #[test]
     fn test_multiple_and_unary_expressions() {
-        let source =
-            ProgramSource::new("fn main() 'my_block: {let y = x + 2; - x + y}", "test-impl");
+        let code = "fn main() 'my_block: {let y = x + 2; - x + y}";
+        let source = ProgramSource::new(code, "test-impl");
 
         let ast = parse(source, 24);
 
@@ -451,23 +479,25 @@ mod tests {
                         expr: AstExpression::new(AstExpressionImpl::Block(AstBlock {
                             name: Some("my_block".to_string()),
                             exprs: vec![
-                                AstExpression::new(AstExpressionImpl::VarDeclareAssign {
-                                    name: "y".to_string(),
-                                    assign: Box::new(AstExpression::new(
-                                        AstExpressionImpl::BinaryOp {
-                                            ty: BinaryOpType::Plus,
-                                            left: Box::new(AstExpression::new(
-                                                AstExpressionImpl::VarUse("x".to_string()),
-                                            )),
-                                            right: Box::new(AstExpression::new(
-                                                AstExpressionImpl::Constant(AstConstant::Integer(
-                                                    2,
+                                AstExpression::new(AstExpressionImpl::Terminated(Box::new(
+                                    AstExpression::new(AstExpressionImpl::VarDeclareAssign {
+                                        name: "y".to_string(),
+                                        assign: Box::new(AstExpression::new(
+                                            AstExpressionImpl::BinaryOp {
+                                                ty: BinaryOpType::Plus,
+                                                left: Box::new(AstExpression::new(
+                                                    AstExpressionImpl::VarUse("x".to_string()),
                                                 )),
-                                            )),
-                                        },
-                                    )),
-                                    mutable: false,
-                                }),
+                                                right: Box::new(AstExpression::new(
+                                                    AstExpressionImpl::Constant(
+                                                        AstConstant::Integer(2),
+                                                    ),
+                                                )),
+                                            },
+                                        )),
+                                        mutable: false,
+                                    }),
+                                ))),
                                 AstExpression::new(AstExpressionImpl::BinaryOp {
                                     ty: BinaryOpType::Plus,
                                     left: Box::new(AstExpression::new(
@@ -494,12 +524,13 @@ mod tests {
             ..Default::default()
         };
 
-        assert_eq!(expected, ast);
+        assert_eq!(expected, ast, "Code: `{}`", code);
     }
 
     #[test]
     fn test_binary_expressions() {
-        let source = ProgramSource::new("fn main() 'my_block: {let y = x + 2 -x + z}", "test-impl");
+        let code = "fn main() 'my_block: {let y = x + 2 -x + z}";
+        let source = ProgramSource::new(code, "test-impl");
 
         let ast = parse(source, 24);
 
@@ -544,15 +575,13 @@ mod tests {
             ..Default::default()
         };
 
-        assert_eq!(expected, ast);
+        assert_eq!(expected, ast, "Code: `{}`", code);
     }
 
     #[test]
     fn test_multiple_and_parentheses_expressions() {
-        let source = ProgramSource::new(
-            "fn main() 'my_block: {let y = x + 2; - (x + y)}",
-            "test-impl",
-        );
+        let code = "fn main() 'my_block: {let y = x + 2; - (x + y)}";
+        let source = ProgramSource::new(code, "test-impl");
 
         let ast = parse(source, 24);
 
@@ -568,7 +597,7 @@ mod tests {
                         expr: ast_expr!(Block(AstBlock {
                             name: Some("my_block".to_string()),
                             exprs: vec![
-                                ast_expr!(VarDeclareAssign {
+                                ast_expr!(Terminated(Box::new(ast_expr!(VarDeclareAssign {
                                     name: "y".to_string(),
                                     assign: Box::new(ast_expr!(BinaryOp {
                                         ty: BinaryOpType::Plus,
@@ -578,7 +607,7 @@ mod tests {
                                         )))),
                                     })),
                                     mutable: false,
-                                }),
+                                })))),
                                 ast_expr!(UnaryOp {
                                     ty: UnaryOpType::Minus,
                                     expr: Box::new(ast_expr!(BinaryOp {
@@ -599,15 +628,13 @@ mod tests {
             ..Default::default()
         };
 
-        assert_eq!(expected, ast);
+        assert_eq!(expected, ast, "Code: `{}`", code);
     }
 
     #[test]
     fn test_annotation_ast() {
-        let source = ProgramSource::new(
-            "#[main] fn main(#[constant(default, 2)] c: Complex) 'my_block: {c + 2}",
-            "test-impl",
-        );
+        let code = "#[main] fn main(#[constant(default, 2)] c: Complex) 'my_block: {c + 2}";
+        let source = ProgramSource::new(code, "test-impl");
 
         let ast = parse(source, 24);
 
@@ -659,6 +686,6 @@ mod tests {
             ..Default::default()
         };
 
-        assert_eq!(expected, ast);
+        assert_eq!(expected, ast, "Code: `{}`", code);
     }
 }
