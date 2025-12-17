@@ -3,13 +3,13 @@
 mod lexer;
 mod span;
 
-use crate::ExpressionType;
 use crate::ast::{
     AstAnnotation, AstAnnotationArg, AstBlock, AstConstant, AstExpression, AstExpressionImpl,
     AstFunction, AstProgram, AstVariable, BinaryOpType, UnaryOpType,
 };
 use crate::parser::lexer::{LexerToken, lexer};
 use crate::parser::span::mk_span;
+use crate::{ExpressionType, ast_expr};
 use chumsky::input::ValueInput;
 use chumsky::pratt::{infix, left, prefix, right};
 use chumsky::prelude::*;
@@ -107,7 +107,14 @@ where
             .then_ignore(just(LexerToken::Delim('{')))
             .then(
                 expr.clone()
-                    .then_ignore(just(LexerToken::Terminator).or_not())
+                    .then(just(LexerToken::Terminator).or_not())
+                    .map_with(|(expr, term), m| {
+                        if term == Some(LexerToken::Terminator) {
+                            ast_expr!(Terminated(Box::new(expr))).with_attachment(mk_span(m))
+                        } else {
+                            expr
+                        }
+                    })
                     .repeated()
                     .collect::<Vec<_>>(),
             )
