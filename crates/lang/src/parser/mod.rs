@@ -4,12 +4,12 @@ mod lexer;
 mod span;
 
 use crate::ast::{
-    AstAnnotation, AstAnnotationArg, AstBlock, AstConstant, AstExpression, AstExpressionImpl,
+    AstAnnotation, AstAnnotationArg, AstBlock, AstExpression, AstExpressionImpl,
     AstFunction, AstIfBlock, AstProgram, AstVariable, BinaryOpType, UnaryOpType,
 };
-use crate::parser::lexer::{LexerToken, lexer};
+use crate::parser::lexer::{lexer, LexerToken};
 use crate::parser::span::mk_span;
-use crate::{ExpressionType, ast_expr};
+use crate::{ast_expr, ExpressionValue, ExpressionType};
 use chumsky::input::ValueInput;
 use chumsky::pratt::{infix, left, prefix, right};
 use chumsky::prelude::*;
@@ -54,25 +54,25 @@ where
     select! { LexerToken::Ident(s) => s }.labelled("identifier")
 }
 
-fn constant<'src, I>(prec: u32) -> impl Parser<'src, I, AstConstant, ProgramExtra<'src>> + Copy
+fn constant<'src, I>(prec: u32) -> impl Parser<'src, I, ExpressionValue, ProgramExtra<'src>> + Copy
 where
     I: ValueInput<'src, Token = LexerToken<'src>, Span = SimpleSpan>,
 {
     select! {
-        LexerToken::Boolean(b) => AstConstant::Boolean(b),
-        LexerToken::Color(c) => AstConstant::Color(c),
-        LexerToken::RealInteger(i) => AstConstant::Integer(i),
-        LexerToken::RealNumber(n) => AstConstant::Complex(Complex::with_val(prec, (n, 0))),
-        LexerToken::ImaginaryInteger(i) => AstConstant::Complex(Complex::with_val(prec, (0, i))),
-        LexerToken::ImaginaryNumber(n) => AstConstant::Complex(Complex::with_val(prec, (0, n))),
-        LexerToken::I => AstConstant::Complex(Complex::with_val(prec, (0, 1))),
+        LexerToken::Boolean(b) => ExpressionValue::Boolean(b),
+        LexerToken::Color(c) => ExpressionValue::Color(c),
+        LexerToken::RealInteger(i) => ExpressionValue::Integer(i),
+        LexerToken::RealNumber(n) => ExpressionValue::Complex(Complex::with_val(prec, (n, 0))),
+        LexerToken::ImaginaryInteger(i) => ExpressionValue::Complex(Complex::with_val(prec, (0, i))),
+        LexerToken::ImaginaryNumber(n) => ExpressionValue::Complex(Complex::with_val(prec, (0, n))),
+        LexerToken::I => ExpressionValue::Complex(Complex::with_val(prec, (0, 1))),
     }
     .labelled("value")
 }
 
 fn expr<'src, I>(
     ident: impl Parser<'src, I, &'src str, ProgramExtra<'src>> + Copy + 'src,
-    constant: impl Parser<'src, I, AstConstant, ProgramExtra<'src>> + Copy + 'src,
+    constant: impl Parser<'src, I, ExpressionValue, ProgramExtra<'src>> + Copy + 'src,
 ) -> impl Parser<'src, I, AstExpression, ProgramExtra<'src>>
 where
     I: ValueInput<'src, Token = LexerToken<'src>, Span = SimpleSpan>,
@@ -404,12 +404,12 @@ where
 #[cfg(test)]
 mod tests {
     use crate::ast::{
-        AstAnnotation, AstAnnotationArg, AstBlock, AstConstant, AstExpression, AstExpressionImpl,
+        AstAnnotation, AstAnnotationArg, AstBlock, AstExpression, AstExpressionImpl,
         AstFunction, AstIfBlock, AstProgram, AstVariable, BinaryOpType, UnaryOpType,
     };
     use crate::parser::parse;
     use crate::parser::span::ProgramSource;
-    use crate::{ExpressionType, ast_expr};
+    use crate::{ast_expr, ExpressionValue, ExpressionType};
     use fractal_rs_3_utils::hash_map;
     use pretty_assertions::assert_eq;
     use std::collections::HashMap;
@@ -438,7 +438,7 @@ mod tests {
                                     "x".to_string(),
                                 ))),
                                 right: Box::new(AstExpression::new(AstExpressionImpl::Constant(
-                                    AstConstant::Integer(2),
+                                    ExpressionValue::Integer(2),
                                 ))),
                             })],
                             attachments: Default::default(),
@@ -483,7 +483,7 @@ mod tests {
                                                 AstExpressionImpl::VarUse("x".to_string()),
                                             )),
                                             right: Box::new(AstExpression::new(
-                                                AstExpressionImpl::Constant(AstConstant::Integer(
+                                                AstExpressionImpl::Constant(ExpressionValue::Integer(
                                                     2,
                                                 )),
                                             )),
@@ -545,7 +545,7 @@ mod tests {
                                                 )),
                                                 right: Box::new(AstExpression::new(
                                                     AstExpressionImpl::Constant(
-                                                        AstConstant::Integer(2),
+                                                        ExpressionValue::Integer(2),
                                                     ),
                                                 )),
                                             },
@@ -610,7 +610,7 @@ mod tests {
                                             ty: BinaryOpType::Plus,
                                             left: Box::new(ast_expr!(VarUse("x".to_string()))),
                                             right: Box::new(ast_expr!(Constant(
-                                                AstConstant::Integer(2)
+                                                ExpressionValue::Integer(2)
                                             ))),
                                         })),
                                         right: Box::new(ast_expr!(VarUse("x".to_string())))
@@ -657,7 +657,7 @@ mod tests {
                                     assign: Box::new(ast_expr!(BinaryOp {
                                         ty: BinaryOpType::Plus,
                                         left: Box::new(ast_expr!(VarUse("x".to_string()))),
-                                        right: Box::new(ast_expr!(Constant(AstConstant::Integer(
+                                        right: Box::new(ast_expr!(Constant(ExpressionValue::Integer(
                                             2,
                                         )))),
                                     })),
@@ -723,7 +723,7 @@ mod tests {
                                     "c".to_string(),
                                 ))),
                                 right: Box::new(AstExpression::new(AstExpressionImpl::Constant(
-                                    AstConstant::Integer(2),
+                                    ExpressionValue::Integer(2),
                                 ))),
                             })],
                             attachments: Default::default(),
@@ -764,12 +764,12 @@ mod tests {
                                     condition: Box::new(ast_expr!(BinaryOp {
                                         ty: BinaryOpType::LessThan,
                                         left: Box::new(ast_expr!(VarUse("x".to_string()))),
-                                        right: Box::new(ast_expr!(Constant(AstConstant::Integer(2))))
+                                        right: Box::new(ast_expr!(Constant(ExpressionValue::Integer(2))))
                                     })),
                                     block: Box::new(ast_expr!(BinaryOp {
                                         ty: BinaryOpType::Minus,
                                         left: Box::new(ast_expr!(VarUse("x".to_string()))),
-                                        right: Box::new(ast_expr!(Constant(AstConstant::Integer(1))))
+                                        right: Box::new(ast_expr!(Constant(ExpressionValue::Integer(1))))
                                     })),
                                     ..Default::default()
                                 },
@@ -812,12 +812,12 @@ mod tests {
                                     condition: Box::new(ast_expr!(BinaryOp {
                                         ty: BinaryOpType::LessEqual,
                                         left: Box::new(ast_expr!(VarUse("x".to_string()))),
-                                        right: Box::new(ast_expr!(Constant(AstConstant::Integer(2))))
+                                        right: Box::new(ast_expr!(Constant(ExpressionValue::Integer(2))))
                                     })),
                                     block: Box::new(ast_expr!(BinaryOp {
                                         ty: BinaryOpType::Minus,
                                         left: Box::new(ast_expr!(VarUse("x".to_string()))),
-                                        right: Box::new(ast_expr!(Constant(AstConstant::Integer(1))))
+                                        right: Box::new(ast_expr!(Constant(ExpressionValue::Integer(1))))
                                     })),
                                     ..Default::default()
                                 },
@@ -827,7 +827,7 @@ mod tests {
                                         condition: Box::new(ast_expr!(BinaryOp {
                                             ty: BinaryOpType::GreaterEqual,
                                             left: Box::new(ast_expr!(VarUse("x".to_string()))),
-                                            right: Box::new(ast_expr!(Constant(AstConstant::Integer(10))))
+                                            right: Box::new(ast_expr!(Constant(ExpressionValue::Integer(10))))
                                         })),
                                         block: Box::new(ast_expr!(UnaryOp {
                                             ty: UnaryOpType::Minus,
@@ -838,7 +838,7 @@ mod tests {
                                     chain: Default::default(),
                                     end: Some(Box::new(ast_expr!(BinaryOp {
                                         ty: BinaryOpType::Times,
-                                        left: Box::new(ast_expr!(Constant(AstConstant::Integer(10)))),
+                                        left: Box::new(ast_expr!(Constant(ExpressionValue::Integer(10)))),
                                         right: Box::new(ast_expr!(UnaryOp {
                                             ty: UnaryOpType::Minus,
                                             expr: Box::new(ast_expr!(VarUse("x".to_string())))

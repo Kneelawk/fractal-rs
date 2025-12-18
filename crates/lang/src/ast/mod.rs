@@ -1,8 +1,9 @@
 //! Fractal program AST constructs.
 
-use crate::ExpressionType;
+mod visitor;
+
+use crate::{ExpressionValue, ExpressionType};
 use fractal_rs_3_utils::anymap::{AnyMap, DebugCloneAnySync};
-use rug::Complex;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
@@ -105,7 +106,7 @@ pub enum AstExpressionImpl {
     ///
     /// Result is the result of the last expression in the block
     Block(AstBlock),
-    Constant(AstConstant),
+    Constant(ExpressionValue),
     BinaryOp {
         ty: BinaryOpType,
         left: Box<AstExpression>,
@@ -209,35 +210,12 @@ impl PartialEq for AstBlock {
     }
 }
 
-#[derive(Default, Debug, Clone, PartialEq)]
-pub enum AstConstant {
-    Boolean(bool),
-    /// RGBA color
-    Color([f32; 4]),
-    Complex(Complex),
-    Integer(i32),
-    #[default]
-    Unit,
-}
-
-impl AstConstant {
-    pub fn ty(&self) -> ExpressionType {
-        match self {
-            AstConstant::Boolean(_) => ExpressionType::Boolean,
-            AstConstant::Color(_) => ExpressionType::Color,
-            AstConstant::Complex(_) => ExpressionType::Complex,
-            AstConstant::Integer(_) => ExpressionType::Integer,
-            AstConstant::Unit => ExpressionType::Unit,
-        }
-    }
-}
-
 /// A variable name and type
 #[derive(Debug, Clone)]
 pub struct AstVariable {
     pub name: String,
     pub ty: ExpressionType,
-    pub init: Option<AstConstant>,
+    pub init: Option<ExpressionValue>,
     pub annotations: Vec<AstAnnotation>,
     pub attachments: AnyMap<AstAttachment>,
 }

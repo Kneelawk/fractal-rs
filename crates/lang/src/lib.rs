@@ -5,6 +5,7 @@ use crate::ast::AstProgram;
 use crate::parser::{ProgramSourceSet, ProgramSpan};
 use serde::{Deserialize, Serialize};
 use std::fmt::{Debug, Display, Formatter};
+use rug::Complex;
 
 pub mod ast;
 pub mod parser;
@@ -30,6 +31,29 @@ pub enum ExpressionType {
     Integer,
     #[default]
     Unit,
+}
+
+#[derive(Default, Debug, Clone, PartialEq)]
+pub enum ExpressionValue {
+    Boolean(bool),
+    /// RGBA color
+    Color([f32; 4]),
+    Complex(Complex),
+    Integer(i32),
+    #[default]
+    Unit,
+}
+
+impl ExpressionValue {
+    pub fn ty(&self) -> ExpressionType {
+        match self {
+            ExpressionValue::Boolean(_) => ExpressionType::Boolean,
+            ExpressionValue::Color(_) => ExpressionType::Color,
+            ExpressionValue::Complex(_) => ExpressionType::Complex,
+            ExpressionValue::Integer(_) => ExpressionType::Integer,
+            ExpressionValue::Unit => ExpressionType::Unit,
+        }
+    }
 }
 
 /// A function signature
