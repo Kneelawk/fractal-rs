@@ -4,12 +4,12 @@ mod lexer;
 mod span;
 
 use crate::ast::{
-    AstAnnotation, AstAnnotationArg, AstBlock, AstExpression, AstExpressionImpl,
-    AstFunction, AstIfBlock, AstProgram, AstVariable, BinaryOpType, UnaryOpType,
+    AstAnnotation, AstAnnotationArg, AstBlock, AstExpression, AstExpressionImpl, AstFunction,
+    AstIfBlock, AstProgram, AstVariable, BinaryOpType, UnaryOpType,
 };
-use crate::parser::lexer::{lexer, LexerToken};
+use crate::parser::lexer::{LexerToken, lexer};
 use crate::parser::span::mk_span;
-use crate::{ast_expr, ExpressionValue, ExpressionType};
+use crate::{ExpressionType, ExpressionValue, ast_expr};
 use chumsky::input::ValueInput;
 use chumsky::pratt::{infix, left, prefix, right};
 use chumsky::prelude::*;
@@ -35,7 +35,8 @@ pub fn parse(source: ProgramSource, prec: u32) -> AstProgram {
     let tokens = lexer(prec).parse(source.code()).unwrap();
 
     let parser = parser(prec).with_ctx(source.clone());
-    let ast = Parser::<_, _, ProgramExtra>::parse(
+
+    Parser::<_, _, ProgramExtra>::parse(
         &parser,
         tokens
             .as_slice()
@@ -43,8 +44,7 @@ pub fn parse(source: ProgramSource, prec: u32) -> AstProgram {
                 (&spanned.0, &spanned.1)
             }),
     )
-    .unwrap();
-    ast
+    .unwrap()
 }
 
 fn ident<'src, I>() -> impl Parser<'src, I, &'src str, ProgramExtra<'src>> + Copy
@@ -67,7 +67,7 @@ where
         LexerToken::ImaginaryNumber(n) => ExpressionValue::Complex(Complex::with_val(prec, (0, n))),
         LexerToken::I => ExpressionValue::Complex(Complex::with_val(prec, (0, 1))),
     }
-    .labelled("value")
+        .labelled("value")
 }
 
 fn expr<'src, I>(
@@ -147,6 +147,42 @@ where
                 .with_attachment(mk_span(m))
             });
 
+        let while_ = just(LexerToken::While)
+            .ignore_then(
+                expr.clone()
+                    .delimited_by(just(LexerToken::Delim('(')), just(LexerToken::Delim(')'))),
+            )
+            .then(expr.clone())
+            .map_with(|(condition, loop_expr), m| {
+                ast_expr!(While {
+                    condition: Box::new(condition),
+                    block: Box::new(loop_expr),
+                })
+                .with_attachment(mk_span(m))
+            });
+
+        let for_ = just(LexerToken::For)
+            .ignore_then(
+                expr.clone()
+                    .then(
+                        just(LexerToken::Delim(';'))
+                            .ignore_then(expr.clone())
+                            .then_ignore(just(LexerToken::Delim(';')))
+                            .then(expr.clone()),
+                    )
+                    .delimited_by(just(LexerToken::Delim('(')), just(LexerToken::Delim(')'))),
+            )
+            .then(expr.clone())
+            .map_with(|((declares, (condition, after)), loop_expr), m| {
+                ast_expr!(For {
+                    declares: Box::new(declares),
+                    condition: Box::new(condition),
+                    after: Box::new(after),
+                    block: Box::new(loop_expr),
+                })
+                .with_attachment(mk_span(m))
+            });
+
         let parens = just(LexerToken::Delim('('))
             .ignore_then(expr.clone())
             .then_ignore(just(LexerToken::Delim(')')))
@@ -173,6 +209,8 @@ where
             .map(|c| AstExpression::new(AstExpressionImpl::Constant(c)))
             .or(let_)
             .or(if_)
+            .or(while_)
+            .or(for_)
             .or(call)
             .or(local)
             .or(parens)
@@ -403,15 +441,17 @@ where
 
 #[cfg(test)]
 mod tests {
+    use crate::ast::UnaryOpType::PreIncrement;
     use crate::ast::{
-        AstAnnotation, AstAnnotationArg, AstBlock, AstExpression, AstExpressionImpl,
-        AstFunction, AstIfBlock, AstProgram, AstVariable, BinaryOpType, UnaryOpType,
+        AstAnnotation, AstAnnotationArg, AstBlock, AstExpression, AstExpressionImpl, AstFunction,
+        AstIfBlock, AstProgram, AstVariable, BinaryOpType, UnaryOpType,
     };
     use crate::parser::parse;
     use crate::parser::span::ProgramSource;
-    use crate::{ast_expr, ExpressionValue, ExpressionType};
+    use crate::{ExpressionType, ExpressionValue, ast_expr};
     use fractal_rs_3_utils::hash_map;
     use pretty_assertions::assert_eq;
+    use rug::Complex;
     use std::collections::HashMap;
 
     #[test]
@@ -483,9 +523,9 @@ mod tests {
                                                 AstExpressionImpl::VarUse("x".to_string()),
                                             )),
                                             right: Box::new(AstExpression::new(
-                                                AstExpressionImpl::Constant(ExpressionValue::Integer(
-                                                    2,
-                                                )),
+                                                AstExpressionImpl::Constant(
+                                                    ExpressionValue::Integer(2),
+                                                ),
                                             )),
                                         },
                                     )),
@@ -657,9 +697,9 @@ mod tests {
                                     assign: Box::new(ast_expr!(BinaryOp {
                                         ty: BinaryOpType::Plus,
                                         left: Box::new(ast_expr!(VarUse("x".to_string()))),
-                                        right: Box::new(ast_expr!(Constant(ExpressionValue::Integer(
-                                            2,
-                                        )))),
+                                        right: Box::new(ast_expr!(Constant(
+                                            ExpressionValue::Integer(2,)
+                                        ))),
                                     })),
                                     mutable: false,
                                 })))),
@@ -857,5 +897,133 @@ mod tests {
         };
 
         assert_eq!(expected, ast, "Code: `{}`", code);
+    }
+
+    #[test]
+    fn test_while_block() {
+        let code = "fn main(x: Integer) { while (x > 1) x-- }";
+        let source = ProgramSource::new(code, "test-impl");
+
+        let ast = parse(source, 24);
+
+        let expected = AstProgram {
+            functions: hash_map![
+                "main".to_string() => AstFunction {
+                    name: "main".to_string(),
+                    args: vec![AstVariable {
+                        name: "x".to_string(),
+                        ty: ExpressionType::Integer,
+                        init: None,
+                        annotations: Default::default(),
+                        attachments: Default::default(),
+                    }],
+                    explicit_ret: None,
+                    expr: ast_expr!(Block(AstBlock {
+                        name: None,
+                        exprs: vec![
+                            ast_expr!(While {
+                                condition: Box::new(ast_expr!(BinaryOp {
+                                    ty: BinaryOpType::GreaterThan,
+                                    left: Box::new(ast_expr!(VarUse("x".to_string()))),
+                                    right: Box::new(ast_expr!(Constant(ExpressionValue::Integer(1)))),
+                                })),
+                                block: Box::new(ast_expr!(VarAssign {
+                                    name: "x".to_string(),
+                                    assign: Box::new(ast_expr!(BinaryOp {
+                                        ty: BinaryOpType::Minus,
+                                        left: Box::new(ast_expr!(VarUse("x".to_string()))),
+                                        right: Box::new(ast_expr!(Constant(ExpressionValue::Integer(1))))
+                                    }))
+                                }))
+                            })
+                        ],
+                        attachments: Default::default()
+                    })),
+                    annotations: vec![],
+                    attachments: Default::default()
+                }
+            ],
+            ..Default::default()
+        };
+
+        assert_eq!(expected, ast, "Code `{}`", code);
+    }
+
+    #[test]
+    fn test_for_block() {
+        let code = "fn main(x: Integer, c: Complex) { let mut z = 0.0; for (let mut i = 0; i < x; i++) z = z ^ 2.0 + c; z }";
+        let source = ProgramSource::new(code, "test-impl");
+
+        let ast = parse(source, 24);
+
+        let expected = AstProgram {
+            functions: hash_map![
+                "main".to_string() => AstFunction {
+                    name: "main".to_string(),
+                    args: vec![
+                        AstVariable {
+                            name: "x".to_string(),
+                            ty: ExpressionType::Integer,
+                            init: None,
+                            annotations: Default::default(),
+                            attachments: Default::default(),
+                        },
+                        AstVariable {
+                            name: "c".to_string(),
+                            ty: ExpressionType::Complex,
+                            init: None,
+                            annotations: Default::default(),
+                            attachments: Default::default(),
+                        }
+                    ],
+                    explicit_ret: None,
+                    expr: ast_expr!(Block(AstBlock {
+                        name: None,
+                        exprs: vec![
+                            ast_expr!(VarDeclareAssign {
+                                name: "z".to_string(),
+                                mutable: true,
+                                assign: Box::new(ast_expr!(Constant(ExpressionValue::Complex(Complex::with_val(24, (0.0, 0.0)))))),
+                            }),
+                            ast_expr!(For {
+                                declares: Box::new(ast_expr!(VarDeclareAssign {
+                                    name: "i".to_string(),
+                                    mutable: true,
+                                    assign: Box::new(ast_expr!(Constant(ExpressionValue::Integer(0)))),
+                                })),
+                                condition: Box::new(ast_expr!(BinaryOp {
+                                    ty: BinaryOpType::LessThan,
+                                    left: Box::new(ast_expr!(VarUse("i".to_string()))),
+                                    right: Box::new(ast_expr!(VarUse("x".to_string()))),
+                                })),
+                                after: Box::new(ast_expr!(UnaryOp {
+                                    ty: PreIncrement,
+                                    expr: Box::new(ast_expr!(VarUse("i".to_string())))
+                                })),
+                                block: Box::new(ast_expr!(Terminated(Box::new(ast_expr!(VarAssign {
+                                    name: "z".to_string(),
+                                    assign: Box::new(ast_expr!(BinaryOp {
+                                        ty: BinaryOpType::Plus,
+                                        left: Box::new(ast_expr!(BinaryOp {
+                                            ty: BinaryOpType::Power,
+                                            left: Box::new(ast_expr!(VarUse("z".to_string()))),
+                                            right: Box::new(ast_expr!(Constant(ExpressionValue::Complex(Complex::with_val(24, (2.0, 0.0)))))),
+                                        })),
+                                        right: Box::new(ast_expr!(VarUse("c".to_string())))
+                                    }))
+                                })))))
+                            }),
+                            ast_expr!(VarUse("z".to_string()))
+                        ],
+                        attachments: Default::default(),
+                    })),
+                    annotations: Default::default(),
+                    attachments: Default::default(),
+                }
+            ],
+            ..Default::default()
+        };
+
+        assert_eq!(expected, ast, "Code `{}`", code);
     }
 }
