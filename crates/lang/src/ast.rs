@@ -147,21 +147,33 @@ pub enum AstExpressionImpl {
     Return(Box<AstExpression>),
     Break(Option<String>),
     Continue(Option<String>),
+    /// If/Else chain
+    ///
+    /// Result type of all blocks must be the same
+    ///
+    /// Result is the result of the block that is run
     IfElse {
         start: AstIfBlock,
         chain: Vec<AstIfBlock>,
         end: Option<Box<AstExpression>>,
     },
+    /// While loop
+    ///
+    /// Result is Unit
     While {
         condition: Box<AstExpression>,
         block: Box<AstExpression>,
     },
+    /// For loop
+    ///
+    /// Result is Unit
     For {
         declares: Box<AstExpression>,
         condition: Box<AstExpression>,
         after: Box<AstExpression>,
         block: Box<AstExpression>,
     },
+    /// Error: Cannot be run
     Error,
 }
 

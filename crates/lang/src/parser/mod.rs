@@ -252,6 +252,7 @@ where
                     left: Box::new(a),
                     right: Box::new(b),
                 })
+                .with_attachment(mk_span(m))
             }),
             infix(left(0), op(">="), |a, _, b, m| {
                 ast_expr!(BinaryOp {
@@ -259,6 +260,7 @@ where
                     left: Box::new(a),
                     right: Box::new(b),
                 })
+                .with_attachment(mk_span(m))
             }),
             infix(left(0), op("<"), |a, _, b, m| {
                 ast_expr!(BinaryOp {
@@ -266,6 +268,7 @@ where
                     left: Box::new(a),
                     right: Box::new(b),
                 })
+                .with_attachment(mk_span(m))
             }),
             infix(left(0), op(">"), |a, _, b, m| {
                 ast_expr!(BinaryOp {
@@ -273,6 +276,7 @@ where
                     left: Box::new(a),
                     right: Box::new(b),
                 })
+                .with_attachment(mk_span(m))
             }),
         ))
     })
