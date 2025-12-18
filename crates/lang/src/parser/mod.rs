@@ -5,7 +5,7 @@ mod span;
 
 use crate::ast::{
     AstAnnotation, AstAnnotationArg, AstBlock, AstConstant, AstExpression, AstExpressionImpl,
-    AstFunction, AstProgram, AstVariable, BinaryOpType, UnaryOpType,
+    AstFunction, AstIfBlock, AstProgram, AstVariable, BinaryOpType, UnaryOpType,
 };
 use crate::parser::lexer::{LexerToken, lexer};
 use crate::parser::span::mk_span;
@@ -126,6 +126,27 @@ where
                 .with_attachment(mk_span(m))
             });
 
+        let if_ = just(LexerToken::If)
+            .ignore_then(
+                expr.clone()
+                    .delimited_by(just(LexerToken::Delim('(')), just(LexerToken::Delim(')'))),
+            )
+            .then(expr.clone())
+            .map_with(|(condition, true_expr), m| AstIfBlock {
+                condition: Box::new(condition),
+                block: Box::new(true_expr),
+                attachments: any_map![mk_span(m)],
+            })
+            .then(just(LexerToken::Else).ignore_then(expr.clone()).or_not())
+            .map_with(|(if_block, false_expr), m| {
+                ast_expr!(IfElse {
+                    start: if_block,
+                    chain: Default::default(),
+                    end: false_expr.map(Box::new),
+                })
+                .with_attachment(mk_span(m))
+            });
+
         let parens = just(LexerToken::Delim('('))
             .ignore_then(expr.clone())
             .then_ignore(just(LexerToken::Delim(')')))
@@ -151,6 +172,7 @@ where
         let atom = constant
             .map(|c| AstExpression::new(AstExpressionImpl::Constant(c)))
             .or(let_)
+            .or(if_)
             .or(call)
             .or(local)
             .or(parens)
@@ -223,6 +245,34 @@ where
                     right: Box::new(b),
                 })
                 .with_attachment(mk_span(m))
+            }),
+            infix(left(0), op("<="), |a, _, b, m| {
+                ast_expr!(BinaryOp {
+                    ty: BinaryOpType::LessEqual,
+                    left: Box::new(a),
+                    right: Box::new(b),
+                })
+            }),
+            infix(left(0), op(">="), |a, _, b, m| {
+                ast_expr!(BinaryOp {
+                    ty: BinaryOpType::GreaterEqual,
+                    left: Box::new(a),
+                    right: Box::new(b),
+                })
+            }),
+            infix(left(0), op("<"), |a, _, b, m| {
+                ast_expr!(BinaryOp {
+                    ty: BinaryOpType::LessThan,
+                    left: Box::new(a),
+                    right: Box::new(b),
+                })
+            }),
+            infix(left(0), op(">"), |a, _, b, m| {
+                ast_expr!(BinaryOp {
+                    ty: BinaryOpType::GreaterThan,
+                    left: Box::new(a),
+                    right: Box::new(b),
+                })
             }),
         ))
     })
@@ -351,11 +401,12 @@ where
 mod tests {
     use crate::ast::{
         AstAnnotation, AstAnnotationArg, AstBlock, AstConstant, AstExpression, AstExpressionImpl,
-        AstFunction, AstProgram, AstVariable, BinaryOpType, UnaryOpType,
+        AstFunction, AstIfBlock, AstProgram, AstVariable, BinaryOpType, UnaryOpType,
     };
     use crate::parser::parse;
     use crate::parser::span::ProgramSource;
     use crate::{ExpressionType, ast_expr};
+    use fractal_rs_3_utils::hash_map;
     use pretty_assertions::assert_eq;
     use std::collections::HashMap;
 
@@ -683,6 +734,121 @@ mod tests {
                 );
                 map
             },
+            ..Default::default()
+        };
+
+        assert_eq!(expected, ast, "Code: `{}`", code);
+    }
+
+    #[test]
+    fn test_if_block() {
+        let code = "fn main() { if (x < 2) x - 1 else -x }";
+        let source = ProgramSource::new(code, "test-impl");
+
+        let ast = parse(source, 24);
+
+        let expected = AstProgram {
+            functions: hash_map![
+                "main".to_string() => AstFunction {
+                    name: "main".to_string(),
+                    args: vec![],
+                    explicit_ret: None,
+                    expr: ast_expr!(Block(AstBlock {
+                        exprs: vec![
+                            ast_expr!(IfElse {
+                                start: AstIfBlock {
+                                    condition: Box::new(ast_expr!(BinaryOp {
+                                        ty: BinaryOpType::LessThan,
+                                        left: Box::new(ast_expr!(VarUse("x".to_string()))),
+                                        right: Box::new(ast_expr!(Constant(AstConstant::Integer(2))))
+                                    })),
+                                    block: Box::new(ast_expr!(BinaryOp {
+                                        ty: BinaryOpType::Minus,
+                                        left: Box::new(ast_expr!(VarUse("x".to_string()))),
+                                        right: Box::new(ast_expr!(Constant(AstConstant::Integer(1))))
+                                    })),
+                                    ..Default::default()
+                                },
+                                chain: Default::default(),
+                                end: Some(Box::new(ast_expr!(UnaryOp {
+                                    ty: UnaryOpType::Minus,
+                                    expr: Box::new(ast_expr!(VarUse("x".to_string())))
+                                })))
+                            })
+                        ],
+                        ..Default::default()
+                    })),
+                    annotations: vec![],
+                    attachments: Default::default(),
+                }
+            ],
+            ..Default::default()
+        };
+
+        assert_eq!(expected, ast, "Code: `{}`", code);
+    }
+
+    #[test]
+    fn test_else_if_block() {
+        let code = "fn main() { if (x <= 2) x - 1 else if (x >= 10) -x else 10 * -x }";
+        let source = ProgramSource::new(code, "test-impl");
+
+        let ast = parse(source, 24);
+
+        let expected = AstProgram {
+            functions: hash_map![
+                "main".to_string() => AstFunction {
+                    name: "main".to_string(),
+                    args: vec![],
+                    explicit_ret: None,
+                    expr: ast_expr!(Block(AstBlock {
+                        exprs: vec![
+                            ast_expr!(IfElse {
+                                start: AstIfBlock {
+                                    condition: Box::new(ast_expr!(BinaryOp {
+                                        ty: BinaryOpType::LessEqual,
+                                        left: Box::new(ast_expr!(VarUse("x".to_string()))),
+                                        right: Box::new(ast_expr!(Constant(AstConstant::Integer(2))))
+                                    })),
+                                    block: Box::new(ast_expr!(BinaryOp {
+                                        ty: BinaryOpType::Minus,
+                                        left: Box::new(ast_expr!(VarUse("x".to_string()))),
+                                        right: Box::new(ast_expr!(Constant(AstConstant::Integer(1))))
+                                    })),
+                                    ..Default::default()
+                                },
+                                chain: Default::default(),
+                                end: Some(Box::new(ast_expr!(IfElse {
+                                    start: AstIfBlock {
+                                        condition: Box::new(ast_expr!(BinaryOp {
+                                            ty: BinaryOpType::GreaterEqual,
+                                            left: Box::new(ast_expr!(VarUse("x".to_string()))),
+                                            right: Box::new(ast_expr!(Constant(AstConstant::Integer(10))))
+                                        })),
+                                        block: Box::new(ast_expr!(UnaryOp {
+                                            ty: UnaryOpType::Minus,
+                                            expr: Box::new(ast_expr!(VarUse("x".to_string())))
+                                        })),
+                                        ..Default::default()
+                                    },
+                                    chain: Default::default(),
+                                    end: Some(Box::new(ast_expr!(BinaryOp {
+                                        ty: BinaryOpType::Times,
+                                        left: Box::new(ast_expr!(Constant(AstConstant::Integer(10)))),
+                                        right: Box::new(ast_expr!(UnaryOp {
+                                            ty: UnaryOpType::Minus,
+                                            expr: Box::new(ast_expr!(VarUse("x".to_string())))
+                                        }))
+                                    })))
+                                })))
+                            })
+                        ],
+                        ..Default::default()
+                    })),
+                    annotations: vec![],
+                    attachments: Default::default(),
+                }
+            ],
             ..Default::default()
         };
 

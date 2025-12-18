@@ -1,7 +1,7 @@
 //! Fractal program AST constructs.
 
 use crate::ExpressionType;
-use fractal_rs_3_utils::anymap::{AnyMap, CloneAnySync, DebugCloneAnySync};
+use fractal_rs_3_utils::anymap::{AnyMap, DebugCloneAnySync};
 use rug::Complex;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -150,17 +150,17 @@ pub enum AstExpressionImpl {
     IfElse {
         start: AstIfBlock,
         chain: Vec<AstIfBlock>,
-        end: Option<AstIfBlock>,
+        end: Option<Box<AstExpression>>,
     },
     While {
         condition: Box<AstExpression>,
-        block: AstBlock,
+        block: Box<AstExpression>,
     },
     For {
         declares: Box<AstExpression>,
         condition: Box<AstExpression>,
         after: Box<AstExpression>,
-        block: AstBlock,
+        block: Box<AstExpression>,
     },
     Error,
 }
@@ -174,7 +174,7 @@ impl Default for AstExpressionImpl {
 #[derive(Default, Debug, Clone)]
 pub struct AstIfBlock {
     pub condition: Box<AstExpression>,
-    pub block: AstBlock,
+    pub block: Box<AstExpression>,
     pub attachments: AnyMap<AstAttachment>,
 }
 
@@ -268,6 +268,10 @@ pub enum BinaryOpType {
     AndLazy,
     Or,
     OrLazy,
+    LessThan,
+    LessEqual,
+    GreaterThan,
+    GreaterEqual,
 }
 
 #[derive(Debug, Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Serialize, Deserialize)]
