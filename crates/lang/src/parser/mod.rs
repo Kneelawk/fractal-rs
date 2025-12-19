@@ -65,7 +65,6 @@ where
         LexerToken::RealNumber(n) => ExpressionValue::Complex(Complex::with_val(prec, (n, 0))),
         LexerToken::ImaginaryInteger(i) => ExpressionValue::Complex(Complex::with_val(prec, (0, i))),
         LexerToken::ImaginaryNumber(n) => ExpressionValue::Complex(Complex::with_val(prec, (0, n))),
-        LexerToken::I => ExpressionValue::Complex(Complex::with_val(prec, (0, 1))),
     }
         .labelled("value")
 }

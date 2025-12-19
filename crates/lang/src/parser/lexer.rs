@@ -14,7 +14,6 @@ pub enum LexerToken<'src> {
     RealNumber(Float),
     ImaginaryInteger(i32),
     ImaginaryNumber(Float),
-    I,
     Color([f32; 4]),
     Op(&'src str),
     Delim(char),
@@ -160,7 +159,6 @@ pub fn lexer<'src>(
         .map(LexerToken::Lifetime);
 
     let ident = text::ascii::ident().map(|ident: &str| match ident {
-        "i" => LexerToken::I,
         "true" => LexerToken::Boolean(true),
         "false" => LexerToken::Boolean(false),
         "fn" => LexerToken::Fn,
