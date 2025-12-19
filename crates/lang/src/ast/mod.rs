@@ -216,6 +216,7 @@ impl PartialEq for AstBlock {
 pub struct AstVariable {
     pub name: String,
     pub ty: ExpressionType,
+    pub mutable: bool,
     pub init: Option<ExpressionValue>,
     pub annotations: Vec<AstAnnotation>,
     pub attachments: AnyMap<AstAttachment>,

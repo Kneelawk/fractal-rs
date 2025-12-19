@@ -510,12 +510,14 @@ where
 
     let arg_decl = annotation_vec
         .clone()
+        .then(just(LexerToken::Mut).or_not())
         .then(ident)
         .then_ignore(just(LexerToken::Delim(':')))
         .then(ty)
-        .map_with(|((annotations, name), ty), m| AstVariable {
+        .map_with(|(((annotations, mut_), name), ty), m| AstVariable {
             name: name.to_string(),
             ty,
+            mutable: mut_ == Some(LexerToken::Mut),
             init: None,
             annotations,
             attachments: any_map![mk_span(m)],
@@ -545,12 +547,14 @@ where
 
     let global = annotation_vec
         .clone()
+        .then(just(LexerToken::Mut).or_not())
         .then(ident)
         .then_ignore(just(LexerToken::Op("=")))
         .then(constant)
-        .map_with(|((annotations, name), value), m| AstVariable {
+        .map_with(|(((annotations, mut_), name), value), m| AstVariable {
             name: name.to_string(),
             ty: value.ty(),
+            mutable: mut_ == Some(LexerToken::Mut),
             init: Some(value),
             annotations,
             attachments: any_map![mk_span(m)],
@@ -887,6 +891,7 @@ mod tests {
                         args: vec![AstVariable {
                             name: "c".to_string(),
                             ty: ExpressionType::Complex,
+                            mutable: false,
                             init: None,
                             annotations: vec![AstAnnotation {
                                 name: "c".to_string(),
@@ -1045,7 +1050,7 @@ mod tests {
 
     #[test]
     fn test_while_block() {
-        let code = "fn main(x: Integer) { while (x > 1) x-- }";
+        let code = "fn main(mut x: Integer) { while (x > 1) x-- }";
         let source = ProgramSource::new(code, "test-impl");
 
         let ast = parse(source, 24);
@@ -1057,6 +1062,7 @@ mod tests {
                     args: vec![AstVariable {
                         name: "x".to_string(),
                         ty: ExpressionType::Integer,
+                        mutable: true,
                         init: None,
                         annotations: Default::default(),
                         attachments: Default::default(),
@@ -1104,6 +1110,7 @@ mod tests {
                         AstVariable {
                             name: "x".to_string(),
                             ty: ExpressionType::Integer,
+                            mutable: false,
                             init: None,
                             annotations: Default::default(),
                             attachments: Default::default(),
@@ -1111,6 +1118,7 @@ mod tests {
                         AstVariable {
                             name: "c".to_string(),
                             ty: ExpressionType::Complex,
+                            mutable: false,
                             init: None,
                             annotations: Default::default(),
                             attachments: Default::default(),
