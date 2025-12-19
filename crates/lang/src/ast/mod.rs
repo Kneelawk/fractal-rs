@@ -128,6 +128,7 @@ pub enum AstExpressionImpl {
     /// Result is the same value being assigned
     VarAssign {
         name: String,
+        ty: Option<BinaryOpType>,
         assign: Box<AstExpression>,
     },
     /// Declares and assigns to a variable
@@ -251,13 +252,17 @@ pub enum BinaryOpType {
     Minus,
     Times,
     Divide,
+    Modulo,
     Power,
+    LeftShift,
+    RightShift,
     Equals,
     NotEquals,
     And,
     AndLazy,
     Or,
     OrLazy,
+    Xor,
     LessThan,
     LessEqual,
     GreaterThan,

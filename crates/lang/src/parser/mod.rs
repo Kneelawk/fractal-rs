@@ -11,7 +11,7 @@ use crate::parser::lexer::{LexerToken, lexer};
 use crate::parser::span::mk_span;
 use crate::{ExpressionType, ExpressionValue, ast_expr};
 use chumsky::input::ValueInput;
-use chumsky::pratt::{infix, left, prefix, right};
+use chumsky::pratt::{infix, left, postfix, prefix, right};
 use chumsky::prelude::*;
 use fractal_rs_3_utils::any_map;
 use fractal_rs_3_utils::anymap::AnyMap;
@@ -79,24 +79,38 @@ where
 {
     let lifetime = select! { LexerToken::Lifetime(name) => name }.labelled("lifetime");
 
+    let assign_type = select! {
+        LexerToken::Op("=") => None,
+        LexerToken::Op("+=") => Some(BinaryOpType::Plus),
+        LexerToken::Op("-=") => Some(BinaryOpType::Minus),
+        LexerToken::Op("*=") => Some(BinaryOpType::Times),
+        LexerToken::Op("/=") => Some(BinaryOpType::Divide),
+        LexerToken::Op("%=") => Some(BinaryOpType::Modulo),
+        LexerToken::Op("^=") => Some(BinaryOpType::Power),
+        LexerToken::Op("<<=") => Some(BinaryOpType::LeftShift),
+        LexerToken::Op(">>=") => Some(BinaryOpType::RightShift),
+        LexerToken::Op("&=") => Some(BinaryOpType::And),
+        LexerToken::Op("~=") => Some(BinaryOpType::Xor),
+        LexerToken::Op("|=") => Some(BinaryOpType::Or),
+    };
+
     recursive(move |expr| {
+        let stmt = expr
+            .clone()
+            .then(just(LexerToken::Terminator).or_not())
+            .map_with(|(expr, term), m| {
+                if term == Some(LexerToken::Terminator) {
+                    ast_expr!(Terminated(Box::new(expr))).with_attachment(mk_span(m))
+                } else {
+                    expr
+                }
+            });
+
         let block = lifetime
             .then_ignore(just(LexerToken::Delim(':')))
             .or_not()
             .then_ignore(just(LexerToken::Delim('{')))
-            .then(
-                expr.clone()
-                    .then(just(LexerToken::Terminator).or_not())
-                    .map_with(|(expr, term), m| {
-                        if term == Some(LexerToken::Terminator) {
-                            ast_expr!(Terminated(Box::new(expr))).with_attachment(mk_span(m))
-                        } else {
-                            expr
-                        }
-                    })
-                    .repeated()
-                    .collect::<Vec<_>>(),
-            )
+            .then(stmt.clone().repeated().collect::<Vec<_>>())
             .then_ignore(just(LexerToken::Delim('}')))
             .map_with(|(name, exprs), m| {
                 AstExpression::new(AstExpressionImpl::Block(AstBlock {
@@ -114,30 +128,44 @@ where
             .collect::<Vec<_>>();
 
         let let_ = just(LexerToken::Let)
-            .ignore_then(ident)
+            .ignore_then(just(LexerToken::Mut).or_not())
+            .then(ident)
             .then_ignore(just(LexerToken::Op("=")))
             .then(expr.clone())
-            .map_with(|(name, value), m| {
+            .map_with(|((mut_, name), value), m| {
                 AstExpression::new(AstExpressionImpl::VarDeclareAssign {
                     name: name.to_string(),
                     assign: Box::new(value),
-                    mutable: false,
+                    mutable: mut_ == Some(LexerToken::Mut),
                 })
                 .with_attachment(mk_span(m))
             });
+
+        let assign =
+            ident
+                .then(assign_type)
+                .then(expr.clone())
+                .map_with(|((name, ty), expr), m| {
+                    ast_expr!(VarAssign {
+                        name: name.to_string(),
+                        ty,
+                        assign: Box::new(expr),
+                    })
+                    .with_attachment(mk_span(m))
+                });
 
         let if_ = just(LexerToken::If)
             .ignore_then(
                 expr.clone()
                     .delimited_by(just(LexerToken::Delim('(')), just(LexerToken::Delim(')'))),
             )
-            .then(expr.clone())
+            .then(stmt.clone())
             .map_with(|(condition, true_expr), m| AstIfBlock {
                 condition: Box::new(condition),
                 block: Box::new(true_expr),
                 attachments: any_map![mk_span(m)],
             })
-            .then(just(LexerToken::Else).ignore_then(expr.clone()).or_not())
+            .then(just(LexerToken::Else).ignore_then(stmt.clone()).or_not())
             .map_with(|(if_block, false_expr), m| {
                 ast_expr!(IfElse {
                     start: if_block,
@@ -165,9 +193,9 @@ where
             .ignore_then(
                 expr.clone()
                     .then(
-                        just(LexerToken::Delim(';'))
+                        just(LexerToken::Terminator)
                             .ignore_then(expr.clone())
-                            .then_ignore(just(LexerToken::Delim(';')))
+                            .then_ignore(just(LexerToken::Terminator))
                             .then(expr.clone()),
                     )
                     .delimited_by(just(LexerToken::Delim('(')), just(LexerToken::Delim(')'))),
@@ -184,7 +212,7 @@ where
             });
 
         let parens = just(LexerToken::Delim('('))
-            .ignore_then(expr.clone())
+            .ignore_then(stmt.clone())
             .then_ignore(just(LexerToken::Delim(')')))
             .map_with(|expr, m| expr.with_attachment(mk_span(m)));
 
@@ -212,6 +240,7 @@ where
             .or(while_)
             .or(for_)
             .or(call)
+            .or(assign)
             .or(local)
             .or(parens)
             .or(block)
@@ -237,54 +266,113 @@ where
         let op = |s| just(LexerToken::Op(s));
 
         atom.pratt((
-            infix(right(4), op("^"), |a, _, b, m| {
-                AstExpression::new(AstExpressionImpl::BinaryOp {
+            infix(right(13), op("^"), |a, _, b, m| {
+                ast_expr!(BinaryOp {
                     ty: BinaryOpType::Power,
                     left: Box::new(a),
                     right: Box::new(b),
                 })
                 .with_attachment(mk_span(m))
             }),
-            prefix(3, op("-"), |_, e, m| {
-                AstExpression::new(AstExpressionImpl::UnaryOp {
+            postfix(12, op("++"), |e, _, m| {
+                ast_expr!(UnaryOp {
+                    ty: UnaryOpType::PostIncrement,
+                    expr: Box::new(e),
+                })
+                .with_attachment(mk_span(m))
+            }),
+            postfix(12, op("--"), |e, _, m| {
+                ast_expr!(UnaryOp {
+                    ty: UnaryOpType::PostDecrement,
+                    expr: Box::new(e),
+                })
+                .with_attachment(mk_span(m))
+            }),
+            prefix(11, op("++"), |_, e, m| {
+                ast_expr!(UnaryOp {
+                    ty: UnaryOpType::PreIncrement,
+                    expr: Box::new(e)
+                })
+                .with_attachment(mk_span(m))
+            }),
+            prefix(11, op("--"), |_, e, m| {
+                ast_expr!(UnaryOp {
+                    ty: UnaryOpType::PreDecrement,
+                    expr: Box::new(e)
+                })
+                .with_attachment(mk_span(m))
+            }),
+            prefix(11, op("-"), |_, e, m| {
+                ast_expr!(UnaryOp {
                     ty: UnaryOpType::Minus,
                     expr: Box::new(e),
                 })
                 .with_attachment(mk_span(m))
             }),
-            infix(left(2), op("*"), |a, _, b, m| {
-                AstExpression::new(AstExpressionImpl::BinaryOp {
+            prefix(11, op("!"), |_, e, m| {
+                ast_expr!(UnaryOp {
+                    ty: UnaryOpType::Not,
+                    expr: Box::new(e),
+                })
+                .with_attachment(mk_span(m))
+            }),
+            infix(left(10), op("*"), |a, _, b, m| {
+                ast_expr!(BinaryOp {
                     ty: BinaryOpType::Times,
                     left: Box::new(a),
                     right: Box::new(b),
                 })
                 .with_attachment(mk_span(m))
             }),
-            infix(left(2), op("/"), |a, _, b, m| {
-                AstExpression::new(AstExpressionImpl::BinaryOp {
+            infix(left(10), op("/"), |a, _, b, m| {
+                ast_expr!(BinaryOp {
                     ty: BinaryOpType::Divide,
                     left: Box::new(a),
                     right: Box::new(b),
                 })
                 .with_attachment(mk_span(m))
             }),
-            infix(left(1), op("+"), |a, _, b, m| {
-                AstExpression::new(AstExpressionImpl::BinaryOp {
+            infix(left(10), op("%"), |a, _, b, m| {
+                ast_expr!(BinaryOp {
+                    ty: BinaryOpType::Modulo,
+                    left: Box::new(a),
+                    right: Box::new(b),
+                })
+                .with_attachment(mk_span(m))
+            }),
+            infix(left(9), op("+"), |a, _, b, m| {
+                ast_expr!(BinaryOp {
                     ty: BinaryOpType::Plus,
                     left: Box::new(a),
                     right: Box::new(b),
                 })
                 .with_attachment(mk_span(m))
             }),
-            infix(left(1), op("-"), |a, _, b, m| {
-                AstExpression::new(AstExpressionImpl::BinaryOp {
+            infix(left(9), op("-"), |a, _, b, m| {
+                ast_expr!(BinaryOp {
                     ty: BinaryOpType::Minus,
                     left: Box::new(a),
                     right: Box::new(b),
                 })
                 .with_attachment(mk_span(m))
             }),
-            infix(left(0), op("<="), |a, _, b, m| {
+            infix(left(8), op("<<"), |a, _, b, m| {
+                ast_expr!(BinaryOp {
+                    ty: BinaryOpType::LeftShift,
+                    left: Box::new(a),
+                    right: Box::new(b),
+                })
+                .with_attachment(mk_span(m))
+            }),
+            infix(left(8), op(">>"), |a, _, b, m| {
+                ast_expr!(BinaryOp {
+                    ty: BinaryOpType::RightShift,
+                    left: Box::new(a),
+                    right: Box::new(b),
+                })
+                .with_attachment(mk_span(m))
+            }),
+            infix(left(7), op("<="), |a, _, b, m| {
                 ast_expr!(BinaryOp {
                     ty: BinaryOpType::LessEqual,
                     left: Box::new(a),
@@ -292,7 +380,7 @@ where
                 })
                 .with_attachment(mk_span(m))
             }),
-            infix(left(0), op(">="), |a, _, b, m| {
+            infix(left(7), op(">="), |a, _, b, m| {
                 ast_expr!(BinaryOp {
                     ty: BinaryOpType::GreaterEqual,
                     left: Box::new(a),
@@ -300,7 +388,7 @@ where
                 })
                 .with_attachment(mk_span(m))
             }),
-            infix(left(0), op("<"), |a, _, b, m| {
+            infix(left(7), op("<"), |a, _, b, m| {
                 ast_expr!(BinaryOp {
                     ty: BinaryOpType::LessThan,
                     left: Box::new(a),
@@ -308,9 +396,65 @@ where
                 })
                 .with_attachment(mk_span(m))
             }),
-            infix(left(0), op(">"), |a, _, b, m| {
+            infix(left(7), op(">"), |a, _, b, m| {
                 ast_expr!(BinaryOp {
                     ty: BinaryOpType::GreaterThan,
+                    left: Box::new(a),
+                    right: Box::new(b),
+                })
+                .with_attachment(mk_span(m))
+            }),
+            infix(left(6), op("=="), |a, _, b, m| {
+                ast_expr!(BinaryOp {
+                    ty: BinaryOpType::Equals,
+                    left: Box::new(a),
+                    right: Box::new(b),
+                })
+                .with_attachment(mk_span(m))
+            }),
+            infix(left(6), op("!="), |a, _, b, m| {
+                ast_expr!(BinaryOp {
+                    ty: BinaryOpType::NotEquals,
+                    left: Box::new(a),
+                    right: Box::new(b),
+                })
+                .with_attachment(mk_span(m))
+            }),
+            infix(left(5), op("&"), |a, _, b, m| {
+                ast_expr!(BinaryOp {
+                    ty: BinaryOpType::And,
+                    left: Box::new(a),
+                    right: Box::new(b),
+                })
+                .with_attachment(mk_span(m))
+            }),
+            infix(left(4), op("~"), |a, _, b, m| {
+                ast_expr!(BinaryOp {
+                    ty: BinaryOpType::Xor,
+                    left: Box::new(a),
+                    right: Box::new(b),
+                })
+                .with_attachment(mk_span(m))
+            }),
+            infix(left(3), op("|"), |a, _, b, m| {
+                ast_expr!(BinaryOp {
+                    ty: BinaryOpType::Or,
+                    left: Box::new(a),
+                    right: Box::new(b),
+                })
+                .with_attachment(mk_span(m))
+            }),
+            infix(left(2), op("&&"), |a, _, b, m| {
+                ast_expr!(BinaryOp {
+                    ty: BinaryOpType::AndLazy,
+                    left: Box::new(a),
+                    right: Box::new(b),
+                })
+                .with_attachment(mk_span(m))
+            }),
+            infix(left(1), op("||"), |a, _, b, m| {
+                ast_expr!(BinaryOp {
+                    ty: BinaryOpType::OrLazy,
                     left: Box::new(a),
                     right: Box::new(b),
                 })
@@ -441,7 +585,6 @@ where
 
 #[cfg(test)]
 mod tests {
-    use crate::ast::UnaryOpType::PreIncrement;
     use crate::ast::{
         AstAnnotation, AstAnnotationArg, AstBlock, AstExpression, AstExpressionImpl, AstFunction,
         AstIfBlock, AstProgram, AstVariable, BinaryOpType, UnaryOpType,
@@ -618,6 +761,8 @@ mod tests {
             },
             ..Default::default()
         };
+
+        eprintln!("code:`{}`,\nast:\n{:#?}", code, ast);
 
         assert_eq!(expected, ast, "Code: `{}`", code);
     }
@@ -927,13 +1072,9 @@ mod tests {
                                     left: Box::new(ast_expr!(VarUse("x".to_string()))),
                                     right: Box::new(ast_expr!(Constant(ExpressionValue::Integer(1)))),
                                 })),
-                                block: Box::new(ast_expr!(VarAssign {
-                                    name: "x".to_string(),
-                                    assign: Box::new(ast_expr!(BinaryOp {
-                                        ty: BinaryOpType::Minus,
-                                        left: Box::new(ast_expr!(VarUse("x".to_string()))),
-                                        right: Box::new(ast_expr!(Constant(ExpressionValue::Integer(1))))
-                                    }))
+                                block: Box::new(ast_expr!(UnaryOp {
+                                    ty: UnaryOpType::PostDecrement,
+                                    expr: Box::new(ast_expr!(VarUse("x".to_string())))
                                 }))
                             })
                         ],
@@ -951,7 +1092,7 @@ mod tests {
 
     #[test]
     fn test_for_block() {
-        let code = "fn main(x: Integer, c: Complex) { let mut z = 0.0; for (let mut i = 0; i < x; i++) z = z ^ 2.0 + c; z }";
+        let code = "fn main(x: Integer, c: Complex) { let mut z = 0.0; for (let mut n = 0; n < x; n++) z = z ^ 2.0 + c; z }";
         let source = ProgramSource::new(code, "test-impl");
 
         let ast = parse(source, 24);
@@ -980,28 +1121,29 @@ mod tests {
                     expr: ast_expr!(Block(AstBlock {
                         name: None,
                         exprs: vec![
-                            ast_expr!(VarDeclareAssign {
+                            ast_expr!(Terminated(Box::new(ast_expr!(VarDeclareAssign {
                                 name: "z".to_string(),
                                 mutable: true,
                                 assign: Box::new(ast_expr!(Constant(ExpressionValue::Complex(Complex::with_val(24, (0.0, 0.0)))))),
-                            }),
-                            ast_expr!(For {
+                            })))),
+                            ast_expr!(Terminated(Box::new(ast_expr!(For {
                                 declares: Box::new(ast_expr!(VarDeclareAssign {
-                                    name: "i".to_string(),
+                                    name: "n".to_string(),
                                     mutable: true,
                                     assign: Box::new(ast_expr!(Constant(ExpressionValue::Integer(0)))),
                                 })),
                                 condition: Box::new(ast_expr!(BinaryOp {
                                     ty: BinaryOpType::LessThan,
-                                    left: Box::new(ast_expr!(VarUse("i".to_string()))),
+                                    left: Box::new(ast_expr!(VarUse("n".to_string()))),
                                     right: Box::new(ast_expr!(VarUse("x".to_string()))),
                                 })),
                                 after: Box::new(ast_expr!(UnaryOp {
-                                    ty: PreIncrement,
-                                    expr: Box::new(ast_expr!(VarUse("i".to_string())))
+                                    ty: UnaryOpType::PostIncrement,
+                                    expr: Box::new(ast_expr!(VarUse("n".to_string())))
                                 })),
-                                block: Box::new(ast_expr!(Terminated(Box::new(ast_expr!(VarAssign {
+                                block: Box::new(ast_expr!(VarAssign {
                                     name: "z".to_string(),
+                                    ty: None,
                                     assign: Box::new(ast_expr!(BinaryOp {
                                         ty: BinaryOpType::Plus,
                                         left: Box::new(ast_expr!(BinaryOp {
@@ -1011,8 +1153,8 @@ mod tests {
                                         })),
                                         right: Box::new(ast_expr!(VarUse("c".to_string())))
                                     }))
-                                })))))
-                            }),
+                                }))
+                            })))),
                             ast_expr!(VarUse("z".to_string()))
                         ],
                         attachments: Default::default(),

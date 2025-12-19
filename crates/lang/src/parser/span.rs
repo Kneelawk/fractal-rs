@@ -6,6 +6,7 @@ use chumsky::prelude::SimpleSpan;
 use serde::ser::SerializeMap;
 use serde::{Serialize, Serializer};
 use std::collections::{BTreeMap, btree_map};
+use std::fmt::{Debug, Formatter};
 use std::ops::Range;
 use std::sync::Arc;
 
@@ -114,10 +115,19 @@ struct ProgramSourceImpl {
 }
 
 /// This type is usually an attachment to [`AstExpression`]s
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct ProgramSpan {
     pub source: ProgramSource,
     pub range: Range<usize>,
+}
+
+impl Debug for ProgramSpan {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        f.debug_tuple("ProgramSpan")
+            .field(&self.range)
+            .field(&AsRef::<str>::as_ref(self))
+            .finish()
+    }
 }
 
 impl ariadne::Span for ProgramSpan {

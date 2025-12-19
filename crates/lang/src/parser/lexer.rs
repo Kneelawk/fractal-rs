@@ -145,7 +145,7 @@ pub fn lexer<'src>(
     let real_num = num.map(LexerToken::RealNumber);
     let imag_num = num.then_ignore(just('i')).map(LexerToken::ImaginaryNumber);
 
-    let op = one_of("+-*/^!=|&<>")
+    let op = one_of("+-*/%^!=|&<>!~")
         .repeated()
         .at_least(1)
         .to_slice()
