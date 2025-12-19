@@ -158,7 +158,7 @@ where
                 expr.clone()
                     .delimited_by(just(LexerToken::Delim('(')), just(LexerToken::Delim(')'))),
             )
-            .then(stmt.clone())
+            .then(expr.clone())
             .map_with(|(condition, true_expr), m| AstIfBlock {
                 condition: Box::new(condition),
                 block: Box::new(true_expr),
