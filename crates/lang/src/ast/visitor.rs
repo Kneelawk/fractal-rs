@@ -27,7 +27,7 @@ pub trait AstVisitor<T: VisitResult> {
 
     fn visit_variable(&mut self, variable: &AstVariable) -> T::Variable;
 
-    fn visit_annotation(&mut self, variable: &AstAnnotation) -> T::Annotation;
+    fn visit_annotation(&mut self, annotation: &AstAnnotation) -> T::Annotation;
 }
 
 /// A visitor that mutates an ast as it walks it
@@ -44,7 +44,7 @@ pub trait AstMutator<T: VisitResult> {
 
     fn visit_variable(&mut self, variable: &mut AstVariable) -> T::Variable;
 
-    fn visit_annotation(&mut self, variable: &mut AstAnnotation) -> T::Annotation;
+    fn visit_annotation(&mut self, annotation: &mut AstAnnotation) -> T::Annotation;
 }
 
 impl VisitResult for () {

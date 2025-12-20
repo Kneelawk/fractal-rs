@@ -1,6 +1,6 @@
 //! Fractal program AST constructs.
 
-mod visitor;
+pub mod visitor;
 
 use crate::{ExpressionValue, ExpressionType};
 use fractal_rs_3_utils::anymap::{AnyMap, DebugCloneAnySync};
@@ -170,9 +170,9 @@ pub enum AstExpressionImpl {
     ///
     /// Result is Unit
     For {
-        declares: Box<AstExpression>,
+        declares: Option<Box<AstExpression>>,
         condition: Box<AstExpression>,
-        after: Box<AstExpression>,
+        after: Option<Box<AstExpression>>,
         block: Box<AstExpression>,
     },
     /// Error: Cannot be run

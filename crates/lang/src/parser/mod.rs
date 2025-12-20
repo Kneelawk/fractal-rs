@@ -10,6 +10,7 @@ use crate::ast::{
 use crate::parser::lexer::{LexerToken, lexer};
 use crate::parser::span::mk_span;
 use crate::{ExpressionType, ExpressionValue, ast_expr};
+use ariadne::{Label, Report, ReportKind, Source};
 use chumsky::input::ValueInput;
 use chumsky::pratt::{infix, left, postfix, prefix, right};
 use chumsky::prelude::*;
@@ -36,15 +37,39 @@ pub fn parse(source: ProgramSource, prec: u32) -> AstProgram {
 
     let parser = parser(prec).with_ctx(source.clone());
 
-    Parser::<_, _, ProgramExtra>::parse(
+    let res = Parser::<_, _, ProgramExtra>::parse(
         &parser,
         tokens
             .as_slice()
             .map((tokens.len()..tokens.len()).into(), |spanned| {
                 (&spanned.0, &spanned.1)
             }),
-    )
-    .unwrap()
+    );
+
+    if res.has_errors() {
+        for error in res.errors() {
+            Report::build(
+                ReportKind::Error,
+                (source.source(), error.span().into_range()),
+            )
+            .with_message("Syntax error")
+            .with_label(
+                Label::new((source.source(), error.span().into_range()))
+                    .with_message(error.reason().to_string())
+                    .with_color(ariadne::Color::Red),
+            )
+            .finish()
+            .eprint((source.source(), Source::from(source.code())))
+            .unwrap();
+        }
+
+        panic!(
+            "Result has error! Check above for details. Source: `{}`",
+            source.code()
+        );
+    }
+
+    res.unwrap()
 }
 
 fn ident<'src, I>() -> impl Parser<'src, I, &'src str, ProgramExtra<'src>> + Copy
@@ -191,20 +216,21 @@ where
         let for_ = just(LexerToken::For)
             .ignore_then(
                 expr.clone()
+                    .or_not()
                     .then(
                         just(LexerToken::Terminator)
                             .ignore_then(expr.clone())
                             .then_ignore(just(LexerToken::Terminator))
-                            .then(expr.clone()),
+                            .then(expr.clone().or_not()),
                     )
                     .delimited_by(just(LexerToken::Delim('(')), just(LexerToken::Delim(')'))),
             )
             .then(expr.clone())
             .map_with(|((declares, (condition, after)), loop_expr), m| {
                 ast_expr!(For {
-                    declares: Box::new(declares),
+                    declares: declares.map(Box::new),
                     condition: Box::new(condition),
-                    after: Box::new(after),
+                    after: after.map(Box::new),
                     block: Box::new(loop_expr),
                 })
                 .with_attachment(mk_span(m))
@@ -232,12 +258,33 @@ where
             })
             .labelled("local");
 
+        let break_ = just(LexerToken::Break)
+            .ignore_then(lifetime.or_not())
+            .map_with(|name, m| {
+                ast_expr!(Break(name.map(String::from))).with_attachment(mk_span(m))
+            });
+
+        let continue_ = just(LexerToken::Continue)
+            .ignore_then(lifetime.or_not())
+            .map_with(|name, m| {
+                ast_expr!(Continue(name.map(String::from))).with_attachment(mk_span(m))
+            });
+
+        let return_ = just(LexerToken::Return)
+            .ignore_then(expr.clone())
+            .map_with(|expr, m| ast_expr!(Return(Box::new(expr))).with_attachment(mk_span(m)));
+
         let atom = constant
-            .map(|c| AstExpression::new(AstExpressionImpl::Constant(c)))
+            .map_with(|c, m| {
+                AstExpression::new(AstExpressionImpl::Constant(c)).with_attachment(mk_span(m))
+            })
             .or(let_)
             .or(if_)
             .or(while_)
             .or(for_)
+            .or(break_)
+            .or(continue_)
+            .or(return_)
             .or(call)
             .or(assign)
             .or(local)
@@ -547,18 +594,23 @@ where
 
     let global = annotation_vec
         .clone()
+        .then_ignore(just(LexerToken::Let))
         .then(just(LexerToken::Mut).or_not())
         .then(ident)
-        .then_ignore(just(LexerToken::Op("=")))
-        .then(constant)
-        .map_with(|(((annotations, mut_), name), value), m| AstVariable {
-            name: name.to_string(),
-            ty: value.ty(),
-            mutable: mut_ == Some(LexerToken::Mut),
-            init: Some(value),
-            annotations,
-            attachments: any_map![mk_span(m)],
-        });
+        .then_ignore(just(LexerToken::Delim(':')))
+        .then(ty)
+        .then(just(LexerToken::Op("=")).ignore_then(constant).or_not())
+        .then_ignore(just(LexerToken::Terminator).or_not())
+        .map_with(
+            |((((annotations, mut_), name), ty), value), m| AstVariable {
+                name: name.to_string(),
+                ty,
+                mutable: mut_ == Some(LexerToken::Mut),
+                init: value,
+                annotations,
+                attachments: any_map![mk_span(m)],
+            },
+        );
 
     global
         .map(ProgramComponent::Global)
@@ -588,12 +640,13 @@ where
 
 #[cfg(test)]
 mod tests {
+    use crate::ast::visitor::AstVisitor;
     use crate::ast::{
         AstAnnotation, AstAnnotationArg, AstBlock, AstExpression, AstExpressionImpl, AstFunction,
         AstIfBlock, AstProgram, AstVariable, BinaryOpType, UnaryOpType,
     };
-    use crate::parser::parse;
     use crate::parser::span::ProgramSource;
+    use crate::parser::{ProgramSpan, parse};
     use crate::{ExpressionType, ExpressionValue, ast_expr};
     use fractal_rs_3_utils::hash_map;
     use pretty_assertions::assert_eq;
@@ -1134,20 +1187,20 @@ mod tests {
                                 assign: Box::new(ast_expr!(Constant(ExpressionValue::Complex(Complex::with_val(24, (0.0, 0.0)))))),
                             })))),
                             ast_expr!(Terminated(Box::new(ast_expr!(For {
-                                declares: Box::new(ast_expr!(VarDeclareAssign {
+                                declares: Some(Box::new(ast_expr!(VarDeclareAssign {
                                     name: "n".to_string(),
                                     mutable: true,
                                     assign: Box::new(ast_expr!(Constant(ExpressionValue::Integer(0)))),
-                                })),
+                                }))),
                                 condition: Box::new(ast_expr!(BinaryOp {
                                     ty: BinaryOpType::LessThan,
                                     left: Box::new(ast_expr!(VarUse("n".to_string()))),
                                     right: Box::new(ast_expr!(VarUse("x".to_string()))),
                                 })),
-                                after: Box::new(ast_expr!(UnaryOp {
+                                after: Some(Box::new(ast_expr!(UnaryOp {
                                     ty: UnaryOpType::PostIncrement,
                                     expr: Box::new(ast_expr!(VarUse("n".to_string())))
-                                })),
+                                }))),
                                 block: Box::new(ast_expr!(VarAssign {
                                     name: "z".to_string(),
                                     ty: None,
@@ -1174,5 +1227,252 @@ mod tests {
         };
 
         assert_eq!(expected, ast, "Code `{}`", code);
+    }
+
+    #[derive(Debug, Default)]
+    struct SpanChecker {
+        path: String,
+        len_stack: Vec<usize>,
+        errors: Vec<String>,
+    }
+
+    impl SpanChecker {
+        fn push(&mut self, s: impl ToString) {
+            self.len_stack.push(self.path.len());
+            self.path += &s.to_string();
+        }
+
+        fn pop(&mut self) {
+            if let Some(pop) = self.len_stack.pop() {
+                self.path.truncate(pop);
+            }
+        }
+    }
+
+    impl AstVisitor<()> for SpanChecker {
+        fn visit_program(&mut self, program: &AstProgram) {
+            if !program.attachments.contains::<ProgramSpan>() {
+                self.errors.push(self.path.clone());
+            }
+
+            for function in program.functions.values() {
+                self.push(format!("fn:{}/", &function.name));
+                self.visit_function(function);
+                self.pop();
+            }
+
+            for global in program.globals.values() {
+                self.push(format!("global:{}/", &global.name));
+                self.visit_variable(global);
+                self.pop();
+            }
+        }
+
+        fn visit_function(&mut self, function: &AstFunction) {
+            if !function.attachments.contains::<ProgramSpan>() {
+                self.errors.push(self.path.clone());
+            }
+
+            for arg in function.args.iter() {
+                self.push(format!("arg:{}/", &arg.name));
+                self.visit_variable(arg);
+                self.pop();
+            }
+
+            self.push("expr/");
+            self.visit_expression(&function.expr);
+            self.pop();
+
+            for annotation in function.annotations.iter() {
+                self.push(format!("annotation:{}/", &annotation.name));
+                self.visit_annotation(annotation);
+                self.pop();
+            }
+        }
+
+        fn visit_expression(&mut self, expression: &AstExpression) {
+            if !expression.attachments.contains::<ProgramSpan>() {
+                self.errors.push(self.path.clone());
+            }
+
+            match &expression.expr {
+                AstExpressionImpl::Block(block) => {
+                    self.push("block/");
+                    self.visit_block(block);
+                    self.pop();
+                }
+                AstExpressionImpl::Constant(_) => {}
+                AstExpressionImpl::BinaryOp { left, right, .. } => {
+                    self.push("binary-op:left/");
+                    self.visit_expression(left);
+                    self.pop();
+                    self.push("binary-op:right/");
+                    self.visit_expression(right);
+                    self.pop();
+                }
+                AstExpressionImpl::UnaryOp { expr, .. } => {
+                    self.push("unary-op/");
+                    self.visit_expression(expr);
+                    self.pop();
+                }
+                AstExpressionImpl::VarDeclare { .. } => {}
+                AstExpressionImpl::VarAssign { assign, .. } => {
+                    self.push("assign/");
+                    self.visit_expression(assign);
+                    self.pop();
+                }
+                AstExpressionImpl::VarDeclareAssign { assign, .. } => {
+                    self.push("declare-assign/");
+                    self.visit_expression(assign);
+                    self.pop();
+                }
+                AstExpressionImpl::VarUse(_) => {}
+                AstExpressionImpl::FnCall { args, .. } => {
+                    for (index, arg) in args.iter().enumerate() {
+                        self.push(format!("fn-call:arg:{}/", index));
+                        self.visit_expression(arg);
+                        self.pop();
+                    }
+                }
+                AstExpressionImpl::Terminated(expr) => {
+                    self.push("terminated/");
+                    self.visit_expression(expr);
+                    self.pop();
+                }
+                AstExpressionImpl::Return(expr) => {
+                    self.push("return/");
+                    self.visit_expression(expr);
+                    self.pop();
+                }
+                AstExpressionImpl::Break(_) => {}
+                AstExpressionImpl::Continue(_) => {}
+                AstExpressionImpl::IfElse { start, chain, end } => {
+                    self.push("if-else:if/");
+                    self.visit_if_block(start);
+                    self.pop();
+
+                    for (index, link) in chain.iter().enumerate() {
+                        self.push(format!("if-else:chain:{}/", index));
+                        self.visit_if_block(link);
+                        self.pop();
+                    }
+
+                    if let Some(end) = end {
+                        self.push("if-else:else/");
+                        self.visit_expression(end);
+                        self.pop();
+                    }
+                }
+                AstExpressionImpl::While { condition, block } => {
+                    self.push("while:condition/");
+                    self.visit_expression(condition);
+                    self.pop();
+                    self.push("while:contents/");
+                    self.visit_expression(block);
+                    self.pop();
+                }
+                AstExpressionImpl::For {
+                    declares,
+                    condition,
+                    after,
+                    block,
+                } => {
+                    if let Some(declares) = declares {
+                        self.push("for:declares/");
+                        self.visit_expression(declares);
+                        self.pop();
+                    }
+
+                    self.push("for:condition/");
+                    self.visit_expression(condition);
+                    self.pop();
+
+                    if let Some(after) = after {
+                        self.push("for:after/");
+                        self.visit_expression(after);
+                        self.pop();
+                    }
+
+                    self.push("for:contents/");
+                    self.visit_expression(block);
+                    self.pop();
+                }
+                AstExpressionImpl::Error => {}
+            }
+        }
+
+        fn visit_if_block(&mut self, if_block: &AstIfBlock) {
+            if !if_block.attachments.contains::<ProgramSpan>() {
+                self.errors.push(self.path.clone());
+            }
+
+            self.push("condition/");
+            self.visit_expression(&if_block.condition);
+            self.pop();
+
+            self.push("contents/");
+            self.visit_expression(&if_block.block);
+            self.pop();
+        }
+
+        fn visit_block(&mut self, block: &AstBlock) {
+            if !block.attachments.contains::<ProgramSpan>() {
+                self.errors.push(self.path.clone());
+            }
+
+            for (index, expr) in block.exprs.iter().enumerate() {
+                self.push(format!("expr:{}/", index));
+                self.visit_expression(expr);
+                self.pop();
+            }
+        }
+
+        fn visit_variable(&mut self, variable: &AstVariable) {
+            if !variable.attachments.contains::<ProgramSpan>() {
+                self.errors.push(self.path.clone());
+            }
+
+            for annotation in variable.annotations.iter() {
+                self.push(format!("annotation:{}/", &annotation.name));
+                self.visit_annotation(annotation);
+                self.pop();
+            }
+        }
+
+        fn visit_annotation(&mut self, annotation: &AstAnnotation) {
+            if !annotation.attachments.contains::<ProgramSpan>() {
+                self.errors.push(self.path.clone());
+            }
+        }
+    }
+
+    #[parameterized::parameterized(input = {
+        "fn main() 1 + 1",
+        "let r: Integer = 2;",
+        r#"#[input(iterations)] let max: Integer;
+        #[input(position)] let c: Complex;
+        #[main] fn main() {
+            let mut z = 0.0;
+            let mut n = 0;
+            for (; n < max; n++) {
+                z = z ^ 2 + c;
+                if (abs(z) > 4.0) {
+                    break;
+                }
+            }
+            n
+        }
+        "#
+    })]
+    fn test_spans(input: &str) {
+        eprintln!("code: `{}`", input);
+        let source = ProgramSource::new(input, "span-test-input");
+
+        let ast = parse(source, 24);
+
+        let mut checker = SpanChecker::default();
+        checker.visit_program(&ast);
+
+        pretty_assertions::assert_eq!(&Vec::<String>::new(), &checker.errors, "Code: `{}`", input);
     }
 }

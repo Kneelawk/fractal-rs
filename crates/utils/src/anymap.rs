@@ -117,6 +117,12 @@ impl<T: ?Sized + Any> AnyMap<T> {
             })
         })
     }
+
+    /// Checks whether this `AnyMap` contains the given type
+    pub fn contains<S: 'static>(&self) -> bool {
+        let id = TypeId::of::<S>();
+        self.map.contains_key(&id)
+    }
 }
 
 #[macro_export]

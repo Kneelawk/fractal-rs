@@ -3,6 +3,7 @@ use chumsky::input::MapExtra;
 use chumsky::prelude::*;
 use rug::Float;
 use rug::ops::CompleteRound;
+use std::fmt::{Display, Formatter};
 use std::ops::Mul;
 
 type LexerExtra<'src> = extra::Full<Rich<'src, char>, (), ()>;
@@ -30,6 +31,38 @@ pub enum LexerToken<'src> {
     Return,
     Break,
     Continue,
+}
+
+impl Display for LexerToken<'_> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            LexerToken::Boolean(val) => write!(f, "{}", val),
+            LexerToken::RealInteger(val) => write!(f, "{}", val),
+            LexerToken::RealNumber(val) => write!(f, "{}", val),
+            LexerToken::ImaginaryInteger(val) => write!(f, "{}i", val),
+            LexerToken::ImaginaryNumber(val) => write!(f, "{}i", val),
+            LexerToken::Color(val) => write!(
+                f,
+                "(r: {:.3}, g: {:.3}, b: {:.3}, a: {:.3})",
+                val[0], val[1], val[2], val[3]
+            ),
+            LexerToken::Op(val) => write!(f, "{}", val),
+            LexerToken::Delim(val) => write!(f, "{}", val),
+            LexerToken::Lifetime(val) => write!(f, "'{}", val),
+            LexerToken::Ident(val) => write!(f, "{}", val),
+            LexerToken::Terminator => write!(f, ";"),
+            LexerToken::Fn => write!(f, "fn"),
+            LexerToken::Let => write!(f, "let"),
+            LexerToken::Mut => write!(f, "mut"),
+            LexerToken::If => write!(f, "if"),
+            LexerToken::Else => write!(f, "else"),
+            LexerToken::While => write!(f, "while"),
+            LexerToken::For => write!(f, "for"),
+            LexerToken::Return => write!(f, "return"),
+            LexerToken::Break => write!(f, "break"),
+            LexerToken::Continue => write!(f, "continue"),
+        }
+    }
 }
 
 impl LexerToken<'_> {
