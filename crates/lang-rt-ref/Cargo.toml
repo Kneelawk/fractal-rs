@@ -1,0 +1,9 @@
+[package]
+name = "fractal-rs-3-lang-rt-ref"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+fractal-rs-3-lang.workspace = true
+
+thiserror.workspace = true

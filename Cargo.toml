@@ -3,12 +3,13 @@ members = [
     "crates/gen-api",
     "crates/gen-cpu",
     "crates/gen-gpu",
-    "crates/lang",
+    "crates/lang", "crates/lang-rt-ref",
     "crates/utils"
 ]
 resolver = "3"
 
 [workspace.dependencies]
+fractal-rs-3-lang = { path = "crates/lang" }
 fractal-rs-3-utils = { path = "crates/utils" }
 
 anyhow = "1"
@@ -27,4 +28,5 @@ regex = "1.11"
 rug = { version = "1.27", features = ["num-traits", "serde"] }
 serde = { version = "1", features = ["derive"] }
 streaming-iterator = "0.1"
+thiserror = "2"
 tokio = { version = "1.43", features = ["sync"] }

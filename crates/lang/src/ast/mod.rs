@@ -2,7 +2,7 @@
 
 pub mod visitor;
 
-use crate::{ExpressionValue, ExpressionType};
+use crate::{ExpressionType, ExpressionValue};
 use fractal_rs_3_utils::anymap::{AnyMap, DebugCloneAnySync};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
