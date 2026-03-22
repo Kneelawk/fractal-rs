@@ -2,10 +2,12 @@
 
 pub mod visitor;
 
+use crate::parser::ProgramSpan;
 use crate::{ExpressionType, ExpressionValue};
 use fractal_rs_3_utils::anymap::{AnyMap, DebugCloneAnySync};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::fmt::{Display, Formatter};
 
 #[macro_export]
 macro_rules! ast_expr {
@@ -91,6 +93,10 @@ impl AstExpression {
     pub fn with_attachment<A: DebugCloneAnySync>(mut self, attachment: A) -> Self {
         self.attachments.insert(attachment);
         self
+    }
+
+    pub fn span(&self) -> Option<&ProgramSpan> {
+        self.attachments.get::<ProgramSpan>()
     }
 }
 
@@ -268,6 +274,34 @@ pub enum BinaryOpType {
     LessEqual,
     GreaterThan,
     GreaterEqual,
+}
+
+impl Display for BinaryOpType {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        let s = match self {
+            BinaryOpType::Plus => "'+'",
+            BinaryOpType::Minus => "'-'",
+            BinaryOpType::Times => "'*'",
+            BinaryOpType::Divide => "'/'",
+            BinaryOpType::Modulo => "'%'",
+            BinaryOpType::Power => "'^'",
+            BinaryOpType::LeftShift => "'<<'",
+            BinaryOpType::RightShift => "'>>'",
+            BinaryOpType::Equals => "'=='",
+            BinaryOpType::NotEquals => "'!='",
+            BinaryOpType::And => "'&'",
+            BinaryOpType::AndLazy => "'&&'",
+            BinaryOpType::Or => "'|'",
+            BinaryOpType::OrLazy => "'||'",
+            BinaryOpType::Xor => "'~'",
+            BinaryOpType::LessThan => "'<'",
+            BinaryOpType::LessEqual => "'<='",
+            BinaryOpType::GreaterThan => "'>'",
+            BinaryOpType::GreaterEqual => "'>='",
+        };
+
+        write!(f, "{}", s)
+    }
 }
 
 #[derive(Debug, Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Serialize, Deserialize)]

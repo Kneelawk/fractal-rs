@@ -3,9 +3,9 @@
 
 use crate::ast::AstProgram;
 use crate::parser::{ProgramSourceSet, ProgramSpan};
+use rug::Complex;
 use serde::{Deserialize, Serialize};
 use std::fmt::{Debug, Display, Formatter};
-use rug::Complex;
 
 pub mod ast;
 pub mod parser;
@@ -33,6 +33,18 @@ pub enum ExpressionType {
     Unit,
 }
 
+impl Display for ExpressionType {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ExpressionType::Boolean => write!(f, "boolean"),
+            ExpressionType::Color => write!(f, "color"),
+            ExpressionType::Complex => write!(f, "complex"),
+            ExpressionType::Integer => write!(f, "integer"),
+            ExpressionType::Unit => write!(f, "unit"),
+        }
+    }
+}
+
 #[derive(Default, Debug, Clone, PartialEq)]
 pub enum ExpressionValue {
     Boolean(bool),
@@ -52,6 +64,31 @@ impl ExpressionValue {
             ExpressionValue::Complex(_) => ExpressionType::Complex,
             ExpressionValue::Integer(_) => ExpressionType::Integer,
             ExpressionValue::Unit => ExpressionType::Unit,
+        }
+    }
+}
+
+impl Display for ExpressionValue {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ExpressionValue::Boolean(b) => {
+                if *b {
+                    write!(f, "true")
+                } else {
+                    write!(f, "false")
+                }
+            }
+            ExpressionValue::Color(c) => write!(
+                f,
+                "#{}{}{}{}",
+                (c[0] * 255.0 + 0.5) as u8,
+                (c[0] * 255.0 + 0.5) as u8,
+                (c[0] * 255.0 + 0.5) as u8,
+                (c[0] * 255.0 + 0.5) as u8
+            ),
+            ExpressionValue::Complex(c) => write!(f, "{}", c),
+            ExpressionValue::Integer(i) => write!(f, "{}", i),
+            ExpressionValue::Unit => write!(f, "unit"),
         }
     }
 }

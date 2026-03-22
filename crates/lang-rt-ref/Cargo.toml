@@ -6,4 +6,5 @@ edition = "2024"
 [dependencies]
 fractal-rs-3-lang.workspace = true
 
+rug.workspace = true
 thiserror.workspace = true

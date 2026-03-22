@@ -297,7 +297,7 @@ where
                     (LexerToken::Delim('['), LexerToken::Delim(']')),
                     (LexerToken::Delim('{'), LexerToken::Delim('}')),
                 ],
-                |span| AstExpression::new(AstExpressionImpl::Error),
+                |span| AstExpression::new(AstExpressionImpl::Error), // FIXME: errors have no spans
             )))
             .recover_with(via_parser(nested_delimiters(
                 LexerToken::Delim('{'),
@@ -306,7 +306,7 @@ where
                     (LexerToken::Delim('['), LexerToken::Delim(']')),
                     (LexerToken::Delim('('), LexerToken::Delim(')')),
                 ],
-                |span| AstExpression::new(AstExpressionImpl::Error),
+                |span| AstExpression::new(AstExpressionImpl::Error), // FIXME: errors have no spans
             )));
 
         let op = |s| just(LexerToken::Op(s));

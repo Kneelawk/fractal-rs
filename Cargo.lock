@@ -176,6 +176,7 @@ name = "fractal-rs-3-lang-rt-ref"
 version = "0.1.0"
 dependencies = [
  "fractal-rs-3-lang",
+ "rug",
  "thiserror",
 ]
 
