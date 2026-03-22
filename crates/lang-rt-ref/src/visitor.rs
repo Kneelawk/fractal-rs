@@ -468,29 +468,29 @@ fn simple_ops2(
     };
 
     match a {
-        ExpressionValue::Color(ca) => match b {
-            ExpressionValue::Color(cb) => Ok(ExpressionValue::Color([
-                do_op(ca[0], cb[0]),
-                do_op(ca[1], cb[1]),
-                do_op(ca[2], cb[2]),
-                do_op(ca[3], cb[3]),
+        ExpressionValue::Color(a) => match b {
+            ExpressionValue::Color(b) => Ok(ExpressionValue::Color([
+                do_op(a[0], b[0]),
+                do_op(a[1], b[1]),
+                do_op(a[2], b[2]),
+                do_op(a[3], b[3]),
             ])),
-            ExpressionValue::Complex(cb) => {
-                let b = cb.real().to_f32();
+            ExpressionValue::Complex(b) => {
+                let b = b.real().to_f32();
                 Ok(ExpressionValue::Color([
-                    do_op(ca[0], b),
-                    do_op(ca[1], b),
-                    do_op(ca[2], b),
-                    do_op(ca[3], b),
+                    do_op(a[0], b),
+                    do_op(a[1], b),
+                    do_op(a[2], b),
+                    do_op(a[3], b),
                 ]))
             }
-            ExpressionValue::Integer(ib) => {
-                let b = ib as f32;
+            ExpressionValue::Integer(b) => {
+                let b = b as f32;
                 Ok(ExpressionValue::Color([
-                    do_op(ca[0], b),
-                    do_op(ca[1], b),
-                    do_op(ca[2], b),
-                    do_op(ca[3], b),
+                    do_op(a[0], b),
+                    do_op(a[1], b),
+                    do_op(a[2], b),
+                    do_op(a[3], b),
                 ]))
             }
             _ => Err(RuntimeError::incompatible_operator(
@@ -500,36 +500,30 @@ fn simple_ops2(
                 Some(span.clone()),
             )),
         },
-        ExpressionValue::Complex(ca) => match b {
-            ExpressionValue::Color(cb) => {
-                let a = ca.real().to_f32();
+        ExpressionValue::Complex(a) => match b {
+            ExpressionValue::Color(b) => {
+                let a = a.real().to_f32();
                 Ok(ExpressionValue::Color([
-                    do_op(a, cb[0]),
-                    do_op(a, cb[1]),
-                    do_op(a, cb[2]),
-                    do_op(a, cb[3]),
+                    do_op(a, b[0]),
+                    do_op(a, b[1]),
+                    do_op(a, b[2]),
+                    do_op(a, b[3]),
                 ]))
             }
-            ExpressionValue::Complex(cb) => match op {
-                BinaryOpType::Times => Ok(ExpressionValue::Complex(ca * cb)),
-                BinaryOpType::Divide => Ok(ExpressionValue::Complex(ca / cb)),
-                BinaryOpType::Modulo => Ok(ExpressionValue::Complex(Complex::with_val(
-                    prec,
-                    ca.real() % cb.real(),
-                ))),
-                BinaryOpType::Power => Ok(ExpressionValue::Complex(ca.pow(cb))),
+            ExpressionValue::Complex(b) => Ok(ExpressionValue::Complex(match op {
+                BinaryOpType::Times => a * b,
+                BinaryOpType::Divide => a / b,
+                BinaryOpType::Modulo => Complex::with_val(prec, a.real() % b.real()),
+                BinaryOpType::Power => a.pow(b),
                 _ => unreachable!("unsupported simple_ops2: {op}"),
-            },
-            ExpressionValue::Integer(ib) => match op {
-                BinaryOpType::Times => Ok(ExpressionValue::Complex(ca * ib)),
-                BinaryOpType::Divide => Ok(ExpressionValue::Complex(ca / ib)),
-                BinaryOpType::Modulo => Ok(ExpressionValue::Complex(Complex::with_val(
-                    prec,
-                    ca.real() % ib,
-                ))),
-                BinaryOpType::Power => Ok(ExpressionValue::Complex(ca.pow(ib))),
+            })),
+            ExpressionValue::Integer(b) => Ok(ExpressionValue::Complex(match op {
+                BinaryOpType::Times => a * b,
+                BinaryOpType::Divide => a / b,
+                BinaryOpType::Modulo => Complex::with_val(prec, a.real() % b),
+                BinaryOpType::Power => a.pow(b),
                 _ => unreachable!("unsupported simple_ops2: {op}"),
-            },
+            })),
             _ => Err(RuntimeError::incompatible_operator(
                 op,
                 aty,
@@ -537,35 +531,30 @@ fn simple_ops2(
                 Some(span.clone()),
             )),
         },
-        ExpressionValue::Integer(ia) => match b {
-            ExpressionValue::Color(cb) => {
-                let a = ia as f32;
+        ExpressionValue::Integer(a) => match b {
+            ExpressionValue::Color(b) => {
+                let a = a as f32;
                 Ok(ExpressionValue::Color([
-                    do_op(a, cb[0]),
-                    do_op(a, cb[1]),
-                    do_op(a, cb[2]),
-                    do_op(a, cb[3]),
+                    do_op(a, b[0]),
+                    do_op(a, b[1]),
+                    do_op(a, b[2]),
+                    do_op(a, b[3]),
                 ]))
             }
-            ExpressionValue::Complex(cb) => match op {
-                BinaryOpType::Times => Ok(ExpressionValue::Complex(ia * cb)),
-                BinaryOpType::Divide => Ok(ExpressionValue::Complex(ia / cb)),
-                BinaryOpType::Modulo => Ok(ExpressionValue::Complex(Complex::with_val(
-                    prec,
-                    ia % cb.real(),
-                ))),
-                BinaryOpType::Power => Ok(ExpressionValue::Complex(
-                    Complex::with_val(prec, ia).pow(cb),
-                )),
+            ExpressionValue::Complex(b) => Ok(ExpressionValue::Complex(match op {
+                BinaryOpType::Times => a * b,
+                BinaryOpType::Divide => a / b,
+                BinaryOpType::Modulo => Complex::with_val(prec, a % b.real()),
+                BinaryOpType::Power => Complex::with_val(prec, a).pow(b),
                 _ => unreachable!("unsupported simple_ops2: {op}"),
-            },
-            ExpressionValue::Integer(ib) => match op {
-                BinaryOpType::Times => Ok(ExpressionValue::Integer(ia * ib)),
-                BinaryOpType::Divide => Ok(ExpressionValue::Integer(ia / ib)),
-                BinaryOpType::Modulo => Ok(ExpressionValue::Integer(ia % ib)),
-                BinaryOpType::Power => Ok(ExpressionValue::Integer(ia.pow(ib.max(0) as u32))),
+            })),
+            ExpressionValue::Integer(b) => Ok(ExpressionValue::Integer(match op {
+                BinaryOpType::Times => a * b,
+                BinaryOpType::Divide => a / b,
+                BinaryOpType::Modulo => a % b,
+                BinaryOpType::Power => a.pow(b.max(0) as u32),
                 _ => unreachable!("unsupported simple_ops2: {op}"),
-            },
+            })),
             _ => Err(RuntimeError::incompatible_operator(
                 op,
                 aty,
@@ -631,14 +620,14 @@ fn bitwise_ops(
         ));
     };
 
-    match op {
-        BinaryOpType::LeftShift => Ok(ExpressionValue::Integer(a << b)),
-        BinaryOpType::RightShift => Ok(ExpressionValue::Integer(a >> b)),
-        BinaryOpType::And => Ok(ExpressionValue::Integer(a & b)),
-        BinaryOpType::Or => Ok(ExpressionValue::Integer(a | b)),
-        BinaryOpType::Xor => Ok(ExpressionValue::Integer(a ^ b)),
+    Ok(ExpressionValue::Integer(match op {
+        BinaryOpType::LeftShift => a << b,
+        BinaryOpType::RightShift => a >> b,
+        BinaryOpType::And => a & b,
+        BinaryOpType::Or => a | b,
+        BinaryOpType::Xor => a ^ b,
         _ => unreachable!("unsupported bitwise_op: {op}"),
-    }
+    }))
 }
 
 fn equals_ops(
